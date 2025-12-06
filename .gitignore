@@ -34,6 +34,9 @@ talkies_windows/Talkies.Windows.Tests/bin/**
 talkies_windows/Talkies.Windows.Tests/obj/
 talkies_windows/Talkies.Windows.Tests/obj/**
 talkies_windows/Talkies.Windows/bin/Debug/**
+talkies_windows/models/**
+talkies_windows/models/*
+talkies_windows/models/
 **/bin/
 **/obj/
 **\\bin\\
