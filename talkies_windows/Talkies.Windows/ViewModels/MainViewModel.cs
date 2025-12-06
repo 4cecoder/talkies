@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Talkies.Windows.Models;
 using Talkies.Windows.Services;
+using Talkies.Windows.Plugins;
 
 namespace Talkies.Windows.ViewModels
 {
@@ -20,6 +21,8 @@ namespace Talkies.Windows.ViewModels
         private readonly IAudioRecorder _recorder;
         private readonly ITranscriptionService _transcriber;
         private readonly IAudioDeviceService _deviceService;
+        private readonly SettingsService _settingsService = new();
+        private AppSettings _settings = new();
 
         private DateTime? _startTime;
         private string _lastVtt = string.Empty;
@@ -45,6 +48,16 @@ namespace Talkies.Windows.ViewModels
         private string _elapsedText = "00:00";
         public string HotkeyStatus { get => _hotkeyStatus; set { _hotkeyStatus = value; OnPropertyChanged(); } }
         private string _hotkeyStatus = "Ready";
+        public bool EnhanceEnabled { get => _enhanceEnabled; set { _enhanceEnabled = value; OnPropertyChanged(); } }
+        private bool _enhanceEnabled;
+        public string OllamaUrl { get => _ollamaUrl; set { _ollamaUrl = value; OnPropertyChanged(); } }
+        private string _ollamaUrl = "http://localhost:11434";
+        public string OllamaModel { get => _ollamaModel; set { _ollamaModel = value; OnPropertyChanged(); } }
+        private string _ollamaModel = "llama3.2";
+        public bool TtsEnabled { get => _ttsEnabled; set { _ttsEnabled = value; OnPropertyChanged(); } }
+        private bool _ttsEnabled;
+        public bool InsertEnabled { get => _insertEnabled; set { _insertEnabled = value; OnPropertyChanged(); } }
+        private bool _insertEnabled;
 
         public int SegmentCount => Segments.Count;
         public int WordCount => Segments.SelectMany(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Count();
@@ -87,6 +100,7 @@ namespace Talkies.Windows.ViewModels
 
             _timer.Tick += (_, _) => UpdateElapsed();
 
+            LoadSettings();
             LoadDevices();
         }
 
@@ -175,14 +189,67 @@ namespace Talkies.Windows.ViewModels
                     OnPropertyChanged(nameof(WordsPerMinute));
                 });
 
-                Backend = "CPU";
-                HotkeyStatus = "Ready";
-                Logger.Info($"Transcription applied: {result.Segments.Count} segments");
-            }
-            catch (Exception ex)
+            Backend = "CPU";
+            HotkeyStatus = "Ready";
+            Logger.Info($"Transcription applied: {result.Segments.Count} segments");
+
+            var finalText = result.Text;
+
+            // Enhance
+            if (EnhanceEnabled)
             {
-                HotkeyStatus = $"Error: {ex.Message}";
-                Logger.Error($"Transcription error: {ex}");
+                try
+                {
+                    var enhancer = PluginManager.TextEnhancer ??
+                                   (PluginManager.TextEnhancer = new OllamaEnhancer(OllamaUrl, OllamaModel));
+                    if (enhancer.IsEnabled)
+                    {
+                        finalText = await enhancer.EnhanceAsync(finalText);
+                        Logger.Info("Enhancement completed");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Enhancement failed: {ex}");
+                }
+            }
+
+            // TTS
+            if (TtsEnabled)
+            {
+                try
+                {
+                    var tts = PluginManager.TtsSynthesizer ?? (PluginManager.TtsSynthesizer = new SystemSpeechTtsPlugin());
+                    if (tts.IsEnabled)
+                    {
+                        await tts.SynthesizeAndPlayAsync(finalText);
+                        Logger.Info("TTS played");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"TTS failed: {ex}");
+                }
+            }
+
+            // Insert
+            if (InsertEnabled && !string.IsNullOrWhiteSpace(finalText))
+            {
+                try
+                {
+                    TextInjector.InsertText(finalText);
+                    Logger.Info("Inserted text into focused app");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Insert failed: {ex}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            HotkeyStatus = $"Error: {ex.Message}";
+            Logger.Error($"Transcription error: {ex}");
             }
         }
 
@@ -206,6 +273,7 @@ namespace Talkies.Windows.ViewModels
 
         public void Dispose()
         {
+            SaveSettings();
             _hotkey.Dispose();
             _recorder.Dispose();
         }
@@ -221,8 +289,38 @@ namespace Talkies.Windows.ViewModels
 
             if (Microphones.Count > 0)
             {
-                SelectedMicrophone = Microphones[0];
+                SelectedMicrophone = Microphones.FirstOrDefault(d => d.Id == _settings.MicrophoneId) ?? Microphones[0];
             }
+        }
+
+        private void LoadSettings()
+        {
+            _settings = _settingsService.Load();
+            SelectedModel = _settings.Model;
+            SelectedLanguage = _settings.Language;
+            EnhanceEnabled = _settings.EnhanceEnabled;
+            OllamaUrl = _settings.OllamaUrl;
+            OllamaModel = _settings.OllamaModel;
+            TtsEnabled = _settings.TtsEnabled;
+            InsertEnabled = _settings.InsertEnabled;
+
+            if (!string.IsNullOrWhiteSpace(_settings.MicrophoneId) && Microphones.Count > 0)
+            {
+                SelectedMicrophone = Microphones.FirstOrDefault(m => m.Id == _settings.MicrophoneId) ?? SelectedMicrophone;
+            }
+        }
+
+        private void SaveSettings()
+        {
+            _settings.Model = SelectedModel;
+            _settings.Language = SelectedLanguage;
+            _settings.MicrophoneId = SelectedMicrophone?.Id;
+            _settings.EnhanceEnabled = EnhanceEnabled;
+            _settings.OllamaUrl = OllamaUrl;
+            _settings.OllamaModel = OllamaModel;
+            _settings.TtsEnabled = TtsEnabled;
+            _settings.InsertEnabled = InsertEnabled;
+            _settingsService.Save(_settings);
         }
 
         // Test helpers

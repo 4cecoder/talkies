@@ -74,9 +74,21 @@ namespace Talkies.Windows.Services
                 return env!;
             }
 
-            // Hardcoded default path to tiny model (user-specified)
-            const string defaultTiny = @"C:\Users\admin\prog\talkies\talkies_windows\Talkies.Windows\bin\Debug\net8.0-windows\models\ggml-tiny.bin";
-            return defaultTiny;
+            // Map model names to filenames
+            var name = model switch
+            {
+                "tiny" => "ggml-tiny.bin",
+                "base" => "ggml-base.bin",
+                "small" => "ggml-small.bin",
+                "medium" => "ggml-medium.bin",
+                "large" => "ggml-large.bin",
+                _ => "ggml-tiny.bin"
+            };
+
+            // Look under talkies_windows/models relative to the app base (bin/Debug/net8.0-windows/ -> ../../../.. /models)
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var candidate = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "models", name));
+            return candidate;
         }
 
         private static string ConvertTo16kMono(string inputPath)

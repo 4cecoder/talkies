@@ -33,6 +33,15 @@
                     <ComboBox ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}" DisplayMemberPath="Name" Margin="0,0,0,6"/>
                     <CheckBox Content="Voice Activity Detection" IsChecked="{Binding VadEnabled}" Margin="0,4,0,0"/>
                     <CheckBox Content="Hallucination Filter" IsChecked="{Binding FilterEnabled}" Margin="0,4,0,0"/>
+                    <Separator Margin="0,8,0,8"/>
+                    <CheckBox Content="Enhance with LLM (Ollama)" IsChecked="{Binding EnhanceEnabled}"/>
+                    <TextBlock Text="Ollama URL" FontSize="12" Margin="0,2,0,0"/>
+                    <TextBox Text="{Binding OllamaUrl}" Margin="0,0,0,4"/>
+                    <TextBlock Text="Ollama Model" FontSize="12" Margin="0,2,0,0"/>
+                    <TextBox Text="{Binding OllamaModel}" Margin="0,0,0,4"/>
+                    <Separator Margin="0,8,0,8"/>
+                    <CheckBox Content="Speak response (TTS)" IsChecked="{Binding TtsEnabled}"/>
+                    <CheckBox Content="Insert text after transcription" IsChecked="{Binding InsertEnabled}"/>
                     <TextBlock Text="Backend:" Margin="0,8,0,0"/><TextBlock Text="{Binding Backend}" Foreground="#66b3ff" />
                     <TextBlock Text="Elapsed:" Margin="0,4,0,0"/><TextBlock Text="{Binding ElapsedText}" />
                 </StackPanel>
