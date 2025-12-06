@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Lock files (optional - comment out if you want to track)
+# uv.lock
+
+# Misc
+*.log
+
+# Swift build artifacts
+Talkies/.build/
+Talkies/.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# Large ML model files (use Git LFS or download separately)
+*.safetensors
+*.npz
