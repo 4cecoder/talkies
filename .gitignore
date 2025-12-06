@@ -33,8 +33,11 @@ talkies_windows/Talkies.Windows.Tests/bin/
 talkies_windows/Talkies.Windows.Tests/bin/**
 talkies_windows/Talkies.Windows.Tests/obj/
 talkies_windows/Talkies.Windows.Tests/obj/**
+talkies_windows/Talkies.Windows/bin/Debug/**
 **/bin/
 **/obj/
+**\\bin\\
+**\\obj\\
 
 # Lock files (optional - comment out if you want to track)
 # uv.lock
