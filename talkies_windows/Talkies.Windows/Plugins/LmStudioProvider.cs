@@ -128,50 +128,76 @@ namespace Talkies.Windows.Plugins
             try
             {
                 var systemPrompt = GetSystemPromptForMode(mode);
-
-                var payload = new
-                {
-                    model = _selectedModel,
-                    messages = new[]
-                    {
-                        new { role = "system", content = systemPrompt },
-                        new { role = "user", content = text }
-                    },
-                    temperature = Temperature,
-                    top_p = TopP,
-                    max_tokens = 4096,
-                    stream = false
-                };
-
-                var jsonContent = new StringContent(
-                    JsonSerializer.Serialize(payload),
-                    System.Text.Encoding.UTF8,
-                    "application/json"
-                );
-
-                var response = await _httpClient.PostAsync($"{Endpoint}/v1/chat/completions", jsonContent);
-                response.EnsureSuccessStatusCode();
-
-                var responseJson = await response.Content.ReadAsStringAsync();
-                var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-                var result = JsonSerializer.Deserialize<LmStudioChatResponse>(responseJson, options);
-
-                if (result?.Choices?.FirstOrDefault()?.Message?.Content != null)
-                {
-                    var content = result.Choices[0].Message?.Content;
-                    if (content != null)
-                    {
-                        return content.Trim();
-                    }
-                }
-
-                return text;
+                return await EnhanceWithPromptInternalAsync(text, systemPrompt);
             }
             catch (Exception ex)
             {
                 Services.Logger.Error($"LM Studio: Enhancement failed - {ex.Message}");
                 return text;
             }
+        }
+
+        public async Task<string> EnhanceWithPromptAsync(string text, string systemPrompt)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return text;
+
+            if (string.IsNullOrEmpty(_selectedModel))
+            {
+                Services.Logger.Error("LM Studio: No model selected");
+                return text;
+            }
+
+            try
+            {
+                return await EnhanceWithPromptInternalAsync(text, systemPrompt);
+            }
+            catch (Exception ex)
+            {
+                Services.Logger.Error($"LM Studio: Custom prompt enhancement failed - {ex.Message}");
+                return text;
+            }
+        }
+
+        private async Task<string> EnhanceWithPromptInternalAsync(string text, string systemPrompt)
+        {
+            var payload = new
+            {
+                model = _selectedModel,
+                messages = new[]
+                {
+                    new { role = "system", content = systemPrompt },
+                    new { role = "user", content = text }
+                },
+                temperature = Temperature,
+                top_p = TopP,
+                max_tokens = 4096,
+                stream = false
+            };
+
+            var jsonContent = new StringContent(
+                JsonSerializer.Serialize(payload),
+                System.Text.Encoding.UTF8,
+                "application/json"
+            );
+
+            var response = await _httpClient.PostAsync($"{Endpoint}/v1/chat/completions", jsonContent);
+            response.EnsureSuccessStatusCode();
+
+            var responseJson = await response.Content.ReadAsStringAsync();
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var result = JsonSerializer.Deserialize<LmStudioChatResponse>(responseJson, options);
+
+            if (result?.Choices?.FirstOrDefault()?.Message?.Content != null)
+            {
+                var content = result.Choices[0].Message?.Content;
+                if (content != null)
+                {
+                    return content.Trim();
+                }
+            }
+
+            return text;
         }
 
         private static string GetSystemPromptForMode(EnhancementMode mode)

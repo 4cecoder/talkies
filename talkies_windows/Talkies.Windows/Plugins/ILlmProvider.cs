@@ -56,6 +56,11 @@ namespace Talkies.Windows.Plugins
         Task<string> EnhanceAsync(string text, EnhancementMode mode);
 
         /// <summary>
+        /// Enhances text with a custom system prompt (bypasses predefined modes).
+        /// </summary>
+        Task<string> EnhanceWithPromptAsync(string text, string systemPrompt);
+
+        /// <summary>
         /// Gets the temperature setting for the provider
         /// </summary>
         float Temperature { get; set; }

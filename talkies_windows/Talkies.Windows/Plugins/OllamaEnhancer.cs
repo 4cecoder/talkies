@@ -102,10 +102,15 @@ namespace Talkies.Windows.Plugins
         /// </summary>
         public async Task<string> EnhanceWithCustomPromptAsync(string text, string systemPrompt)
         {
-            return await EnhanceWithPromptAsync(text, systemPrompt);
+            return await EnhanceWithPromptInternalAsync(text, systemPrompt);
         }
 
-        private async Task<string> EnhanceWithPromptAsync(string text, string systemPrompt)
+        public async System.Threading.Tasks.Task<string> EnhanceWithPromptAsync(string text, string systemPrompt)
+        {
+            return await EnhanceWithPromptInternalAsync(text, systemPrompt);
+        }
+
+        private async Task<string> EnhanceWithPromptInternalAsync(string text, string systemPrompt)
         {
             try
             {

@@ -33,7 +33,14 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<AudioDeviceInfo> Microphones { get; } = new();
         public ObservableCollection<string> LlmProviders { get; } = new(new[] { "Ollama", "LM Studio" });
         public ObservableCollection<Plugins.LlmModel> AvailableLlmModels { get; } = new();
-        public ObservableCollection<string> EnhancementModes { get; } = new(Enum.GetNames(typeof(EnhancementMode)));
+        public ObservableCollection<string> EnhancementModes { get; } = new();
+        public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
+
+        public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
+        private string _newPromptName = "Custom Grammar";
+
+        public string NewPromptText { get => _newPromptText; set { _newPromptText = value; OnPropertyChanged(); } }
+        private string _newPromptText = DefaultGrammarPrompt;
 
         public string SelectedModel { get => _selectedModel; set { _selectedModel = value; OnPropertyChanged(); } }
         private string _selectedModel = "base";
@@ -71,7 +78,19 @@ namespace Talkies.Windows.ViewModels
         public string LlmEndpoint { get => _llmEndpoint; set { _llmEndpoint = value; OnPropertyChanged(); } }
         private string _llmEndpoint = "http://localhost:11434";
 
-        public Plugins.LlmModel? SelectedLlmModel { get => _selectedLlmModel; set { _selectedLlmModel = value; OnPropertyChanged(); } }
+        public Plugins.LlmModel? SelectedLlmModel
+        {
+            get => _selectedLlmModel;
+            set
+            {
+                _selectedLlmModel = value;
+                if (_currentLlmProvider != null)
+                {
+                    _currentLlmProvider.SelectedModel = value?.Name ?? string.Empty;
+                }
+                OnPropertyChanged();
+            }
+        }
         private Plugins.LlmModel? _selectedLlmModel;
 
         public string SelectedEnhancementMode { get => _selectedEnhancementMode; set { _selectedEnhancementMode = value; OnPropertyChanged(); } }
@@ -95,6 +114,7 @@ namespace Talkies.Windows.ViewModels
         public ICommand FetchModelsCommand { get; }
         public ICommand ExportSrtCommand { get; }
         public ICommand ExportTxtCommand { get; }
+        public ICommand SavePromptCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -116,6 +136,7 @@ namespace Talkies.Windows.ViewModels
             FetchModelsCommand = new AsyncRelayCommand(_ => FetchLlmModelsAsync());
             ExportSrtCommand = new RelayCommand(_ => ExportSrt(), _ => CanSave);
             ExportTxtCommand = new RelayCommand(_ => ExportTxt(), _ => CanSave);
+            SavePromptCommand = new RelayCommand(_ => SaveCustomPrompt());
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
@@ -133,6 +154,7 @@ namespace Talkies.Windows.ViewModels
             LoadSettings();
             LoadDevices();
             InitializeLlmProvider();
+            RefreshEnhancementModes();
         }
 
         public event Action<float>? OnAudioLevelChanged;
@@ -324,27 +346,9 @@ namespace Talkies.Windows.ViewModels
                     FilterEnabled,
                     decodingOptions);
 
-                var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
-                dispatcher.Invoke(() =>
-                {
-                    Segments.Clear();
-                    foreach (var seg in result.Segments)
-                    {
-                        Segments.Add(seg);
-                    }
-                    _lastVtt = result.Vtt;
-                    OnPropertyChanged(nameof(CanSave));
-                    OnPropertyChanged(nameof(SegmentCount));
-                    OnPropertyChanged(nameof(WordCount));
-                    OnPropertyChanged(nameof(WordsPerMinute));
-                });
-
-                Logger.Success($"Transcription completed: {result.Segments.Count} segments, {result.TotalWords} words");
-                Logger.Status($"WPM: {result.WordsPerMinute}");
-
-                Backend = "CPU";
-
                 var finalText = result.Text;
+                var finalSegments = result.Segments;
+                var finalVtt = result.Vtt;
 
                 // Enhance with LLM
                 if (EnhanceEnabled && _currentLlmProvider != null)
@@ -353,10 +357,59 @@ namespace Talkies.Windows.ViewModels
                     {
                         Logger.OperationStart("Text enhancement");
 
-                        // Parse enhancement mode
-                        if (Enum.TryParse<EnhancementMode>(SelectedEnhancementMode, out var mode))
+                        var customPrompt = GetCustomPrompt(SelectedEnhancementMode);
+
+                        if (!string.IsNullOrWhiteSpace(customPrompt))
                         {
-                            finalText = await _currentLlmProvider.EnhanceAsync(finalText, mode);
+                            var enhanced = await _currentLlmProvider.EnhanceWithPromptAsync(finalText, customPrompt);
+                            if (!string.IsNullOrWhiteSpace(enhanced))
+                            {
+                                finalText = enhanced;
+
+                                var start = finalSegments.FirstOrDefault()?.Start ?? 0;
+                                var end = finalSegments.LastOrDefault()?.End ?? 0;
+                                if (end <= start) end = Math.Max(1, end + 1);
+
+                                finalSegments = new List<TranscriptSegment>
+                                {
+                                    new TranscriptSegment
+                                    {
+                                        Start = start,
+                                        End = end,
+                                        Timestamp = ToTimestamp(start),
+                                        Text = enhanced
+                                    }
+                                };
+                                finalVtt = TranscriptExporter.ExportToVtt(finalSegments);
+                            }
+                            Logger.OperationComplete("Text enhancement");
+                        }
+                        // Parse enhancement mode
+                        else if (Enum.TryParse<EnhancementMode>(SelectedEnhancementMode, out var mode))
+                        {
+                            var enhanced = await _currentLlmProvider.EnhanceAsync(finalText, mode);
+                            if (!string.IsNullOrWhiteSpace(enhanced))
+                            {
+                                finalText = enhanced;
+
+                                // Replace segments with a single enhanced segment spanning the original duration
+                                var start = finalSegments.FirstOrDefault()?.Start ?? 0;
+                                var end = finalSegments.LastOrDefault()?.End ?? 0;
+                                if (end <= start) end = Math.Max(1, end + 1);
+
+                                finalSegments = new List<TranscriptSegment>
+                                {
+                                    new TranscriptSegment
+                                    {
+                                        Start = start,
+                                        End = end,
+                                        Timestamp = ToTimestamp(start),
+                                        Text = enhanced
+                                    }
+                                };
+                                finalVtt = TranscriptExporter.ExportToVtt(finalSegments);
+                            }
+
                             Logger.OperationComplete("Text enhancement");
                         }
                     }
@@ -365,6 +418,32 @@ namespace Talkies.Windows.ViewModels
                         Logger.OperationFailed("Text enhancement", ex.Message);
                     }
                 }
+
+                // Push final transcript (enhanced or raw) to UI
+                var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+                dispatcher.Invoke(() =>
+                {
+                    Segments.Clear();
+                    foreach (var seg in finalSegments)
+                    {
+                        Segments.Add(seg);
+                    }
+                    _lastVtt = finalVtt;
+                    OnPropertyChanged(nameof(CanSave));
+                    OnPropertyChanged(nameof(SegmentCount));
+                    OnPropertyChanged(nameof(WordCount));
+                    OnPropertyChanged(nameof(WordsPerMinute));
+                });
+
+                // Log with post-processed stats
+                var totalWords = finalSegments.SelectMany(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Count();
+                var durationSeconds = finalSegments.LastOrDefault()?.End ?? 0;
+                var wpm = durationSeconds > 0 ? (int)(totalWords / (durationSeconds / 60.0)) : 0;
+
+                Logger.Success($"Transcription completed: {finalSegments.Count} segments, {totalWords} words");
+                Logger.Status($"WPM: {wpm}");
+
+                Backend = "CPU";
 
                 // TTS
                 if (TtsEnabled)
@@ -518,6 +597,16 @@ namespace Talkies.Windows.ViewModels
             VadEnabled = _settings.VadEnabled;
             FilterEnabled = _settings.FilterEnabled;
 
+            CustomPrompts.Clear();
+            if (_settings.CustomPrompts != null)
+            {
+                foreach (var prompt in _settings.CustomPrompts)
+                {
+                    CustomPrompts.Add(prompt);
+                }
+            }
+            RefreshEnhancementModes();
+
             // Load LLM provider settings
             SelectedLlmProvider = _settings.SelectedLlmProvider ?? "Ollama";
             LlmEndpoint = _settings.LlmEndpoint ?? "http://localhost:11434";
@@ -547,7 +636,51 @@ namespace Talkies.Windows.ViewModels
             _settings.LlmEndpoint = LlmEndpoint;
             _settings.SelectedLlmModelName = SelectedLlmModel?.Name;
             _settings.SelectedEnhancementMode = SelectedEnhancementMode;
+            _settings.CustomPrompts = CustomPrompts.ToList();
             _settingsService.Save(_settings);
+        }
+
+        private void RefreshEnhancementModes()
+        {
+            EnhancementModes.Clear();
+            foreach (var name in Enum.GetNames(typeof(EnhancementMode)))
+            {
+                EnhancementModes.Add(name);
+            }
+            foreach (var prompt in CustomPrompts)
+            {
+                if (!EnhancementModes.Contains(prompt.Name))
+                {
+                    EnhancementModes.Add(prompt.Name);
+                }
+            }
+        }
+
+        private void SaveCustomPrompt()
+        {
+            if (string.IsNullOrWhiteSpace(NewPromptName) || string.IsNullOrWhiteSpace(NewPromptText))
+            {
+                return;
+            }
+
+            var existing = CustomPrompts.FirstOrDefault(p => p.Name.Equals(NewPromptName, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                existing.Prompt = NewPromptText;
+            }
+            else
+            {
+                CustomPrompts.Add(new CustomPrompt { Name = NewPromptName, Prompt = NewPromptText });
+            }
+
+            RefreshEnhancementModes();
+            SelectedEnhancementMode = NewPromptName;
+            SaveSettings();
+        }
+
+        private string? GetCustomPrompt(string name)
+        {
+            return CustomPrompts.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Prompt;
         }
 
         // Test helpers
@@ -569,6 +702,14 @@ namespace Talkies.Windows.ViewModels
         }
 
         protected void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        private static string ToTimestamp(double seconds)
+        {
+            var ts = TimeSpan.FromSeconds(seconds);
+            return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}";
+        }
+
+        private const string DefaultGrammarPrompt = "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else.";
     }
 
     public class RelayCommand : ICommand

@@ -72,7 +72,15 @@
                         <ComboBox ItemsSource="{Binding AvailableLlmModels}" SelectedItem="{Binding SelectedLlmModel}" DisplayMemberPath="DisplayName" Margin="0,0,0,8" Height="32" Padding="8,6" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                         <TextBlock Text="Enhancement Mode" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                        <ComboBox ItemsSource="{Binding EnhancementModes}" SelectedItem="{Binding SelectedEnhancementMode}" Margin="0,0,0,0" Height="32" Padding="8,6" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <ComboBox ItemsSource="{Binding EnhancementModes}" SelectedItem="{Binding SelectedEnhancementMode}" Margin="0,0,0,8" Height="32" Padding="8,6" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <TextBlock Text="Custom Mode Name" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <TextBox Text="{Binding NewPromptName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" Height="28" Padding="8,4" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <TextBlock Text="System Prompt" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <TextBox Text="{Binding NewPromptText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Margin="0,0,0,8" Height="100" Padding="8,6" VerticalScrollBarVisibility="Auto" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <Button Content="Save Prompt as Mode" Command="{Binding SavePromptCommand}" Height="32" Margin="0,0,0,0" Visibility="{Binding EnhanceEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                     </StackPanel>
                 </Border>
 
