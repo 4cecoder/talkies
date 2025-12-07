@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using Whisper.net;
@@ -11,16 +13,36 @@ namespace Talkies.Windows.Services
 {
     /// <summary>
     /// Native transcription using whisper.net (no Python). Requires a GGML model file.
+    /// Supports dynamic model download if not available locally.
     /// </summary>
     public class WhisperNetTranscriptionService : ITranscriptionService
     {
-        public async Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled)
+        // OpenAI Whisper model URLs (GGML format from ggerganov/whisper.cpp)
+        private static readonly Dictionary<string, string> ModelUrls = new()
         {
-            // Resolve model path
-            var modelPath = ResolveModelPath(model);
+            { "tiny", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin" },
+            { "base", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" },
+            { "small", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" },
+            { "medium", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin" },
+            { "large", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin" }
+        };
+
+        private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromMinutes(30) };
+
+        public async Task<TranscriptionResult> TranscribeAsync(
+            string filePath,
+            string model,
+            string language,
+            bool vadEnabled,
+            bool filterEnabled,
+            DecodingOptions? decodingOptions = null)
+        {
+            // Resolve model path with dynamic download
+            var modelPath = await ResolveModelPathAsync(model);
             if (!File.Exists(modelPath))
             {
-                throw new FileNotFoundException($"Model file not found at {modelPath}. Place a GGML file there (e.g., ggml-base.bin).");
+                throw new FileNotFoundException(
+                    $"Model file not found at {modelPath}. Failed to download or place a GGML file there (e.g., ggml-base.bin).");
             }
 
             // Ensure audio is 16kHz mono PCM
@@ -31,41 +53,86 @@ namespace Talkies.Windows.Services
             var segments = new List<TranscriptSegment>();
             string text = "";
 
-            // whisper.net usage
-            using var factory = WhisperFactory.FromPath(modelPath);
-            var builder = factory.CreateBuilder();
-            if (!string.IsNullOrWhiteSpace(language) && language != "auto")
+            try
             {
-                builder.WithLanguage(language);
-            }
-            var processor = builder.Build();
+                // Check audio file size
+                var audioFileInfo = new System.IO.FileInfo(compatibleWav);
+                Logger.Info($"Audio file size: {audioFileInfo.Length} bytes");
 
-            await using var audio = File.OpenRead(compatibleWav);
-            await foreach (var result in processor.ProcessAsync(audio))
-            {
-                var seg = new TranscriptSegment
+                if (audioFileInfo.Length < 1000)
                 {
-                    Timestamp = FormatTimestamp(result.Start),
-                    Start = result.Start.TotalSeconds,
-                    End = result.End.TotalSeconds,
-                    Text = result.Text
+                    Logger.Warn($"Audio file is suspiciously small ({audioFileInfo.Length} bytes), may be empty");
+                }
+
+                // whisper.net usage
+                using var factory = WhisperFactory.FromPath(modelPath);
+                var builder = factory.CreateBuilder();
+                if (!string.IsNullOrWhiteSpace(language) && language != "auto")
+                {
+                    builder.WithLanguage(language);
+                }
+
+                // Apply decoding options if provided
+                if (decodingOptions != null)
+                {
+                    builder.WithTemperature(decodingOptions.Temperature);
+                }
+
+                var processor = builder.Build();
+
+                await using var audio = File.OpenRead(compatibleWav);
+                Logger.Info($"Audio stream opened, position: {audio.Position}, length: {audio.Length}");
+
+                int segmentCount = 0;
+                await foreach (var result in processor.ProcessAsync(audio))
+                {
+                    segmentCount++;
+                    Logger.Info($"Segment {segmentCount}: '{result.Text}' ({result.Start:hh\\:mm\\:ss\\.fff} - {result.End:hh\\:mm\\:ss\\.fff})");
+
+                    var seg = new TranscriptSegment
+                    {
+                        Timestamp = FormatTimestamp(result.Start),
+                        Start = result.Start.TotalSeconds,
+                        End = result.End.TotalSeconds,
+                        Text = result.Text
+                    };
+                    segments.Add(seg);
+                    text += result.Text;
+                }
+
+                Logger.Info($"Whisper.net processing complete: {segmentCount} segments yielded");
+
+                var vtt = ExportVtt(segments);
+
+                Logger.Info($"whisper.net complete: {segments.Count} segments, {text.Length} chars");
+                return new TranscriptionResult
+                {
+                    Segments = segments,
+                    Text = text,
+                    Vtt = vtt
                 };
-                segments.Add(seg);
-                text += result.Text;
             }
-
-            var vtt = BuildVtt(segments);
-
-            Logger.Info($"whisper.net complete: {segments.Count} segments, {text.Length} chars");
-            return new TranscriptionResult
+            finally
             {
-                Segments = segments,
-                Text = text,
-                Vtt = vtt
-            };
+                // Cleanup temporary converted file if it was created
+                if (compatibleWav != filePath && File.Exists(compatibleWav))
+                {
+                    try
+                    {
+                        File.Delete(compatibleWav);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors
+                    }
+                }
+            }
         }
 
-        private static string ResolveModelPath(string model)
+        /// <summary>
+        /// Resolves the model path with dynamic download if needed.
+        /// </summary>
+        private static async Task<string> ResolveModelPathAsync(string model)
         {
             // Allow env override
             var env = Environment.GetEnvironmentVariable("TALKIES_MODEL_PATH");
@@ -85,10 +152,75 @@ namespace Talkies.Windows.Services
                 _ => "ggml-tiny.bin"
             };
 
-            // Look under talkies_windows/models relative to the app base (bin/Debug/net8.0-windows/ -> ../../../.. /models)
+            // Look under talkies_windows/models relative to the app base
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var candidate = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "models", name));
-            return candidate;
+            var modelsDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "models"));
+            var modelPath = Path.Combine(modelsDir, name);
+
+            // If model doesn't exist, try to download it
+            if (!File.Exists(modelPath))
+            {
+                Logger.Info($"Model not found at {modelPath}, attempting to download...");
+                await DownloadModelAsync(model, modelPath);
+            }
+
+            return modelPath;
+        }
+
+        /// <summary>
+        /// Downloads a model from HuggingFace if not already present.
+        /// </summary>
+        private static async Task DownloadModelAsync(string modelName, string targetPath)
+        {
+            if (!ModelUrls.TryGetValue(modelName, out var url))
+            {
+                Logger.Error($"Unknown model: {modelName}");
+                return;
+            }
+
+            try
+            {
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                Logger.Info($"Downloading model {modelName} from {url}");
+
+                using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                var canReportProgress = totalBytes != -1;
+
+                using var contentStream = await response.Content.ReadAsStreamAsync();
+                using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+
+                var totalRead = 0L;
+                var buffer = new byte[8192];
+                int read;
+
+                while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, read);
+                    totalRead += read;
+
+                    if (canReportProgress)
+                    {
+                        var progressPercent = (totalRead * 100d) / totalBytes;
+                        Logger.Info($"Download progress: {progressPercent:F1}%");
+                    }
+                }
+
+                Logger.Info($"Model {modelName} downloaded successfully to {targetPath}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to download model {modelName}: {ex.Message}");
+                throw;
+            }
         }
 
         private static string ConvertTo16kMono(string inputPath)
@@ -122,7 +254,10 @@ namespace Talkies.Windows.Services
             return target;
         }
 
-        private static string BuildVtt(IEnumerable<TranscriptSegment> segments)
+        /// <summary>
+        /// Exports segments to VTT (WebVTT) format.
+        /// </summary>
+        public string ExportVtt(IEnumerable<TranscriptSegment> segments)
         {
             using var sw = new StringWriter();
             sw.WriteLine("WEBVTT");
@@ -136,6 +271,32 @@ namespace Talkies.Windows.Services
             return sw.ToString();
         }
 
+        /// <summary>
+        /// Exports segments to SRT (SubRip) format.
+        /// </summary>
+        public string ExportSrt(IEnumerable<TranscriptSegment> segments)
+        {
+            using var sw = new StringWriter();
+            int index = 1;
+            foreach (var seg in segments)
+            {
+                sw.WriteLine(index++);
+                sw.WriteLine($"{FormatSrtTime(seg.Start)} --> {FormatSrtTime(seg.End)}");
+                sw.WriteLine(seg.Text);
+                sw.WriteLine();
+            }
+            return sw.ToString();
+        }
+
+        /// <summary>
+        /// Exports segments to plain text format.
+        /// </summary>
+        public string ExportTxt(IEnumerable<TranscriptSegment> segments)
+        {
+            var lines = segments.Select(s => s.Text);
+            return string.Join(Environment.NewLine, lines);
+        }
+
         private static string FormatTimestamp(TimeSpan ts)
         {
             return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}";
@@ -145,6 +306,20 @@ namespace Talkies.Windows.Services
         {
             var ts = TimeSpan.FromSeconds(seconds);
             return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}";
+        }
+
+        /// <summary>
+        /// Formats timestamp for SRT format (uses comma instead of period for milliseconds).
+        /// </summary>
+        private static string FormatSrtTime(double seconds)
+        {
+            var ts = TimeSpan.FromSeconds(seconds);
+            return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00},{ts.Milliseconds:000}";
+        }
+
+        public void Dispose()
+        {
+            // Nothing to dispose
         }
     }
 }

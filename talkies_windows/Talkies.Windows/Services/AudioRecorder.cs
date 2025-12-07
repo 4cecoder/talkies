@@ -64,6 +64,7 @@ namespace Talkies.Windows.Services
             _capture.RecordingStopped += OnStopped;
 
             _writer = new WaveFileWriter(_currentFile, _capture.WaveFormat);
+            Logger.Info($"Audio format: {_capture.WaveFormat.SampleRate}Hz, {_capture.WaveFormat.Channels}ch, {_capture.WaveFormat.BitsPerSample}bit");
 
             _capture.StartRecording();
             Logger.Info($"Recording started -> {_currentFile}");
@@ -73,8 +74,10 @@ namespace Talkies.Windows.Services
 
         private void OnData(object? sender, WaveInEventArgs e)
         {
-            if (_writer == null) return;
+            if (_writer == null || e.BytesRecorded == 0) return;
+
             _writer.Write(e.Buffer, 0, e.BytesRecorded);
+            _writer.Flush();
 
             // Level calc (RMS)
             float max = 0;
@@ -84,18 +87,32 @@ namespace Talkies.Windows.Services
                 var sample32 = sample / 32768f;
                 if (Math.Abs(sample32) > max) max = Math.Abs(sample32);
             }
-            LevelChanged?.Invoke(this, max);
+            try
+            {
+                LevelChanged?.Invoke(this, max);
+            }
+            catch (Exception ex)
+            {
+                // Prevent UI callback failures from killing the capture loop
+                Logger.Error($"Audio level callback error: {ex.Message}");
+            }
         }
 
         public void Stop()
         {
             if (!IsRecording) return;
+            Logger.Info($"Recording stop requested at {DateTime.UtcNow:HH:mm:ss.fff}");
             _capture?.StopRecording();
             Logger.Info("Recording stopped (awaiting finalization)");
         }
 
         private void OnStopped(object? sender, StoppedEventArgs e)
         {
+            if (e.Exception != null)
+            {
+                Logger.Error($"Recording failed: {e.Exception.Message}");
+            }
+
             _capture?.Dispose();
             _capture = null;
 
@@ -104,10 +121,20 @@ namespace Talkies.Windows.Services
 
             IsRecording = false;
 
+            if (e.Exception != null)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(_currentFile) && File.Exists(_currentFile))
             {
-                Logger.Info($"Recording completed -> {_currentFile}");
+                var fileInfo = new System.IO.FileInfo(_currentFile);
+                Logger.Info($"Recording completed -> {_currentFile} ({fileInfo.Length} bytes)");
                 RecordingCompleted?.Invoke(this, new RecordingCompletedEventArgs { FilePath = _currentFile });
+            }
+            else
+            {
+                Logger.Error($"Recording file not found or empty: {_currentFile}");
             }
         }
 

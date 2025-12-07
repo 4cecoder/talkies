@@ -31,6 +31,9 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<string> Models { get; } = new(new[] { "tiny", "base", "small", "medium", "large" });
         public ObservableCollection<string> Languages { get; } = new(new[] { "auto", "en", "es", "fr", "de", "it", "pt", "ja", "zh" });
         public ObservableCollection<AudioDeviceInfo> Microphones { get; } = new();
+        public ObservableCollection<string> LlmProviders { get; } = new(new[] { "Ollama", "LM Studio" });
+        public ObservableCollection<Plugins.LlmModel> AvailableLlmModels { get; } = new();
+        public ObservableCollection<string> EnhancementModes { get; } = new(Enum.GetNames(typeof(EnhancementMode)));
 
         public string SelectedModel { get => _selectedModel; set { _selectedModel = value; OnPropertyChanged(); } }
         private string _selectedModel = "base";
@@ -40,6 +43,9 @@ namespace Talkies.Windows.ViewModels
         private bool _vadEnabled = true;
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }
         private bool _filterEnabled = true;
+
+        public bool IsFetchingModels { get => _isFetchingModels; set { _isFetchingModels = value; OnPropertyChanged(); } }
+        private bool _isFetchingModels;
         public AudioDeviceInfo? SelectedMicrophone { get => _selectedMicrophone; set { _selectedMicrophone = value; OnPropertyChanged(); } }
         private AudioDeviceInfo? _selectedMicrophone;
         public string Backend { get => _backend; set { _backend = value; OnPropertyChanged(); } }
@@ -59,6 +65,20 @@ namespace Talkies.Windows.ViewModels
         public bool InsertEnabled { get => _insertEnabled; set { _insertEnabled = value; OnPropertyChanged(); } }
         private bool _insertEnabled;
 
+        public string SelectedLlmProvider { get => _selectedLlmProvider; set { _selectedLlmProvider = value; OnPropertyChanged(); OnLlmProviderChanged(); } }
+        private string _selectedLlmProvider = "Ollama";
+
+        public string LlmEndpoint { get => _llmEndpoint; set { _llmEndpoint = value; OnPropertyChanged(); } }
+        private string _llmEndpoint = "http://localhost:11434";
+
+        public Plugins.LlmModel? SelectedLlmModel { get => _selectedLlmModel; set { _selectedLlmModel = value; OnPropertyChanged(); } }
+        private Plugins.LlmModel? _selectedLlmModel;
+
+        public string SelectedEnhancementMode { get => _selectedEnhancementMode; set { _selectedEnhancementMode = value; OnPropertyChanged(); } }
+        private string _selectedEnhancementMode = nameof(EnhancementMode.Grammar);
+
+        private ILlmProvider? _currentLlmProvider;
+
         public int SegmentCount => Segments.Count;
         public int WordCount => Segments.SelectMany(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Count();
         public int WordsPerMinute => CalculateWpm();
@@ -72,6 +92,9 @@ namespace Talkies.Windows.ViewModels
         public ICommand StopCommand { get; }
         public ICommand SaveCommand { get; }
         public ICommand ClearCommand { get; }
+        public ICommand FetchModelsCommand { get; }
+        public ICommand ExportSrtCommand { get; }
+        public ICommand ExportTxtCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -90,19 +113,29 @@ namespace Talkies.Windows.ViewModels
             StopCommand = new RelayCommand(_ => StopRecording(), _ => IsRecording);
             SaveCommand = new RelayCommand(_ => SaveVtt(), _ => CanSave);
             ClearCommand = new RelayCommand(_ => Clear());
+            FetchModelsCommand = new AsyncRelayCommand(_ => FetchLlmModelsAsync());
+            ExportSrtCommand = new RelayCommand(_ => ExportSrt(), _ => CanSave);
+            ExportTxtCommand = new RelayCommand(_ => ExportTxt(), _ => CanSave);
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
             _hotkey.HoldEnd += OnHotkeyHoldEnd;
 
             _recorder.RecordingCompleted += OnRecordingCompleted;
-            _recorder.LevelChanged += (_, level) => { /* bind waveform later */ };
+            _recorder.LevelChanged += (_, level) =>
+            {
+                // Send to waveform visualizer via event
+                OnAudioLevelChanged?.Invoke(level);
+            };
 
             _timer.Tick += (_, _) => UpdateElapsed();
 
             LoadSettings();
             LoadDevices();
+            InitializeLlmProvider();
         }
+
+        public event Action<float>? OnAudioLevelChanged;
 
         public void StartHotkey() => _hotkey.Start();
 
@@ -161,18 +194,135 @@ namespace Talkies.Windows.ViewModels
             return (int)(WordCount / elapsedMinutes);
         }
 
+        private void OnLlmProviderChanged()
+        {
+            // Update endpoint based on provider selection
+            if (SelectedLlmProvider == "Ollama")
+            {
+                LlmEndpoint = "http://localhost:11434";
+            }
+            else if (SelectedLlmProvider == "LM Studio")
+            {
+                LlmEndpoint = "http://127.0.0.1:1234";
+            }
+            AvailableLlmModels.Clear();
+        }
+
+        private void InitializeLlmProvider()
+        {
+            // Create initial LLM provider
+            _currentLlmProvider = new OllamaEnhancer(LlmEndpoint, "llama2");
+        }
+
+        private async System.Threading.Tasks.Task FetchLlmModelsAsync()
+        {
+            IsFetchingModels = true;
+            try
+            {
+                Logger.OperationStart("Fetching LLM models");
+
+                // Validate endpoint
+                if (string.IsNullOrWhiteSpace(LlmEndpoint))
+                {
+                    Logger.Error("LLM endpoint is not configured");
+                    DialogHelper.ShowWarning("Configuration Error", "Please enter a valid LLM endpoint.");
+                    return;
+                }
+
+                // Create appropriate provider based on selection
+                if (SelectedLlmProvider == "Ollama")
+                {
+                    _currentLlmProvider = new OllamaEnhancer(LlmEndpoint, "");
+                }
+                else if (SelectedLlmProvider == "LM Studio")
+                {
+                    _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint };
+                }
+
+                if (_currentLlmProvider == null)
+                {
+                    Logger.Error("Failed to create LLM provider");
+                    DialogHelper.ShowError("Provider Error", "Failed to initialize the selected LLM provider.");
+                    return;
+                }
+
+                // Check if provider is available
+                var available = await _currentLlmProvider.IsAvailableAsync();
+                if (!available)
+                {
+                    Logger.Error($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
+                    DialogHelper.ShowWarning("Connection Error", $"{SelectedLlmProvider} is not available at {LlmEndpoint}.\n\nPlease verify:\n- {SelectedLlmProvider} is running\n- Endpoint URL is correct\n- Firewall is not blocking the connection");
+                    return;
+                }
+
+                // Fetch models
+                var success = await _currentLlmProvider.FetchModelsAsync();
+                if (!success)
+                {
+                    Logger.Error($"Failed to fetch models from {SelectedLlmProvider}");
+                    DialogHelper.ShowError("Fetch Error", $"Failed to fetch models from {SelectedLlmProvider}.\n\nPlease try again or check your connection.");
+                    return;
+                }
+
+                // Update available models
+                AvailableLlmModels.Clear();
+                foreach (var model in _currentLlmProvider.AvailableModels)
+                {
+                    AvailableLlmModels.Add(model);
+                }
+
+                // Auto-select first model
+                if (AvailableLlmModels.Count > 0)
+                {
+                    SelectedLlmModel = AvailableLlmModels[0];
+                    _currentLlmProvider.SelectedModel = SelectedLlmModel.Name;
+                    Logger.Success($"Fetched {AvailableLlmModels.Count} models from {SelectedLlmProvider}");
+                }
+                else
+                {
+                    Logger.Error($"No models available from {SelectedLlmProvider}");
+                    DialogHelper.ShowWarning("No Models", $"No models found on {SelectedLlmProvider}.\n\nPlease ensure you have models configured and available.");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Logger.Error($"Error fetching models: {ex.Message}");
+                DialogHelper.ShowError("Error", $"An unexpected error occurred while fetching models:\n\n{ex.Message}");
+            }
+            finally
+            {
+                IsFetchingModels = false;
+            }
+        }
+
         private async void OnRecordingCompleted(object? sender, RecordingCompletedEventArgs e)
         {
             HotkeyStatus = "Transcribing...";
-            Logger.Info($"Recorder complete -> {e.FilePath}, starting transcription");
+            Logger.OperationStart($"Transcription of {Path.GetFileName(e.FilePath)}");
             try
             {
+                // Create decoding options with recommended defaults
+                var decodingOptions = new DecodingOptions
+                {
+                    Temperature = 0.0f,
+                    TemperatureIncrementOnFallback = 0.2f,
+                    TemperatureFallbackCount = 5,
+                    SampleLength = 224,
+                    TopK = 5,
+                    UsePrefillPrompt = true,
+                    UsePrefillCache = true,
+                    SkipSpecialTokens = true,
+                    WithoutTimestamps = false,
+                    Verbose = false
+                };
+
                 var result = await _transcriber.TranscribeAsync(
                     e.FilePath,
                     SelectedModel,
                     SelectedLanguage,
                     VadEnabled,
-                    FilterEnabled);
+                    FilterEnabled,
+                    decodingOptions);
 
                 var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
                 dispatcher.Invoke(() =>
@@ -189,67 +339,79 @@ namespace Talkies.Windows.ViewModels
                     OnPropertyChanged(nameof(WordsPerMinute));
                 });
 
-            Backend = "CPU";
-            HotkeyStatus = "Ready";
-            Logger.Info($"Transcription applied: {result.Segments.Count} segments");
+                Logger.Success($"Transcription completed: {result.Segments.Count} segments, {result.TotalWords} words");
+                Logger.Status($"WPM: {result.WordsPerMinute}");
 
-            var finalText = result.Text;
+                Backend = "CPU";
 
-            // Enhance
-            if (EnhanceEnabled)
-            {
-                try
+                var finalText = result.Text;
+
+                // Enhance with LLM
+                if (EnhanceEnabled && _currentLlmProvider != null)
                 {
-                    var enhancer = PluginManager.TextEnhancer ??
-                                   (PluginManager.TextEnhancer = new OllamaEnhancer(OllamaUrl, OllamaModel));
-                    if (enhancer.IsEnabled)
+                    try
                     {
-                        finalText = await enhancer.EnhanceAsync(finalText);
-                        Logger.Info("Enhancement completed");
+                        Logger.OperationStart("Text enhancement");
+
+                        // Parse enhancement mode
+                        if (Enum.TryParse<EnhancementMode>(SelectedEnhancementMode, out var mode))
+                        {
+                            finalText = await _currentLlmProvider.EnhanceAsync(finalText, mode);
+                            Logger.OperationComplete("Text enhancement");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.OperationFailed("Text enhancement", ex.Message);
                     }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Enhancement failed: {ex}");
-                }
-            }
 
-            // TTS
-            if (TtsEnabled)
-            {
-                try
+                // TTS
+                if (TtsEnabled)
                 {
-                    var tts = PluginManager.TtsSynthesizer ?? (PluginManager.TtsSynthesizer = new SystemSpeechTtsPlugin());
-                    if (tts.IsEnabled)
+                    try
                     {
-                        await tts.SynthesizeAndPlayAsync(finalText);
-                        Logger.Info("TTS played");
+                        Logger.OperationStart("Text-to-speech");
+                        var tts = PluginManager.TtsSynthesizer ?? (PluginManager.TtsSynthesizer = new SystemSpeechTtsPlugin());
+                        if (tts.IsEnabled)
+                        {
+                            await tts.SynthesizeAndPlayAsync(finalText);
+                            Logger.OperationComplete("Text-to-speech");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.OperationFailed("Text-to-speech", ex.Message);
                     }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error($"TTS failed: {ex}");
-                }
-            }
 
-            // Insert
-            if (InsertEnabled && !string.IsNullOrWhiteSpace(finalText))
-            {
-                try
+                // Insert
+                if (InsertEnabled && !string.IsNullOrWhiteSpace(finalText))
                 {
-                    TextInjector.InsertText(finalText);
-                    Logger.Info("Inserted text into focused app");
+                    try
+                    {
+                        Logger.OperationStart("Text injection");
+                        if (TextInjector.TryInsertText(finalText))
+                        {
+                            Logger.OperationComplete("Text injection");
+                        }
+                        else
+                        {
+                            Logger.OperationFailed("Text injection", "SendInput returned 0");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.OperationFailed("Text injection", ex.Message);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Insert failed: {ex}");
-                }
+
+                HotkeyStatus = "Ready";
             }
-        }
-        catch (Exception ex)
-        {
-            HotkeyStatus = $"Error: {ex.Message}";
-            Logger.Error($"Transcription error: {ex}");
+            catch (Exception ex)
+            {
+                HotkeyStatus = $"Error: {ex.Message}";
+                Logger.OperationFailed("Transcription", ex.Message);
             }
         }
 
@@ -259,6 +421,56 @@ namespace Talkies.Windows.ViewModels
             var name = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
             var path = Path.Combine(AppContext.BaseDirectory, name);
             File.WriteAllText(path, _lastVtt);
+        }
+
+        private void ExportSrt()
+        {
+            if (Segments.Count == 0) return;
+
+            try
+            {
+                var dialog = new System.Windows.Forms.SaveFileDialog
+                {
+                    Filter = "SubRip (*.srt)|*.srt|All Files (*.*)|*.*",
+                    DefaultExt = "srt",
+                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.srt"
+                };
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    var content = TranscriptExporter.ExportToSrt(Segments);
+                    TranscriptExporter.SaveToFile(dialog.FileName, content);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to export SRT: {ex.Message}");
+            }
+        }
+
+        private void ExportTxt()
+        {
+            if (Segments.Count == 0) return;
+
+            try
+            {
+                var dialog = new System.Windows.Forms.SaveFileDialog
+                {
+                    Filter = "Text (*.txt)|*.txt|All Files (*.*)|*.*",
+                    DefaultExt = "txt",
+                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                };
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    var content = TranscriptExporter.ExportToTxt(Segments);
+                    TranscriptExporter.SaveToFile(dialog.FileName, content);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to export TXT: {ex.Message}");
+            }
         }
 
         private void Clear()
@@ -303,6 +515,13 @@ namespace Talkies.Windows.ViewModels
             OllamaModel = _settings.OllamaModel;
             TtsEnabled = _settings.TtsEnabled;
             InsertEnabled = _settings.InsertEnabled;
+            VadEnabled = _settings.VadEnabled;
+            FilterEnabled = _settings.FilterEnabled;
+
+            // Load LLM provider settings
+            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "Ollama";
+            LlmEndpoint = _settings.LlmEndpoint ?? "http://localhost:11434";
+            SelectedEnhancementMode = _settings.SelectedEnhancementMode ?? "Grammar";
 
             if (!string.IsNullOrWhiteSpace(_settings.MicrophoneId) && Microphones.Count > 0)
             {
@@ -320,6 +539,14 @@ namespace Talkies.Windows.ViewModels
             _settings.OllamaModel = OllamaModel;
             _settings.TtsEnabled = TtsEnabled;
             _settings.InsertEnabled = InsertEnabled;
+            _settings.VadEnabled = VadEnabled;
+            _settings.FilterEnabled = FilterEnabled;
+
+            // Save LLM provider settings
+            _settings.SelectedLlmProvider = SelectedLlmProvider;
+            _settings.LlmEndpoint = LlmEndpoint;
+            _settings.SelectedLlmModelName = SelectedLlmModel?.Name;
+            _settings.SelectedEnhancementMode = SelectedEnhancementMode;
             _settingsService.Save(_settings);
         }
 
@@ -357,6 +584,44 @@ namespace Talkies.Windows.ViewModels
 
         public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
         public void Execute(object? parameter) => _execute(parameter);
+        public event EventHandler? CanExecuteChanged
+        {
+            add => CommandManager.RequerySuggested += value;
+            remove => CommandManager.RequerySuggested -= value;
+        }
+    }
+
+    public class AsyncRelayCommand : ICommand
+    {
+        private readonly Func<object?, System.Threading.Tasks.Task> _execute;
+        private readonly Predicate<object?>? _canExecute;
+        private bool _isExecuting;
+
+        public AsyncRelayCommand(Func<object?, System.Threading.Tasks.Task> execute, Predicate<object?>? canExecute = null)
+        {
+            _execute = execute;
+            _canExecute = canExecute;
+        }
+
+        public bool CanExecute(object? parameter) => !_isExecuting && (_canExecute?.Invoke(parameter) ?? true);
+
+        public async void Execute(object? parameter)
+        {
+            if (CanExecute(parameter))
+            {
+                try
+                {
+                    _isExecuting = true;
+                    await _execute(parameter);
+                }
+                finally
+                {
+                    _isExecuting = false;
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
+
         public event EventHandler? CanExecuteChanged
         {
             add => CommandManager.RequerySuggested += value;

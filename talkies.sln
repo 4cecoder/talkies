@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "talkies_windows", "talkies_windows", "{2E18FBC6-CD37-B4B1-FE21-67067F768A7C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows", "talkies_windows\Talkies.Windows\Talkies.Windows.csproj", "{04359646-32D4-2E29-55E2-E2231772F11E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows.Tests", "talkies_windows\Talkies.Windows.Tests\Talkies.Windows.Tests.csproj", "{94457807-9D2C-962C-A3DD-8E32AB7EC845}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{04359646-32D4-2E29-55E2-E2231772F11E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{04359646-32D4-2E29-55E2-E2231772F11E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{04359646-32D4-2E29-55E2-E2231772F11E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{04359646-32D4-2E29-55E2-E2231772F11E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94457807-9D2C-962C-A3DD-8E32AB7EC845}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94457807-9D2C-962C-A3DD-8E32AB7EC845}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94457807-9D2C-962C-A3DD-8E32AB7EC845}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94457807-9D2C-962C-A3DD-8E32AB7EC845}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{04359646-32D4-2E29-55E2-E2231772F11E} = {2E18FBC6-CD37-B4B1-FE21-67067F768A7C}
+		{94457807-9D2C-962C-A3DD-8E32AB7EC845} = {2E18FBC6-CD37-B4B1-FE21-67067F768A7C}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {72C9F56B-4556-4271-99F2-5CD891A9AA33}
+	EndGlobalSection
+EndGlobal

@@ -1,130 +1,111 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Text;
+using System.Linq;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Talkies.Windows.Models;
 
 namespace Talkies.Windows.Services
 {
+    /// <summary>
+    /// Decoding options for transcription (similar to WhisperKit's DecodingOptions).
+    /// </summary>
+    public class DecodingOptions
+    {
+        /// <summary>
+        /// Temperature for sampling (0.0 = deterministic, higher = more random).
+        /// </summary>
+        public float Temperature { get; set; } = 0.0f;
+
+        /// <summary>
+        /// Temperature increment on fallback.
+        /// </summary>
+        public float TemperatureIncrementOnFallback { get; set; } = 0.2f;
+
+        /// <summary>
+        /// Number of temperature fallback attempts.
+        /// </summary>
+        public int TemperatureFallbackCount { get; set; } = 5;
+
+        /// <summary>
+        /// Sample length for audio processing.
+        /// </summary>
+        public int SampleLength { get; set; } = 224;
+
+        /// <summary>
+        /// Top K for beam search.
+        /// </summary>
+        public int TopK { get; set; } = 5;
+
+        /// <summary>
+        /// Whether to use prefix prompt.
+        /// </summary>
+        public bool UsePrefillPrompt { get; set; } = true;
+
+        /// <summary>
+        /// Whether to use prefix cache.
+        /// </summary>
+        public bool UsePrefillCache { get; set; } = true;
+
+        /// <summary>
+        /// Whether to skip special tokens.
+        /// </summary>
+        public bool SkipSpecialTokens { get; set; } = true;
+
+        /// <summary>
+        /// Whether to include timestamps.
+        /// </summary>
+        public bool WithoutTimestamps { get; set; } = false;
+
+        /// <summary>
+        /// Whether to enable verbose output.
+        /// </summary>
+        public bool Verbose { get; set; } = false;
+    }
+
+    /// <summary>
+    /// Result of a transcription operation.
+    /// </summary>
     public class TranscriptionResult
     {
         public List<TranscriptSegment> Segments { get; set; } = new();
         public string Text { get; set; } = string.Empty;
         public string Vtt { get; set; } = string.Empty;
-    }
 
-    public interface ITranscriptionService
-    {
-        Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled);
+        // Statistics
+        public int TotalWords => Segments.Sum(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+        public double DurationSeconds => Segments.Count > 0 ? Segments.Last().End : 0;
+        public int WordsPerMinute => DurationSeconds > 0 ? (int)(TotalWords / (DurationSeconds / 60.0)) : 0;
     }
 
     /// <summary>
-    /// Runs the existing python CLI in file mode and parses JSON to hydrate segments/VTT.
+    /// Service interface for audio transcription.
     /// </summary>
-    public class TranscriptionService : ITranscriptionService
+    public interface ITranscriptionService : IDisposable
     {
-        private readonly Func<string> _pythonResolver;
+        /// <summary>
+        /// Transcribes an audio file with custom decoding options.
+        /// </summary>
+        Task<TranscriptionResult> TranscribeAsync(
+            string filePath,
+            string model,
+            string language,
+            bool vadEnabled,
+            bool filterEnabled,
+            DecodingOptions? decodingOptions = null);
 
-        public TranscriptionService()
-        {
-            _pythonResolver = PythonLocator.ResolvePython;
-        }
+        /// <summary>
+        /// Exports segments to VTT (WebVTT) format.
+        /// </summary>
+        string ExportVtt(IEnumerable<TranscriptSegment> segments);
 
-        public TranscriptionService(Func<string> pythonResolver)
-        {
-            _pythonResolver = pythonResolver;
-        }
+        /// <summary>
+        /// Exports segments to SRT (SubRip) format.
+        /// </summary>
+        string ExportSrt(IEnumerable<TranscriptSegment> segments);
 
-        public async Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled)
-        {
-            var outputJson = Path.Combine(Path.GetTempPath(), $"talkies_{Guid.NewGuid():N}.json");
-
-            var args = new StringBuilder();
-            args.Append("-m whisper_cli.cli transcribe ");
-            args.Append($"\"{filePath}\" ");
-            if (!string.IsNullOrWhiteSpace(model)) args.Append($"--model \"{model}\" ");
-            if (!string.IsNullOrWhiteSpace(language) && language != "auto") args.Append($"--language \"{language}\" ");
-            // Always force VTT output path and JSON path
-            args.Append($"--format json --output \"{outputJson}\"");
-
-            Logger.Info($"Transcribe start: {filePath} model={model} lang={language}");
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = _pythonResolver(),
-                Arguments = args.ToString(),
-                UseShellExecute = false,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc == null) throw new InvalidOperationException("Failed to start python process");
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
-            {
-                Logger.Error($"Transcribe failed (code {proc.ExitCode}): {stderr}");
-                throw new InvalidOperationException($"Transcription failed: {stderr}");
-            }
-
-            if (!File.Exists(outputJson))
-            {
-                throw new FileNotFoundException("Transcription output not found", outputJson);
-            }
-
-            var jsonText = await File.ReadAllTextAsync(outputJson);
-            dynamic parsed = JsonConvert.DeserializeObject(jsonText) ?? throw new InvalidOperationException("Invalid JSON output");
-
-            var segments = new List<TranscriptSegment>();
-            var textBuilder = new StringBuilder();
-
-            foreach (var seg in parsed.segments)
-            {
-                string t = (string)seg.text;
-                double start = (double)seg.start;
-                double end = (double)seg.end;
-                segments.Add(new TranscriptSegment
-                {
-                    Timestamp = FormatTimestamp(start),
-                    Text = t,
-                    Start = start,
-                    End = end
-                });
-                textBuilder.Append(t);
-            }
-
-            // Build VTT locally
-            var vttBuilder = new StringBuilder();
-            vttBuilder.AppendLine("WEBVTT");
-            vttBuilder.AppendLine();
-            foreach (var seg in segments)
-            {
-                vttBuilder.AppendLine($"{seg.Timestamp} --> {FormatTimestamp(seg.End)}");
-                vttBuilder.AppendLine(seg.Text);
-                vttBuilder.AppendLine();
-            }
-
-            // Cleanup temp file
-            try { File.Delete(outputJson); } catch { /* ignore */ }
-
-            Logger.Info($"Transcribe complete: {segments.Count} segments, {textBuilder.Length} chars");
-            return new TranscriptionResult
-            {
-                Segments = segments,
-                Text = textBuilder.ToString(),
-                Vtt = vttBuilder.ToString()
-            };
-        }
-
-        private static string FormatTimestamp(double seconds)
-        {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}";
-        }
+        /// <summary>
+        /// Exports segments to plain text format.
+        /// </summary>
+        string ExportTxt(IEnumerable<TranscriptSegment> segments);
     }
 }
