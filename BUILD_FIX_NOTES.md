@@ -27,7 +27,7 @@ var result = JsonSerializer.Deserialize<OllamaChatResponse>(jsonString, options)
 ```
 
 ## Changes Made
-- **File:** `talkies_windows/Talkies.Windows/Plugins/OllamaEnhancer.cs`
+- **File:** `talkies_windows/talkies.windows/plugins/OllamaEnhancer.cs`
 - **Lines changed:** 113-115
 - **Additional imports:** Added `using System.Text.Json.Serialization;`
 

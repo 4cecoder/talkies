@@ -9,7 +9,7 @@
 
 ### Step 1: Start the Application (30 seconds)
 ```bash
-cd talkies/talkies_windows/Talkies.Windows
+cd talkies/talkies_windows/talkies.windows
 dotnet run
 ```
 

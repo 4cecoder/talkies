@@ -244,20 +244,21 @@ This session continued previous enhancements to the Talkies Windows transcriptio
 
 ### Project Structure
 ```
-Talkies.Windows/
-├── Converters/                    [NEW DIR]
-│   └── BooleanInverterConverter.cs [NEW]
-├── Services/
-│   ├── DialogHelper.cs            [NEW]
-│   ├── TranscriptExporter.cs      [NEW]
-│   └── [existing services]
-├── ViewModels/
-│   └── MainViewModel.cs           [MODIFIED]
-├── Models/
-│   └── AppSettings.cs             [MODIFIED]
-├── App.xaml                       [MODIFIED]
-└── MainWindow.xaml                [MODIFIED]
+talkies_windows/talkies.windows/
+??? converters/                    [NEW DIR]
+?   ??? BooleanInverterConverter.cs [NEW]
+??? services/
+?   ??? DialogHelper.cs            [NEW]
+?   ??? TranscriptExporter.cs      [NEW]
+?   ??? [existing services]
+??? viewmodels/
+?   ??? MainViewModel.cs           [MODIFIED]
+??? models/
+?   ??? AppSettings.cs             [MODIFIED]
+??? App.xaml                       [MODIFIED]
+??? MainWindow.xaml                [MODIFIED]
 ```
+
 
 ---
 
@@ -350,7 +351,7 @@ Talkies.Windows/
 ### Setup & Build
 ```bash
 # Clone and navigate
-cd talkies/talkies_windows/Talkies.Windows
+cd talkies/talkies_windows/talkies.windows
 
 # Build using UV (per project guidelines)
 uv run dotnet build

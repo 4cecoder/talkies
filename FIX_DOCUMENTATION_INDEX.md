@@ -205,7 +205,7 @@
 
 ### Modified Files
 ```
-talkies_windows/Talkies.Windows/
+talkies_windows/talkies.windows/
 ├── Controls/
 │   └── WaveformVisualizer.xaml.cs (132 lines)
 └── MainWindow.xaml (187 lines)

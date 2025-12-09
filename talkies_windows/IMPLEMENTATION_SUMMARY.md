@@ -146,37 +146,35 @@ New utility in `Services/DialogHelper.cs`:
 ## File Structure
 
 ```
-Talkies.Windows/
-├── App.xaml (updated with converters)
-├── MainWindow.xaml (updated with export buttons, loading state)
-├── MainWindow.xaml.cs
-├── Converters/
-│   └── BooleanInverterConverter.cs (new)
-├── Controls/
-│   ├── WaveformVisualizer.xaml
-│   └── WaveformVisualizer.xaml.cs
-├── Models/
-│   ├── AppSettings.cs (updated)
-│   ├── TranscriptSegment.cs
-│   └── ...
-├── Services/
-│   ├── AudioRecorder.cs
-│   ├── AudioDeviceService.cs
-│   ├── DialogHelper.cs (new)
-│   ├── SettingsService.cs
-│   ├── TranscriptExporter.cs (new)
-│   ├── WhisperNetTranscriptionService.cs
-│   ├── TextInjector.cs
-│   ├── Logger.cs
-│   └── ...
-├── Plugins/
-│   ├── ILlmProvider.cs
-│   ├── OllamaEnhancer.cs (updated)
-│   ├── LmStudioProvider.cs (new)
-│   └── ...
-└── ViewModels/
-    └── MainViewModel.cs (updated)
+talkies_windows/talkies.windows/
+??? App.xaml (updated with converters)
+??? MainWindow.xaml (updated with export buttons, loading state)
+??? MainWindow.xaml.cs
+??? converters/
+?   ??? BooleanInverterConverter.cs (new)
+??? controls/
+?   ??? WaveformVisualizer.xaml
+?   ??? WaveformVisualizer.xaml.cs
+??? models/
+?   ??? AppSettings.cs (updated)
+?   ??? TranscriptSegment.cs
+??? services/
+?   ??? AudioRecorder.cs
+?   ??? AudioDeviceService.cs
+?   ??? DialogHelper.cs (new)
+?   ??? SettingsService.cs
+?   ??? TranscriptExporter.cs (new)
+?   ??? WhisperNetTranscriptionService.cs
+?   ??? TextInjector.cs
+?   ??? Logger.cs
+??? plugins/
+?   ??? ILlmProvider.cs
+?   ??? OllamaEnhancer.cs (updated)
+?   ??? LmStudioProvider.cs (new)
+??? viewmodels/
+    ??? MainViewModel.cs (updated)
 ```
+
 
 ## Feature Summary Table
 

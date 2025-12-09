@@ -186,13 +186,13 @@ The Windows implementation of Talkies has been comprehensively enhanced to achie
 
 ## Documentation Deliverables
 
-### 1. WINDOWS_ENHANCEMENTS.md
+### 1. talkies_windows/docs/WINDOWS_ENHANCEMENTS.md
 - **Length**: 809 lines
 - **Content**: Comprehensive guide to all enhancements
 - **Sections**: Overview, detailed implementation, usage examples, benefits
 - **Audience**: Developers, system architects
 
-### 2. WINDOWS_QUICK_REFERENCE.md
+### 2. talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md
 - **Length**: 419 lines
 - **Content**: Quick lookup guide with code examples
 - **Sections**: Feature summaries, API reference, configuration checklist
@@ -482,8 +482,8 @@ The Windows implementation has been successfully enhanced with all 8 planned imp
 ## Contact & Questions
 
 For questions about these enhancements, refer to:
-1. **WINDOWS_ENHANCEMENTS.md** - Detailed documentation
-2. **WINDOWS_QUICK_REFERENCE.md** - Quick lookup guide
+1. **talkies_windows/docs/WINDOWS_ENHANCEMENTS.md** - Detailed documentation
+2. **talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md** - Quick lookup guide
 3. **Code comments** - Inline documentation in source files
 4. **Test files** - Example usage patterns
 

@@ -2,6 +2,8 @@
 
 This doc explains how to rebuild the Talkies real-time GUI in C# for Windows while reusing the existing Python speech pipeline.
 
+All detailed Windows docs now live under `talkies_windows/docs/`; this file is the top-level overview.
+
 ## What the current app does
 - Core loop lives in `src/whisper_cli/realtime.py`: captures mic audio with `sounddevice`, optional VAD (`webrtcvad`), transcribes every ~2s via MLX Whisper (Apple only) or faster-whisper, filters hallucinations, and builds WebVTT segments.
 - The PyQt6 GUI in `src/whisper_cli/gui.py` starts/stops the `RealtimeVTTStream`, subscribes to `on_segment` callbacks, updates stats (segments, words, WPM), and saves `get_vtt()` output to disk.

@@ -32,7 +32,7 @@ The `WaveformVisualizer` control's Canvas was checking if dimensions were valid 
 4. Added minimum bar height to ensure even quiet audio is visible
 
 **Files Modified:**
-- `talkies/talkies_windows/Talkies.Windows/Controls/WaveformVisualizer.xaml.cs`
+- `talkies/talkies_windows/talkies.windows/controls/WaveformVisualizer.xaml.cs`
 
 **Result:**
 Users now see animated blue/cyan bars that respond in real-time to microphone audio levels.
@@ -60,7 +60,7 @@ The ItemsControl used to display transcript segments had multiple issues:
 6. Added padding to ScrollViewer for better visual separation
 
 **Files Modified:**
-- `talkies/talkies_windows/Talkies.Windows/MainWindow.xaml`
+- `talkies/talkies_windows/talkies.windows/MainWindow.xaml`
 
 **Result:**
 Transcript text now displays clearly with proper formatting, colors, and layout.

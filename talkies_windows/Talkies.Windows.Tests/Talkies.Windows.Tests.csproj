@@ -18,6 +18,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Talkies.Windows\Talkies.Windows.csproj" />
+    <ProjectReference Include="..\talkies.windows\Talkies.Windows.csproj" />
   </ItemGroup>
 </Project>

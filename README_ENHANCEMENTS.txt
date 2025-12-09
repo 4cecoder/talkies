@@ -119,13 +119,13 @@ TOTAL                                         +685 lines
 Document                              Lines    Size  Purpose
 ────────────────────────────────────────────────────────────────────────
 ENHANCEMENTS_COMPLETE.txt             190      12KB  Executive summary
-WINDOWS_ENHANCEMENTS_README.md        435      16KB  Main entry point
-WINDOWS_QUICK_REFERENCE.md            419      12KB  Quick lookup guide
-WINDOWS_ENHANCEMENTS.md               809      24KB  Comprehensive guide
-WINDOWS_INTEGRATION_GUIDE.md          651      20KB  Integration steps
+talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md        435      16KB  Main entry point
+talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md            419      12KB  Quick lookup guide
+talkies_windows/docs/WINDOWS_ENHANCEMENTS.md               809      24KB  Comprehensive guide
+talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md          651      20KB  Integration steps
 IMPLEMENTATION_SUMMARY.md             494      20KB  Project overview
 DEPLOYMENT_CHECKLIST.md               403      16KB  Verification list
-WINDOWS_DOCUMENTATION_INDEX.md        377      16KB  Navigation guide
+talkies_windows/docs/WINDOWS_DOCUMENTATION_INDEX.md        377      16KB  Navigation guide
 ────────────────────────────────────────────────────────────────────────
 TOTAL                                3,778     136KB
 
@@ -137,18 +137,18 @@ For 5-Minute Overview:
   1. Read: ENHANCEMENTS_COMPLETE.txt
 
 For 30-Minute Quick Start:
-  1. Read: WINDOWS_ENHANCEMENTS_README.md
-  2. Reference: WINDOWS_QUICK_REFERENCE.md (Section 1)
+  1. Read: talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md
+  2. Reference: talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md (Section 1)
 
 For Complete Integration:
-  1. Read: WINDOWS_INTEGRATION_GUIDE.md (Step-by-step)
-  2. Reference: WINDOWS_QUICK_REFERENCE.md (API examples)
+  1. Read: talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md (Step-by-step)
+  2. Reference: talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md (API examples)
   3. Review: ViewModels/MainViewModel.cs (Live example)
 
 For Detailed Understanding:
-  1. Read: WINDOWS_ENHANCEMENTS.md (All sections)
+  1. Read: talkies_windows/docs/WINDOWS_ENHANCEMENTS.md (All sections)
   2. Reference: Source code XML comments
-  3. Review: WINDOWS_QUICK_REFERENCE.md (Details)
+  3. Review: talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md (Details)
 
 For Project Approval:
   1. Review: IMPLEMENTATION_SUMMARY.md (Metrics)
@@ -291,25 +291,25 @@ START HERE:
     - What was delivered
 
 QUICK OVERVIEW (15 min):
-  ➜ WINDOWS_ENHANCEMENTS_README.md
+  ➜ talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md
     - Feature highlights
     - Quick start code
     - Learning paths
 
 QUICK REFERENCE (30 min):
-  ➜ WINDOWS_QUICK_REFERENCE.md
+  ➜ talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md
     - Code examples
     - API reference
     - Configuration options
 
 DEEP DIVE (Full reference):
-  ➜ WINDOWS_ENHANCEMENTS.md
+  ➜ talkies_windows/docs/WINDOWS_ENHANCEMENTS.md
     - Detailed implementation
     - Performance tuning
     - Migration guide
 
 INTEGRATION GUIDE (Step-by-step):
-  ➜ WINDOWS_INTEGRATION_GUIDE.md
+  ➜ talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md
     - 8 integration steps
     - Complete workflow example
     - Configuration guide
@@ -327,7 +327,7 @@ DEPLOYMENT & QA:
     - Sign-off procedures
 
 NAVIGATION:
-  ➜ WINDOWS_DOCUMENTATION_INDEX.md
+  ➜ talkies_windows/docs/WINDOWS_DOCUMENTATION_INDEX.md
     - Complete documentation index
     - Learning paths
     - Cross-references
@@ -366,14 +366,14 @@ Integration:
 
 1. REVIEW
    ➜ Read: ENHANCEMENTS_COMPLETE.txt (5 min)
-   ➜ Review: WINDOWS_ENHANCEMENTS_README.md (15 min)
+   ➜ Review: talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md (15 min)
 
 2. UNDERSTAND
-   ➜ Read: WINDOWS_QUICK_REFERENCE.md (30 min)
-   ➜ Or: WINDOWS_ENHANCEMENTS.md (comprehensive)
+   ➜ Read: talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md (30 min)
+   ➜ Or: talkies_windows/docs/WINDOWS_ENHANCEMENTS.md (comprehensive)
 
 3. INTEGRATE
-   ➜ Follow: WINDOWS_INTEGRATION_GUIDE.md
+   ➜ Follow: talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md
    ➜ Reference: Code examples provided
    ➜ Verify: Against MainViewModel example
 

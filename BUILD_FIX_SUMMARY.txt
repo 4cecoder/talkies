@@ -35,7 +35,7 @@ This is an outdated pattern for modern .NET development.
 SOLUTION IMPLEMENTED
 ═══════════════════════════════════════════════════════════════════════════
 
-File Modified: talkies_windows/Talkies.Windows/Plugins/OllamaEnhancer.cs
+File Modified: talkies_windows/talkies.windows/plugins/OllamaEnhancer.cs
 
 Changed Code (Line 113-115):
 

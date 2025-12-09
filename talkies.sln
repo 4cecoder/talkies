@@ -4,9 +4,9 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "talkies_windows", "talkies_windows", "{2E18FBC6-CD37-B4B1-FE21-67067F768A7C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows", "talkies_windows\Talkies.Windows\Talkies.Windows.csproj", "{04359646-32D4-2E29-55E2-E2231772F11E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows", "talkies_windows\talkies.windows\Talkies.Windows.csproj", "{04359646-32D4-2E29-55E2-E2231772F11E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows.Tests", "talkies_windows\Talkies.Windows.Tests\Talkies.Windows.Tests.csproj", "{94457807-9D2C-962C-A3DD-8E32AB7EC845}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Talkies.Windows.Tests", "talkies_windows\talkies.windows.tests\Talkies.Windows.Tests.csproj", "{94457807-9D2C-962C-A3DD-8E32AB7EC845}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

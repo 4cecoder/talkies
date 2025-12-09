@@ -9,7 +9,7 @@ This is your guide to all documentation created for the Windows Implementation E
 ## 🎯 Start Here
 
 ### For a Quick Overview (5 minutes)
-1. **[ENHANCEMENTS_COMPLETE.txt](./ENHANCEMENTS_COMPLETE.txt)** (12 KB)
+1. **[../ENHANCEMENTS_COMPLETE.txt](./../ENHANCEMENTS_COMPLETE.txt)** (12 KB)
    - Executive summary of all work completed
    - Status and quality metrics
    - Quick feature list
@@ -69,7 +69,7 @@ This is your guide to all documentation created for the Windows Implementation E
 - **Includes**: 651 lines with real code examples
 
 ### Implementation Summary (For Managers & Architects)
-**[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** (17 KB)
+**[../IMPLEMENTATION_SUMMARY.md](./../IMPLEMENTATION_SUMMARY.md)** (17 KB)
 - **Best for**: Project overview and status
 - **Topics**:
   - Executive summary
@@ -84,7 +84,7 @@ This is your guide to all documentation created for the Windows Implementation E
 - **Includes**: 494 lines covering project scope and completion
 
 ### Deployment Checklist (For Operations & QA)
-**[DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)** (13 KB)
+**[../DEPLOYMENT_CHECKLIST.md](./../DEPLOYMENT_CHECKLIST.md)** (13 KB)
 - **Best for**: Pre-deployment verification and sign-off
 - **Topics**:
   - Pre-deployment verification (code quality, testing, documentation)
@@ -106,7 +106,7 @@ This is your guide to all documentation created for the Windows Implementation E
 ## 🗺️ Navigation by Use Case
 
 ### I want to... **understand what was done**
-→ Read: `ENHANCEMENTS_COMPLETE.txt` (5 min)
+→ Read: `../ENHANCEMENTS_COMPLETE.txt` (5 min)
 → Then: `WINDOWS_ENHANCEMENTS_README.md` (15 min)
 
 ### I want to... **get started quickly**
@@ -122,8 +122,8 @@ This is your guide to all documentation created for the Windows Implementation E
 → Review source code comments
 
 ### I want to... **approve for production**
-→ Check: `IMPLEMENTATION_SUMMARY.md` (Overview)
-→ Verify: `DEPLOYMENT_CHECKLIST.md` (All items)
+→ Check: `../IMPLEMENTATION_SUMMARY.md` (Overview)
+→ Verify: `../DEPLOYMENT_CHECKLIST.md` (All items)
 
 ### I want to... **troubleshoot an issue**
 → Check: `WINDOWS_QUICK_REFERENCE.md` → Troubleshooting section
@@ -135,13 +135,13 @@ This is your guide to all documentation created for the Windows Implementation E
 
 | Document | Lines | Size | Purpose |
 |----------|-------|------|---------|
-| ENHANCEMENTS_COMPLETE.txt | 190 | 12 KB | Executive summary |
+| ../ENHANCEMENTS_COMPLETE.txt | 190 | 12 KB | Executive summary |
 | WINDOWS_ENHANCEMENTS_README.md | 435 | 13 KB | Main entry point |
 | WINDOWS_QUICK_REFERENCE.md | 419 | 12 KB | Quick lookup |
 | WINDOWS_ENHANCEMENTS.md | 809 | 23 KB | Comprehensive guide |
 | WINDOWS_INTEGRATION_GUIDE.md | 651 | 17 KB | Integration steps |
-| IMPLEMENTATION_SUMMARY.md | 494 | 17 KB | Project overview |
-| DEPLOYMENT_CHECKLIST.md | 403 | 13 KB | Deployment verification |
+| ../IMPLEMENTATION_SUMMARY.md | 494 | 17 KB | Project overview |
+| ../DEPLOYMENT_CHECKLIST.md | 403 | 13 KB | Deployment verification |
 | **TOTAL** | **3,401** | **107 KB** | **Complete library** |
 
 ---
@@ -221,7 +221,7 @@ Each enhancement is covered in:
 - **Developers**: Integration Guide → Enhancements Guide
 - **Architects**: Implementation Summary → Enhancements Guide
 - **QA/Operations**: Deployment Checklist → Integration Guide
-- **Managers**: Implementation Summary → ENHANCEMENTS_COMPLETE.txt
+- **Managers**: Implementation Summary → ../ENHANCEMENTS_COMPLETE.txt
 
 ---
 
@@ -251,9 +251,9 @@ Each enhancement is covered in:
 - Common issues: `WINDOWS_ENHANCEMENTS_README.md` → Troubleshooting
 
 ### Deployment
-- Pre-deployment: `DEPLOYMENT_CHECKLIST.md` → Pre-Deployment Verification
-- Deployment steps: `DEPLOYMENT_CHECKLIST.md` → Deployment Steps
-- Sign-off: `DEPLOYMENT_CHECKLIST.md` → Sign-Off section
+- Pre-deployment: `../DEPLOYMENT_CHECKLIST.md` → Pre-Deployment Verification
+- Deployment steps: `../DEPLOYMENT_CHECKLIST.md` → Deployment Steps
+- Sign-off: `../DEPLOYMENT_CHECKLIST.md` → Sign-Off section
 
 ---
 
@@ -276,7 +276,7 @@ All source files include XML documentation comments for quick API understanding.
 ## 🎓 Suggested Reading Order
 
 ### For First-Time Users
-1. `ENHANCEMENTS_COMPLETE.txt` (5 min) - Understand what was done
+1. `../ENHANCEMENTS_COMPLETE.txt` (5 min) - Understand what was done
 2. `WINDOWS_ENHANCEMENTS_README.md` (15 min) - Get overview
 3. `WINDOWS_QUICK_REFERENCE.md` (30 min) - Learn the features
 4. `WINDOWS_INTEGRATION_GUIDE.md` (60 min) - Integrate into your code
@@ -287,12 +287,12 @@ All source files include XML documentation comments for quick API understanding.
 3. Source code comments - For details on specific APIs
 
 ### For Project Managers
-1. `ENHANCEMENTS_COMPLETE.txt` (5 min) - Status overview
-2. `IMPLEMENTATION_SUMMARY.md` (20 min) - Detailed metrics
-3. `DEPLOYMENT_CHECKLIST.md` (15 min) - Sign-off procedures
+1. `../ENHANCEMENTS_COMPLETE.txt` (5 min) - Status overview
+2. `../IMPLEMENTATION_SUMMARY.md` (20 min) - Detailed metrics
+3. `../DEPLOYMENT_CHECKLIST.md` (15 min) - Sign-off procedures
 
 ### For QA/Operations
-1. `DEPLOYMENT_CHECKLIST.md` (30 min) - Verification items
+1. `../DEPLOYMENT_CHECKLIST.md` (30 min) - Verification items
 2. `WINDOWS_INTEGRATION_GUIDE.md` → Troubleshooting (20 min)
 3. `WINDOWS_QUICK_REFERENCE.md` → Troubleshooting (15 min)
 
@@ -301,14 +301,14 @@ All source files include XML documentation comments for quick API understanding.
 ## 🔄 Document Relationships
 
 ```
-ENHANCEMENTS_COMPLETE.txt (Start here)
+../ENHANCEMENTS_COMPLETE.txt (Start here)
     ↓
 WINDOWS_ENHANCEMENTS_README.md (Main overview)
     ├→ WINDOWS_QUICK_REFERENCE.md (Lookup guide)
     ├→ WINDOWS_INTEGRATION_GUIDE.md (How-to guide)
     ├→ WINDOWS_ENHANCEMENTS.md (Detailed reference)
-    ├→ IMPLEMENTATION_SUMMARY.md (Project summary)
-    └→ DEPLOYMENT_CHECKLIST.md (Verification list)
+    ├→ ../IMPLEMENTATION_SUMMARY.md (Project summary)
+    └→ ../DEPLOYMENT_CHECKLIST.md (Verification list)
 ```
 
 ---
@@ -351,7 +351,7 @@ WINDOWS_ENHANCEMENTS_README.md (Main overview)
 → Check: `WINDOWS_QUICK_REFERENCE.md` or `WINDOWS_INTEGRATION_GUIDE.md`
 
 ### For Deployment
-→ Use: `DEPLOYMENT_CHECKLIST.md` for verification
+→ Use: `../DEPLOYMENT_CHECKLIST.md` for verification
 
 ---
 
@@ -368,7 +368,7 @@ You now have access to a comprehensive documentation library covering:
 - ✅ Troubleshooting and support information
 - ✅ Deployment and QA checklists
 
-**Start with [ENHANCEMENTS_COMPLETE.txt](./ENHANCEMENTS_COMPLETE.txt) for a quick overview, then navigate based on your needs using this index.**
+**Start with [../ENHANCEMENTS_COMPLETE.txt](./../ENHANCEMENTS_COMPLETE.txt) for a quick overview, then navigate based on your needs using this index.**
 
 ---
 

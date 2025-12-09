@@ -16,24 +16,22 @@ This guide helps developers integrate the enhanced Windows Talkies implementatio
 
 ```
 talkies_windows/
-├── Talkies.Windows/
-│   ├── Services/
-│   │   ├── AudioRecorder.cs
-│   │   ├── TranscriptionService.cs
-│   │   ├── WhisperNetTranscriptionService.cs
-│   │   ├── Logger.cs
-│   │   ├── TextInjector.cs
-│   │   └── ... other services
-│   ├── Plugins/
-│   │   ├── OllamaEnhancer.cs
-│   │   └── ... other plugins
-│   ├── Models/
-│   │   └── TranscriptSegment.cs
-│   └── ViewModels/
-│       └── MainViewModel.cs
-└── models/
-    └── (GGML models downloaded here)
+??? talkies.windows/
+?   ??? services/
+?   ?   ??? AudioRecorder.cs
+?   ?   ??? TranscriptionService.cs
+?   ?   ??? WhisperNetTranscriptionService.cs
+?   ?   ??? Logger.cs
+?   ?   ??? TextInjector.cs
+?   ??? plugins/
+?   ?   ??? OllamaEnhancer.cs
+?   ??? models/
+?   ?   ??? TranscriptSegment.cs
+?   ??? viewmodels/
+?       ??? MainViewModel.cs
+??? models/                                # GGML models downloaded here
 ```
+
 
 ## Step-by-Step Integration
 
@@ -629,7 +627,7 @@ All are optional with sensible defaults:
 1. Review the **WINDOWS_ENHANCEMENTS.md** for detailed documentation
 2. Check **WINDOWS_QUICK_REFERENCE.md** for quick lookups
 3. Examine example implementations in `ViewModels/MainViewModel.cs`
-4. Run tests in `Talkies.Windows.Tests/` project
+4. Run tests in `talkies_windows/talkies.windows.tests/` project
 5. Deploy to production with monitoring
 
 ## Support

@@ -17,7 +17,7 @@ namespace Talkies.Windows.Services
                 return envPython!;
             }
 
-            // Check .venv relative to repo root (bin is typically 3 levels under talkies_windows/Talkies.Windows/bin/Debug/...)
+            // Check .venv relative to repo root (bin is typically 3 levels under talkies_windows/talkies.windows/bin/Debug/...)
             var probe = new[]
             {
                 Path.Combine(baseDir, @"..\..\", @".venv", "Scripts", "python.exe"),

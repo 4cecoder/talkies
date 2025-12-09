@@ -21,7 +21,7 @@ Modified `WaveformVisualizer.xaml.cs`:
 - Ensured `SizeChanged` event properly triggers redraws when the window resizes
 
 **Files Modified:**
-- `talkies/talkies_windows/Talkies.Windows/Controls/WaveformVisualizer.xaml.cs`
+- `talkies/talkies_windows/talkies.windows/controls/WaveformVisualizer.xaml.cs`
 
 **Key Changes:**
 ```csharp
@@ -59,7 +59,7 @@ Modified `MainWindow.xaml` transcript section:
 - Removed border from individual items to reduce visual clutter
 
 **Files Modified:**
-- `talkies/talkies_windows/Talkies.Windows/MainWindow.xaml`
+- `talkies/talkies_windows/talkies.windows/MainWindow.xaml`
 
 **Key Changes:**
 ```xaml

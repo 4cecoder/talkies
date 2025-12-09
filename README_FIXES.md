@@ -52,7 +52,7 @@ Two critical display problems have been successfully resolved:
 
 ### Quick Test (5 minutes)
 ```bash
-cd talkies/talkies_windows/Talkies.Windows
+cd talkies/talkies_windows/talkies.windows
 dotnet build
 dotnet run
 ```

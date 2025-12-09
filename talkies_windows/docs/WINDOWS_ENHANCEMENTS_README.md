@@ -136,25 +136,21 @@ if (TextInjector.CanInjectText())
 
 ```
 talkies_windows/
-├── Talkies.Windows/
-│   ├── Services/
-│   │   ├── AudioRecorder.cs              # ✅ Audio input with RMS level
-│   │   ├── TranscriptionService.cs       # ✅ NEW: DecodingOptions class
-│   │   ├── WhisperNetTranscriptionService.cs  # ✅ ENHANCED: Model download + exports
-│   │   ├── Logger.cs                    # ✅ ENHANCED: Better logging
-│   │   └── TextInjector.cs              # ✅ ENHANCED: Permission checking
-│   ├── Plugins/
-│   │   ├── OllamaEnhancer.cs            # ✅ ENHANCED: 5 enhancement modes
-│   │   └── ITextEnhancer.cs
-│   ├── Models/
-│   │   └── TranscriptSegment.cs
-│   └── ViewModels/
-│       └── MainViewModel.cs              # ✅ ENHANCED: Full integration
-└── models/                                # Model directory (auto-managed)
-    ├── ggml-tiny.bin                     # Downloaded on demand
-    ├── ggml-base.bin
-    └── ...
+??? talkies.windows/
+?   ??? services/
+?   ?   ??? AudioRecorder.cs              # Audio input with RMS level
+?   ?   ??? TranscriptionService.cs       # NEW: DecodingOptions class
+?   ?   ??? WhisperNetTranscriptionService.cs  # ENHANCED: Model download + exports
+?   ?   ??? Logger.cs                     # ENHANCED: Better logging
+?   ?   ??? TextInjector.cs               # ENHANCED: Permission checking
+?   ??? plugins/
+?   ?   ??? OllamaEnhancer.cs             # ENHANCED: 5 enhancement modes
+?   ?   ??? ITextEnhancer.cs
+?   ??? models/
+?       ??? TranscriptSegment.cs
+??? talkies.windows.tests/                # test suite
 ```
+
 
 ## 🎓 Learning Path
 
@@ -356,7 +352,7 @@ Logger.OperationComplete("Task");
 
 ## 🔗 Related Documentation
 
-- **Swift Implementation**: `Talkies/Sources/Talkies/`
+- **Swift Implementation**: `talkies_macos/sources/talkies/`
 - **Python CLI**: `src/whisper_cli/`
 - **Project README**: `README.md`
 - **Windows Roadmap**: `windows_roadmap.md`
@@ -404,7 +400,7 @@ Logger.OperationComplete("Task");
 ### Examples
 - See `ViewModels/MainViewModel.cs` for full workflow
 - See documentation files for code examples
-- See `Talkies.Windows.Tests/` for test patterns
+- See `talkies_windows/talkies.windows.tests/` for test patterns
 
 ## 📄 License
 

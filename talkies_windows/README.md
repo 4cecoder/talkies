@@ -131,29 +131,30 @@ Export your transcripts in multiple formats:
 ## 📁 Project Structure
 
 ```
-talkies_windows/Talkies.Windows/
-├── App.xaml / App.xaml.cs              # Application shell
-├── MainWindow.xaml / .xaml.cs          # Main UI
-├── Converters/
-│   └── BooleanInverterConverter.cs     # Value converter
-├── Services/
-│   ├── AudioRecorder.cs                # NAudio recording wrapper
-│   ├── WhisperNetTranscriptionService.cs # Transcription engine
-│   ├── TranscriptExporter.cs           # Export to SRT/TXT/VTT
-│   ├── DialogHelper.cs                 # User dialogs
-│   ├── SettingsService.cs              # JSON persistence
-│   └── [more services]
-├── Plugins/
-│   ├── ILlmProvider.cs                 # Provider interface
-│   ├── OllamaEnhancer.cs               # Ollama implementation
-│   ├── LmStudioProvider.cs             # LM Studio implementation
-│   └── [more plugins]
-├── Models/
-│   ├── TranscriptSegment.cs            # Transcript entry
-│   └── AppSettings.cs                  # User preferences
-└── ViewModels/
-    └── MainViewModel.cs                # Application logic
+talkies_windows/talkies.windows/
+??? App.xaml / App.xaml.cs              # Application shell
+??? MainWindow.xaml / MainWindow.xaml.cs# Main UI
+??? converters/
+?   ??? BooleanInverterConverter.cs     # Value converter
+??? services/
+?   ??? AudioRecorder.cs                # NAudio recording wrapper
+?   ??? WhisperNetTranscriptionService.cs # Transcription engine
+?   ??? TranscriptExporter.cs           # Export to SRT/TXT/VTT
+?   ??? DialogHelper.cs                 # User dialogs
+?   ??? SettingsService.cs              # JSON persistence
+?   ??? [more services]
+??? plugins/
+?   ??? ILlmProvider.cs                 # Provider interface
+?   ??? OllamaEnhancer.cs               # Ollama implementation
+?   ??? LmStudioProvider.cs             # LM Studio implementation
+?   ??? [more plugins]
+??? models/
+?   ??? TranscriptSegment.cs            # Transcript entry
+?   ??? AppSettings.cs                  # User preferences
+??? viewmodels/
+    ??? MainViewModel.cs                # Application logic
 ```
+
 
 ## 🔧 Technology Stack
 
@@ -238,7 +239,7 @@ dotnet --version
 
 ### Build
 ```bash
-cd talkies_windows/Talkies.Windows
+cd talkies_windows/talkies.windows
 uv run dotnet build
 ```
 

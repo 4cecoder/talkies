@@ -22,9 +22,9 @@
 - [ ] Model download tested (at least one model)
 
 ### Documentation
-- [ ] WINDOWS_ENHANCEMENTS.md reviewed
-- [ ] WINDOWS_QUICK_REFERENCE.md reviewed
-- [ ] WINDOWS_INTEGRATION_GUIDE.md reviewed
+- [ ] talkies_windows/docs/WINDOWS_ENHANCEMENTS.md reviewed
+- [ ] talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md reviewed
+- [ ] talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md reviewed
 - [ ] IMPLEMENTATION_SUMMARY.md reviewed
 - [ ] Code comments are accurate and complete
 - [ ] API documentation is up-to-date

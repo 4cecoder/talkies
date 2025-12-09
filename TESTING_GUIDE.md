@@ -15,7 +15,7 @@ This guide provides detailed test cases for verifying that the waveform visualiz
 
 ### Starting the Application
 ```bash
-cd talkies/talkies_windows/Talkies.Windows
+cd talkies/talkies_windows/talkies.windows
 dotnet run
 ```
 

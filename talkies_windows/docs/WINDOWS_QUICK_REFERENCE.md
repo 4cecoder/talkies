@@ -414,6 +414,6 @@ All enhancements are backward compatible:
 ## Resources
 
 - **Project README**: `talkies/README.md`
-- **Full Documentation**: `talkies/WINDOWS_ENHANCEMENTS.md`
-- **Windows Roadmap**: `talkies/windows_roadmap.md`
+- **Full Documentation**: `talkies_windows/docs/WINDOWS_ENHANCEMENTS.md`
+- **Windows Roadmap**: `./windows_roadmap.md`
 - **GUI Guide**: `talkies/GUI.md`

@@ -90,19 +90,19 @@ TOTAL                                             +685 lines
 📚 DOCUMENTATION CREATED
 ═══════════════════════════════════════════════════════════════════════════
 
-1. WINDOWS_ENHANCEMENTS_README.md              435 lines
+1. talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md              435 lines
    → Main README for enhancements
    → Features, quick start, troubleshooting
 
-2. WINDOWS_QUICK_REFERENCE.md                  419 lines
+2. talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md                  419 lines
    → Quick lookup guide with code examples
    → API reference, configuration
 
-3. WINDOWS_ENHANCEMENTS.md                     809 lines
+3. talkies_windows/docs/WINDOWS_ENHANCEMENTS.md                     809 lines
    → Comprehensive detailed guide
    → Implementation details, migration guide
 
-4. WINDOWS_INTEGRATION_GUIDE.md                651 lines
+4. talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md                651 lines
    → Step-by-step integration instructions
    → Complete workflow examples
 
@@ -205,15 +205,15 @@ Dependencies:
 ═══════════════════════════════════════════════════════════════════════════
 
 For Quick Overview:
-  → WINDOWS_ENHANCEMENTS_README.md
-  → WINDOWS_QUICK_REFERENCE.md
+  → talkies_windows/docs/WINDOWS_ENHANCEMENTS_README.md
+  → talkies_windows/docs/WINDOWS_QUICK_REFERENCE.md
 
 For Integration:
-  → WINDOWS_INTEGRATION_GUIDE.md
+  → talkies_windows/docs/WINDOWS_INTEGRATION_GUIDE.md
   → ViewModels/MainViewModel.cs (example usage)
 
 For Details:
-  → WINDOWS_ENHANCEMENTS.md
+  → talkies_windows/docs/WINDOWS_ENHANCEMENTS.md
   → Code comments (XML docs on all public APIs)
 
 For Management:
