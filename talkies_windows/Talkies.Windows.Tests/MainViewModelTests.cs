@@ -74,8 +74,11 @@ namespace Talkies.Windows.Tests
 
     internal class FakeTranscriber : ITranscriptionService
     {
-        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled)
+        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled, DecodingOptions? decodingOptions = null, IProgress<TranscriptionProgress>? progress = null)
         {
+            progress?.Report(new TranscriptionProgress(TranscriptionStage.DownloadModel, 100, "Download complete", false));
+            progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 50, "Halfway", false));
+
             var segs = new List<TranscriptSegment>
             {
                 new TranscriptSegment { Timestamp = "00:00:01.000", Text = "hello world from tests", Start = 0, End = 1 }
@@ -86,6 +89,16 @@ namespace Talkies.Windows.Tests
                 Text = "hello world from tests",
                 Vtt = "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello world from tests\n"
             });
+        }
+
+        public string ExportVtt(IEnumerable<TranscriptSegment> segments) => string.Empty;
+
+        public string ExportSrt(IEnumerable<TranscriptSegment> segments) => string.Empty;
+
+        public string ExportTxt(IEnumerable<TranscriptSegment> segments) => string.Empty;
+
+        public void Dispose()
+        {
         }
     }
 

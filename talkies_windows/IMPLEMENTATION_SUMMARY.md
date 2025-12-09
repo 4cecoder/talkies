@@ -100,7 +100,7 @@ New properties added to `Models/AppSettings.cs`:
 #### Load/Save Integration
 - `LoadSettings()`: Restores all LLM configuration on app startup
 - `SaveSettings()`: Persists settings on app closure
-- Settings stored in `%APPDATA%/Talkies/talkies_settings.json`
+- Settings stored in `%USERPROFILE%/.talkies/config.json`
 - Graceful fallback to defaults if settings missing
 
 ### 5. Error Handling & User Feedback

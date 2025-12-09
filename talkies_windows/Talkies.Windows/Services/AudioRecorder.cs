@@ -45,9 +45,11 @@ namespace Talkies.Windows.Services
             _currentFile = Path.Combine(_tempDir, $"rec_{DateTime.UtcNow:yyyyMMdd_HHmmss}.wav");
 
             MMDevice? device = null;
+            var useLoopback = string.Equals(deviceId, "__loopback", StringComparison.OrdinalIgnoreCase);
+
             try
             {
-                if (!string.IsNullOrWhiteSpace(deviceId))
+                if (!string.IsNullOrWhiteSpace(deviceId) && !useLoopback)
                 {
                     var enumerator = new MMDeviceEnumerator();
                     device = enumerator.GetDevice(deviceId);
@@ -58,13 +60,18 @@ namespace Talkies.Windows.Services
                 device = null;
             }
 
-            _capture = device == null ? new WasapiCapture() : new WasapiCapture(device);
+            _capture = useLoopback
+                ? new WasapiLoopbackCapture()
+                : device == null
+                    ? new WasapiCapture()
+                    : new WasapiCapture(device);
+
             _capture.ShareMode = AudioClientShareMode.Shared;
             _capture.DataAvailable += OnData;
             _capture.RecordingStopped += OnStopped;
 
             _writer = new WaveFileWriter(_currentFile, _capture.WaveFormat);
-            Logger.Info($"Audio format: {_capture.WaveFormat.SampleRate}Hz, {_capture.WaveFormat.Channels}ch, {_capture.WaveFormat.BitsPerSample}bit");
+            Logger.Info($"Audio source: {(useLoopback ? "Loopback" : "Microphone")} | Format: {_capture.WaveFormat.SampleRate}Hz, {_capture.WaveFormat.Channels}ch, {_capture.WaveFormat.BitsPerSample}bit");
 
             _capture.StartRecording();
             Logger.Info($"Recording started -> {_currentFile}");
@@ -81,7 +88,7 @@ namespace Talkies.Windows.Services
 
             // Level calc (RMS)
             float max = 0;
-            for (int index = 0; index < e.BytesRecorded; index += 2)
+            for (int index = 0; index < e.BytesRecorded - 1; index += 2)
             {
                 short sample = (short)((e.Buffer[index + 1] << 8) | e.Buffer[index]);
                 var sample32 = sample / 32768f;

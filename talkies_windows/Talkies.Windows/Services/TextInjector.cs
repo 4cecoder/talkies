@@ -72,6 +72,27 @@ namespace Talkies.Windows.Services
         }
 
         /// <summary>
+        /// Sends Ctrl+V to paste clipboard contents into the active window.
+        /// </summary>
+        public static bool PasteClipboard()
+        {
+            try
+            {
+                // Use keybd_event for reliability with modifiers
+                keybd_event(Keys.ControlKey, 0, 0, UIntPtr.Zero);
+                keybd_event(Keys.V, 0, 0, UIntPtr.Zero);
+                keybd_event(Keys.V, 0, KEYEVENTF.KEYUP, UIntPtr.Zero);
+                keybd_event(Keys.ControlKey, 0, KEYEVENTF.KEYUP, UIntPtr.Zero);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"TextInjector: Exception sending Ctrl+V: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Checks if text injection is likely to work by testing accessibility.
         /// Note: Full permission checks are OS-level and may require admin privileges on some systems.
         /// </summary>
@@ -208,6 +229,16 @@ namespace Talkies.Windows.Services
         {
             public const uint KEYUP = 0x0002;
             public const uint UNICODE = 0x0004;
+            public const uint SCANCODE = 0x0008;
         }
+
+        private static class Keys
+        {
+            public const byte ControlKey = 0x11;
+            public const byte V = 0x56;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
     }
 }

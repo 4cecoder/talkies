@@ -10,6 +10,8 @@ namespace Talkies.Windows.Services
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
+        private const int WM_SYSKEYDOWN = 0x0104;
+        private const int WM_SYSKEYUP = 0x0105;
         private const int VK_RMENU = 0xA5; // Right Alt
 
         private IntPtr _hookId = IntPtr.Zero;
@@ -28,6 +30,7 @@ namespace Talkies.Windows.Services
             if (_hookId != IntPtr.Zero) return;
             _proc = HookCallback;
             _hookId = SetHook(_proc);
+            Logger.Info("HotkeyManager: hook registered for Right Alt (RMENU)");
         }
 
         public void Dispose()
@@ -55,8 +58,9 @@ namespace Talkies.Windows.Services
                 int vkCode = Marshal.ReadInt32(lParam);
                 if (vkCode == VK_RMENU)
                 {
-                    if (wParam == (IntPtr)WM_KEYDOWN)
+                    if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
                     {
+                        Logger.Info("HotkeyManager: Right Alt DOWN");
                         if (!_isPressed)
                         {
                             _isPressed = true;
@@ -72,6 +76,7 @@ namespace Talkies.Windows.Services
                                     if (!token.IsCancellationRequested && _isPressed)
                                     {
                                         _holdFired = true;
+                                        Logger.Info("HotkeyManager: HoldStart fired");
                                         HoldStart?.Invoke();
                                     }
                                 }
@@ -79,19 +84,25 @@ namespace Talkies.Windows.Services
                             }, token);
                         }
                     }
-                    else if (wParam == (IntPtr)WM_KEYUP)
+                    else if (wParam == (IntPtr)WM_KEYUP || wParam == (IntPtr)WM_SYSKEYUP)
                     {
                         _cts?.Cancel();
                         if (_isPressed)
                         {
                             if (_holdFired)
                             {
+                                Logger.Info("HotkeyManager: HoldEnd fired");
                                 HoldEnd?.Invoke();
                             }
                             else
                             {
+                                Logger.Info("HotkeyManager: Tap fired");
                                 Tap?.Invoke();
                             }
+                        }
+                        else
+                        {
+                            Logger.Info("HotkeyManager: Right Alt UP with no pressed flag");
                         }
                         _isPressed = false;
                         _holdFired = false;

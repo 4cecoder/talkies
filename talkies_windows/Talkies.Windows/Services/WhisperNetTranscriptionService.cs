@@ -35,10 +35,23 @@ namespace Talkies.Windows.Services
             string language,
             bool vadEnabled,
             bool filterEnabled,
-            DecodingOptions? decodingOptions = null)
+            DecodingOptions? decodingOptions = null,
+            IProgress<TranscriptionProgress>? progress = null)
         {
+            var useCuda = CudaDetector.IsNvidiaCudaAvailable(out var cudaReason);
+            if (useCuda)
+            {
+                Environment.SetEnvironmentVariable("GGML_USE_CUBLAS", "1");
+                Environment.SetEnvironmentVariable("GGML_CUDA", "1");
+                Logger.Info($"CUDA detected: enabling GGML CUDA offload for whisper.net ({cudaReason})");
+            }
+            else if (!string.IsNullOrEmpty(cudaReason))
+            {
+                Logger.Warn($"CUDA not available: {cudaReason}");
+            }
+
             // Resolve model path with dynamic download
-            var modelPath = await ResolveModelPathAsync(model);
+            var modelPath = await ResolveModelPathAsync(model, progress);
             if (!File.Exists(modelPath))
             {
                 throw new FileNotFoundException(
@@ -52,6 +65,7 @@ namespace Talkies.Windows.Services
 
             var segments = new List<TranscriptSegment>();
             string text = "";
+            progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 0, "Transcribing...", IsIndeterminate: false));
 
             try
             {
@@ -84,6 +98,17 @@ namespace Talkies.Windows.Services
                 Logger.Info($"Audio stream opened, position: {audio.Position}, length: {audio.Length}");
 
                 int segmentCount = 0;
+                double totalDurationSeconds = 0;
+                try
+                {
+                    using var probe = new WaveFileReader(compatibleWav);
+                    totalDurationSeconds = probe.TotalTime.TotalSeconds;
+                }
+                catch
+                {
+                    totalDurationSeconds = 0;
+                }
+
                 await foreach (var result in processor.ProcessAsync(audio))
                 {
                     segmentCount++;
@@ -98,6 +123,24 @@ namespace Talkies.Windows.Services
                     };
                     segments.Add(seg);
                     text += result.Text;
+
+                    // Report transcription progress if we know the audio duration
+                    double progressPercent;
+                    var isIndeterminate = totalDurationSeconds <= 0;
+                    if (isIndeterminate)
+                    {
+                        progressPercent = 0;
+                    }
+                    else
+                    {
+                        progressPercent = Math.Max(0, Math.Min(100, (result.End.TotalSeconds / totalDurationSeconds) * 100.0));
+                    }
+
+                    progress?.Report(new TranscriptionProgress(
+                        TranscriptionStage.Transcribing,
+                        progressPercent,
+                        $"Transcribing... {progressPercent:F0}%",
+                        IsIndeterminate: isIndeterminate));
                 }
 
                 Logger.Info($"Whisper.net processing complete: {segmentCount} segments yielded");
@@ -132,7 +175,7 @@ namespace Talkies.Windows.Services
         /// <summary>
         /// Resolves the model path with dynamic download if needed.
         /// </summary>
-        private static async Task<string> ResolveModelPathAsync(string model)
+        private static async Task<string> ResolveModelPathAsync(string model, IProgress<TranscriptionProgress>? progress = null)
         {
             // Allow env override
             var env = Environment.GetEnvironmentVariable("TALKIES_MODEL_PATH");
@@ -152,16 +195,17 @@ namespace Talkies.Windows.Services
                 _ => "ggml-tiny.bin"
             };
 
-            // Look under talkies_windows/models relative to the app base
-            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var modelsDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "models"));
+            // Place models under user profile .talkies/models
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var modelsDir = Path.Combine(home, ".talkies", "models");
             var modelPath = Path.Combine(modelsDir, name);
 
             // If model doesn't exist, try to download it
             if (!File.Exists(modelPath))
             {
                 Logger.Info($"Model not found at {modelPath}, attempting to download...");
-                await DownloadModelAsync(model, modelPath);
+                progress?.Report(new TranscriptionProgress(TranscriptionStage.DownloadModel, 0, $"Downloading {name}...", IsIndeterminate: true));
+                await DownloadModelAsync(model, modelPath, progress);
             }
 
             return modelPath;
@@ -170,7 +214,7 @@ namespace Talkies.Windows.Services
         /// <summary>
         /// Downloads a model from HuggingFace if not already present.
         /// </summary>
-        private static async Task DownloadModelAsync(string modelName, string targetPath)
+        private static async Task DownloadModelAsync(string modelName, string targetPath, IProgress<TranscriptionProgress>? progress = null)
         {
             if (!ModelUrls.TryGetValue(modelName, out var url))
             {
@@ -202,6 +246,15 @@ namespace Talkies.Windows.Services
                 var buffer = new byte[8192];
                 int read;
 
+                if (!canReportProgress)
+                {
+                    progress?.Report(new TranscriptionProgress(
+                        TranscriptionStage.DownloadModel,
+                        0,
+                        "Downloading model (size unknown)...",
+                        IsIndeterminate: true));
+                }
+
                 while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
                 {
                     await fileStream.WriteAsync(buffer, 0, read);
@@ -211,10 +264,20 @@ namespace Talkies.Windows.Services
                     {
                         var progressPercent = (totalRead * 100d) / totalBytes;
                         Logger.Info($"Download progress: {progressPercent:F1}%");
+                        progress?.Report(new TranscriptionProgress(
+                            TranscriptionStage.DownloadModel,
+                            progressPercent,
+                            $"Downloading model... {progressPercent:F0}%",
+                            IsIndeterminate: false));
                     }
                 }
 
                 Logger.Info($"Model {modelName} downloaded successfully to {targetPath}");
+                progress?.Report(new TranscriptionProgress(
+                    TranscriptionStage.DownloadModel,
+                    100,
+                    "Model download complete",
+                    IsIndeterminate: false));
             }
             catch (Exception ex)
             {

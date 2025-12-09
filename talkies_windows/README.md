@@ -39,7 +39,7 @@ Export your transcripts in multiple formats:
 - **Persistent Configuration**: All settings automatically saved
 - **Provider Memory**: Last used provider and endpoint remembered
 - **Model Selection**: Previously selected model restored on startup
-- **Location**: `%APPDATA%\Talkies\talkies_settings.json`
+- **Location**: `%USERPROFILE%\.talkies\config.json` (settings) and `%USERPROFILE%\.talkies\models\` (models)
 
 ### 🎨 Professional UI
 - **Dark Theme**: Modern dark interface reducing eye strain

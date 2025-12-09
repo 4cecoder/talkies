@@ -315,7 +315,7 @@ public async Task TranscribeAndProcessAudio(string audioFile)
 
 ## Configuration Checklist
 
-- [ ] Models directory exists: `talkies_windows/models/`
+- [ ] Models directory exists: `%USERPROFILE%\.talkies\models\`
 - [ ] Ollama running (if using enhancement): `http://localhost:11434`
 - [ ] Model downloaded for Ollama (e.g., `ollama pull llama2`)
 - [ ] Accessibility permissions granted for text injection

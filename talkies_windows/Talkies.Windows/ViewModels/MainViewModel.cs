@@ -23,6 +23,7 @@ namespace Talkies.Windows.ViewModels
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
         private AppSettings _settings = new();
+        private bool _usingGpu;
 
         private DateTime? _startTime;
         private string _lastVtt = string.Empty;
@@ -97,6 +98,7 @@ namespace Talkies.Windows.ViewModels
         private string _selectedEnhancementMode = nameof(EnhancementMode.Grammar);
 
         private ILlmProvider? _currentLlmProvider;
+        private bool _loadingSettings;
 
         public int SegmentCount => Segments.Count;
         public int WordCount => Segments.SelectMany(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Count();
@@ -104,6 +106,30 @@ namespace Talkies.Windows.ViewModels
 
         public bool IsRecording { get => _isRecording; private set { _isRecording = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsIdle)); OnPropertyChanged(nameof(CanSave)); } }
         private bool _isRecording;
+        public bool IsDownloadingModel { get => _isDownloadingModel; set { _isDownloadingModel = value; OnPropertyChanged(); } }
+        private bool _isDownloadingModel;
+        public bool IsModelDownloadIndeterminate { get => _isModelDownloadIndeterminate; set { _isModelDownloadIndeterminate = value; OnPropertyChanged(); } }
+        private bool _isModelDownloadIndeterminate;
+        public double ModelDownloadProgress { get => _modelDownloadProgress; set { _modelDownloadProgress = value; OnPropertyChanged(); } }
+        private double _modelDownloadProgress;
+
+        public bool IsTranscribing { get => _isTranscribing; set { _isTranscribing = value; OnPropertyChanged(); } }
+        private bool _isTranscribing;
+        public bool IsTranscriptionIndeterminate { get => _isTranscriptionIndeterminate; set { _isTranscriptionIndeterminate = value; OnPropertyChanged(); } }
+        private bool _isTranscriptionIndeterminate;
+        public double TranscriptionProgress { get => _transcriptionProgress; set { _transcriptionProgress = value; OnPropertyChanged(); } }
+        private double _transcriptionProgress;
+
+        public bool ShowOverlay { get => _showOverlay; set { _showOverlay = value; OnPropertyChanged(); } }
+        private bool _showOverlay;
+        public string OverlayTitle { get => _overlayTitle; set { _overlayTitle = value; OnPropertyChanged(); } }
+        private string _overlayTitle = string.Empty;
+        public string OverlayMessage { get => _overlayMessage; set { _overlayMessage = value; OnPropertyChanged(); } }
+        private string _overlayMessage = string.Empty;
+        public bool OverlayIsIndeterminate { get => _overlayIsIndeterminate; set { _overlayIsIndeterminate = value; OnPropertyChanged(); } }
+        private bool _overlayIsIndeterminate;
+        public double OverlayProgress { get => _overlayProgress; set { _overlayProgress = value; OnPropertyChanged(); } }
+        private double _overlayProgress;
         public bool IsIdle => !IsRecording;
         public bool CanSave => !string.IsNullOrEmpty(_lastVtt) && !IsRecording;
 
@@ -117,6 +143,11 @@ namespace Talkies.Windows.ViewModels
         public ICommand SavePromptCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
+        public event Action<float>? OnAudioLevelChanged;
+        public event Action<string>? OnOverlayShow;
+        public event Action<string>? OnOverlayUpdate;
+        public event Action? OnOverlayHide;
+        private bool _autoPastePending;
 
         public MainViewModel()
             : this(new AudioRecorder(), new WhisperNetTranscriptionService(), new AudioDeviceService())
@@ -155,9 +186,8 @@ namespace Talkies.Windows.ViewModels
             LoadDevices();
             InitializeLlmProvider();
             RefreshEnhancementModes();
+            DetectBackend();
         }
-
-        public event Action<float>? OnAudioLevelChanged;
 
         public void StartHotkey() => _hotkey.Start();
 
@@ -170,12 +200,15 @@ namespace Talkies.Windows.ViewModels
         private void OnHotkeyHoldStart()
         {
             HotkeyStatus = "Hold (push-to-talk)";
+            _autoPastePending = true;
+            OnOverlayShow?.Invoke("Listening...");
             if (!IsRecording) StartRecording();
         }
 
         private void OnHotkeyHoldEnd()
         {
-            HotkeyStatus = "Hold released";
+            HotkeyStatus = "Processing...";
+            OnOverlayUpdate?.Invoke("Processing...");
             if (IsRecording) StopRecording();
         }
 
@@ -320,6 +353,58 @@ namespace Talkies.Windows.ViewModels
         private async void OnRecordingCompleted(object? sender, RecordingCompletedEventArgs e)
         {
             HotkeyStatus = "Transcribing...";
+            IsTranscribing = true;
+            TranscriptionProgress = 0;
+            IsTranscriptionIndeterminate = true;
+            _usingGpu = CudaDetector.IsNvidiaCudaAvailable(out var gpuReason);
+            Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
+            if (!_usingGpu && !string.IsNullOrEmpty(gpuReason))
+            {
+                Logger.Warn($"GPU not used: {gpuReason}");
+            }
+            else if (_usingGpu)
+            {
+                Logger.Info($"GPU mode enabled: {gpuReason}");
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            var progress = new Progress<TranscriptionProgress>(update =>
+                {
+                    dispatcher.Invoke(() =>
+                    {
+                        switch (update.Stage)
+                        {
+                            case TranscriptionStage.DownloadModel:
+                                IsDownloadingModel = true;
+                                IsModelDownloadIndeterminate = update.IsIndeterminate;
+                                if (!update.IsIndeterminate)
+                                {
+                                    ModelDownloadProgress = update.Percent;
+                                }
+                                HotkeyStatus = update.Message ?? "Downloading model...";
+                                ShowOverlay = true;
+                                OverlayTitle = "Installing model";
+                                OverlayMessage = update.Message ?? "Downloading model...";
+                                OverlayIsIndeterminate = update.IsIndeterminate;
+                                OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
+                                break;
+                            case TranscriptionStage.Transcribing:
+                                IsTranscribing = true;
+                                IsTranscriptionIndeterminate = update.IsIndeterminate;
+                                if (!update.IsIndeterminate)
+                                {
+                                    TranscriptionProgress = update.Percent;
+                                }
+                                HotkeyStatus = update.Message ?? "Transcribing...";
+                                ShowOverlay = true;
+                                OverlayTitle = "Transcribing";
+                                OverlayMessage = update.Message ?? "Transcribing audio...";
+                                OverlayIsIndeterminate = update.IsIndeterminate;
+                                OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
+                                break;
+                        }
+                    });
+                });
             Logger.OperationStart($"Transcription of {Path.GetFileName(e.FilePath)}");
             try
             {
@@ -344,7 +429,8 @@ namespace Talkies.Windows.ViewModels
                     SelectedLanguage,
                     VadEnabled,
                     FilterEnabled,
-                    decodingOptions);
+                    decodingOptions,
+                    progress);
 
                 var finalText = result.Text;
                 var finalSegments = result.Segments;
@@ -420,7 +506,6 @@ namespace Talkies.Windows.ViewModels
                 }
 
                 // Push final transcript (enhanced or raw) to UI
-                var dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
                 dispatcher.Invoke(() =>
                 {
                     Segments.Clear();
@@ -443,7 +528,7 @@ namespace Talkies.Windows.ViewModels
                 Logger.Success($"Transcription completed: {finalSegments.Count} segments, {totalWords} words");
                 Logger.Status($"WPM: {wpm}");
 
-                Backend = "CPU";
+                Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
 
                 // TTS
                 if (TtsEnabled)
@@ -485,12 +570,62 @@ namespace Talkies.Windows.ViewModels
                     }
                 }
 
+                if (_autoPastePending && !string.IsNullOrWhiteSpace(finalText))
+                {
+                    try
+                    {
+                        Logger.OperationStart("Auto-paste (clipboard + Ctrl+V)");
+                        await dispatcher.InvokeAsync(() => System.Windows.Clipboard.SetText(finalText));
+                        var pasted = TextInjector.PasteClipboard();
+                        if (pasted)
+                        {
+                            Logger.OperationComplete("Auto-paste");
+                        }
+                        else
+                        {
+                            Logger.OperationFailed("Auto-paste", "Ctrl+V failed");
+                        }
+                        OnOverlayUpdate?.Invoke("Pasted transcript");
+                        OnOverlayHide?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.OperationFailed("Auto-paste", ex.Message);
+                    }
+                    finally
+                    {
+                        _autoPastePending = false;
+                    }
+                }
+
                 HotkeyStatus = "Ready";
             }
             catch (Exception ex)
             {
                 HotkeyStatus = $"Error: {ex.Message}";
                 Logger.OperationFailed("Transcription", ex.Message);
+            }
+            finally
+            {
+                dispatcher.Invoke(() =>
+                {
+                    IsDownloadingModel = false;
+                    IsModelDownloadIndeterminate = false;
+                    ModelDownloadProgress = 0;
+                    IsTranscribing = false;
+                    IsTranscriptionIndeterminate = false;
+                    TranscriptionProgress = 100;
+                    ShowOverlay = false;
+                    OverlayProgress = 0;
+                    OverlayMessage = string.Empty;
+                    OverlayTitle = string.Empty;
+                    if (_autoPastePending)
+                    {
+                        // If paste didn't happen, hide overlay and clear flag
+                        OnOverlayHide?.Invoke();
+                        _autoPastePending = false;
+                    }
+                });
             }
         }
 
@@ -586,6 +721,7 @@ namespace Talkies.Windows.ViewModels
 
         private void LoadSettings()
         {
+            _loadingSettings = true;
             _settings = _settingsService.Load();
             SelectedModel = _settings.Model;
             SelectedLanguage = _settings.Language;
@@ -616,6 +752,7 @@ namespace Talkies.Windows.ViewModels
             {
                 SelectedMicrophone = Microphones.FirstOrDefault(m => m.Id == _settings.MicrophoneId) ?? SelectedMicrophone;
             }
+            _loadingSettings = false;
         }
 
         private void SaveSettings()
@@ -638,6 +775,20 @@ namespace Talkies.Windows.ViewModels
             _settings.SelectedEnhancementMode = SelectedEnhancementMode;
             _settings.CustomPrompts = CustomPrompts.ToList();
             _settingsService.Save(_settings);
+        }
+
+        private void DetectBackend()
+        {
+            _usingGpu = CudaDetector.IsNvidiaCudaAvailable(out var reason);
+            Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
+            if (_usingGpu)
+            {
+                Logger.Info($"Startup GPU detection: {reason}");
+            }
+            else
+            {
+                Logger.Warn($"Startup GPU detection: {reason}");
+            }
         }
 
         private void RefreshEnhancementModes()
@@ -701,7 +852,34 @@ namespace Talkies.Windows.ViewModels
             OnPropertyChanged(nameof(CanSave));
         }
 
-        protected void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        protected void OnPropertyChanged([CallerMemberName] string? name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+            // Persist user-facing settings immediately (skip noisy runtime values)
+            if (_loadingSettings || string.IsNullOrWhiteSpace(name)) return;
+
+            if (name is nameof(SelectedModel)
+                or nameof(SelectedLanguage)
+                or nameof(VadEnabled)
+                or nameof(FilterEnabled)
+                or nameof(SelectedMicrophone)
+                or nameof(EnhanceEnabled)
+                or nameof(OllamaUrl)
+                or nameof(OllamaModel)
+                or nameof(TtsEnabled)
+                or nameof(InsertEnabled)
+                or nameof(SelectedLlmProvider)
+                or nameof(LlmEndpoint)
+                or nameof(SelectedLlmModel)
+                or nameof(SelectedEnhancementMode)
+                or nameof(CustomPrompts)
+                or nameof(NewPromptName)
+                or nameof(NewPromptText))
+            {
+                SaveSettings();
+            }
+        }
 
         private static string ToTimestamp(double seconds)
         {

@@ -7,5 +7,10 @@
         <!-- Value Converters -->
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:BooleanInverterConverter x:Key="BooleanInverterConverter" />
+        <DropShadowEffect x:Key="DropShadowEffect"
+                          Color="#000000"
+                          Opacity="0.6"
+                          BlurRadius="18"
+                          ShadowDepth="0" />
     </Application.Resources>
 </Application>

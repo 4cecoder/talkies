@@ -27,11 +27,12 @@ Previously, the Windows implementation required manually downloading GGML models
 **File:** `Services/WhisperNetTranscriptionService.cs`
 
 - Added `ModelUrls` dictionary with HuggingFace URLs for all Whisper models:
-  - `tiny`: ggml-tiny.bin
-  - `base`: ggml-base.bin
-  - `small`: ggml-small.bin
-  - `medium`: ggml-medium.bin
-  - `large`: ggml-large.bin
+- `tiny`: ggml-tiny.bin
+- `base`: ggml-base.bin
+- `small`: ggml-small.bin
+- `medium`: ggml-medium.bin
+- `large`: ggml-large.bin
+Models are stored under `%USERPROFILE%\.talkies\models\` by default.
 
 - New `DownloadModelAsync()` method handles:
   - HTTP streaming from HuggingFace

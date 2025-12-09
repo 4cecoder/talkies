@@ -154,7 +154,7 @@ Shows recording duration in MM:SS format
 - Feature toggles (VAD, filter, TTS, injection)
 
 ### Settings Location
-Windows: `%APPDATA%\Talkies\talkies_settings.json`
+Windows: `%USERPROFILE%\.talkies\config.json`
 
 ### Reset Settings
 Delete the JSON file or let app recreate with defaults

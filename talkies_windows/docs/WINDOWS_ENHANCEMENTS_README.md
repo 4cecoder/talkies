@@ -265,7 +265,7 @@ $env:TALKIES_MODEL_PATH = "C:\Models\ggml-base.bin"
 ```
 
 ### Models Directory
-Models auto-download to: `talkies_windows/models/`
+Models auto-download to: `%USERPROFILE%\.talkies\models\`
 
 ### Ollama Setup
 ```bash

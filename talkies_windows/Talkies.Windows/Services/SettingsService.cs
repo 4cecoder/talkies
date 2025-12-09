@@ -11,10 +11,10 @@ namespace Talkies.Windows.Services
 
         public SettingsService()
         {
-            var appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var dir = Path.Combine(appdata, "Talkies");
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var dir = Path.Combine(home, ".talkies");
             Directory.CreateDirectory(dir);
-            _path = Path.Combine(dir, "talkies_settings.json");
+            _path = Path.Combine(dir, "config.json");
         }
 
         public AppSettings Load()

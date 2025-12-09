@@ -1,4 +1,5 @@
 using System.Windows;
+using WpfMessageBox = System.Windows.MessageBox;
 
 namespace Talkies.Windows.Services
 {
@@ -9,7 +10,7 @@ namespace Talkies.Windows.Services
         /// </summary>
         public static void ShowError(string title, string message)
         {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+            WpfMessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
         /// <summary>
@@ -17,7 +18,7 @@ namespace Talkies.Windows.Services
         /// </summary>
         public static void ShowWarning(string title, string message)
         {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         /// <summary>
@@ -25,7 +26,7 @@ namespace Talkies.Windows.Services
         /// </summary>
         public static void ShowInfo(string title, string message)
         {
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+            WpfMessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         /// <summary>
@@ -33,7 +34,7 @@ namespace Talkies.Windows.Services
         /// </summary>
         public static bool ShowConfirmation(string title, string message)
         {
-            var result = MessageBox.Show(message, title, MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            var result = WpfMessageBox.Show(message, title, MessageBoxButton.OKCancel, MessageBoxImage.Question);
             return result == MessageBoxResult.OK;
         }
     }

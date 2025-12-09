@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterScreen">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="350" MinWidth="300" />
+            <ColumnDefinition Width="360" MinWidth="300" />
             <ColumnDefinition Width="*" MinWidth="500" />
         </Grid.ColumnDefinitions>
 
@@ -45,7 +45,7 @@
                         <TextBlock Text="Language" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" Margin="0,0,0,8" Height="32" Padding="8,6"/>
 
-                        <TextBlock Text="Microphone" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <TextBlock Text="Input Source" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}" DisplayMemberPath="Name" Margin="0,0,0,8" Height="32" Padding="8,6"/>
 
                         <CheckBox Content="Voice Activity Detection" IsChecked="{Binding VadEnabled}" Margin="0,6,0,6" FontSize="11"/>
@@ -93,55 +93,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Status -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="Status" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
-                        <TextBlock Text="Backend:" Foreground="#999999" FontSize="11" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding Backend}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
-
-                        <TextBlock Text="Elapsed:" Foreground="#999999" FontSize="11" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding ElapsedText}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
-
-                        <TextBlock Text="Hotkey Status:" Foreground="#999999" FontSize="11" Margin="0,0,0,2"/>
-                        <TextBlock Text="{Binding HotkeyStatus}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,0"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Statistics -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="Transcript Statistics" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock Text="Segments" Foreground="#999999" FontSize="10"/>
-                                <TextBlock Text="{Binding SegmentCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="4,0,4,0">
-                                <TextBlock Text="Words" Foreground="#999999" FontSize="10"/>
-                                <TextBlock Text="{Binding WordCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Margin="8,0,0,0">
-                                <TextBlock Text="WPM" Foreground="#999999" FontSize="10"/>
-                                <TextBlock Text="{Binding WordsPerMinute}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Hotkey Info -->
-                <Border Background="#2d2d2d" Padding="12" CornerRadius="8" Margin="0,0,0,0">
-                    <StackPanel>
-                        <TextBlock Text="Hotkey" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
-                        <TextBlock Text="Right Alt" FontFamily="Consolas" Foreground="#66b3ff" FontSize="10" Margin="0,0,0,2"/>
-                        <TextBlock Text="Tap: Start/Stop | Hold: Push-to-talk" Foreground="#999999" FontSize="10"/>
-                    </StackPanel>
-                </Border>
             </StackPanel>
         </ScrollViewer>
 
@@ -151,6 +102,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Header Bar -->
@@ -189,7 +141,79 @@
                         </ItemsControl>
                     </ScrollViewer>
                 </Border>
+
+                <!-- Footer: status + stats + hotkey spanning full width -->
+                <Grid Grid.Row="2" Margin="12,0,12,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Status" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
+                            <TextBlock Text="Backend:" Foreground="#999999" FontSize="11"/>
+                            <TextBlock Text="{Binding Backend}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Elapsed:" Foreground="#999999" FontSize="11"/>
+                            <TextBlock Text="{Binding ElapsedText}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Hotkey Status:" Foreground="#999999" FontSize="11"/>
+                            <TextBlock Text="{Binding HotkeyStatus}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="#242424" Padding="12" CornerRadius="8" Margin="4,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="Transcript Statistics" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Text="Segments" Foreground="#999999" FontSize="10"/>
+                                    <TextBlock Text="{Binding SegmentCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="4,0,4,0">
+                                    <TextBlock Text="Words" Foreground="#999999" FontSize="10"/>
+                                    <TextBlock Text="{Binding WordCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                                    <TextBlock Text="WPM" Foreground="#999999" FontSize="10"/>
+                                    <TextBlock Text="{Binding WordsPerMinute}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Background="#2d2d2d" Padding="12" CornerRadius="8">
+                        <StackPanel>
+                            <TextBlock Text="Hotkey" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
+                            <TextBlock Text="Right Alt" FontFamily="Consolas" Foreground="#66b3ff" FontSize="10" Margin="0,0,0,2"/>
+                            <TextBlock Text="Tap: Start/Stop | Hold: Push-to-talk" Foreground="#999999" FontSize="10"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Grid>
         </Border>
+
+        <!-- Busy Overlay -->
+        <Grid Grid.ColumnSpan="2"
+              Background="#AA000000"
+              Visibility="{Binding ShowOverlay, Converter={StaticResource BooleanToVisibilityConverter}}"
+              Panel.ZIndex="10">
+            <Border Width="420" Padding="20" Background="#1f1f1f" CornerRadius="10" BorderBrush="#333" BorderThickness="1"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Effect="{StaticResource DropShadowEffect}">
+                <StackPanel>
+                    <TextBlock Text="{Binding OverlayTitle}" FontSize="18" FontWeight="Bold" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding OverlayMessage}" Foreground="#cccccc" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                    <ProgressBar Minimum="0" Maximum="100"
+                                 Value="{Binding OverlayProgress}"
+                                 IsIndeterminate="{Binding OverlayIsIndeterminate}"
+                                 Height="14"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -17,9 +17,13 @@ namespace Talkies.Windows.Services
         {
             using var enumerator = new MMDeviceEnumerator();
             var coll = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-            return coll
+            var devices = coll
                 .Select(d => new AudioDeviceInfo { Id = d.ID, Name = d.FriendlyName })
                 .ToList();
+
+            // Add virtual system audio (loopback) at the top
+            devices.Insert(0, new AudioDeviceInfo { Id = "__loopback", Name = "System Audio (Loopback)" });
+            return devices;
         }
 
         public AudioDeviceInfo? GetDefaultCaptureDevice()

@@ -136,7 +136,7 @@ All requested enhancements have been successfully implemented and tested. The pr
   - JSON serialization
 
 ### Settings File
-- [x] Location: %APPDATA%\Talkies\talkies_settings.json
+- [x] Location: %USERPROFILE%\.talkies\config.json
 - [x] JSON format with Newtonsoft.Json
 - [x] Graceful fallback to defaults
 - [x] Auto-create directory if missing

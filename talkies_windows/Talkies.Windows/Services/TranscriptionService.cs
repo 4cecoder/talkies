@@ -78,6 +78,17 @@ namespace Talkies.Windows.Services
     }
 
     /// <summary>
+    /// Progress update for transcription operations (download + decode).
+    /// </summary>
+    public record TranscriptionProgress(TranscriptionStage Stage, double Percent, string? Message = null, bool IsIndeterminate = false);
+
+    public enum TranscriptionStage
+    {
+        DownloadModel,
+        Transcribing
+    }
+
+    /// <summary>
     /// Service interface for audio transcription.
     /// </summary>
     public interface ITranscriptionService : IDisposable
@@ -91,7 +102,8 @@ namespace Talkies.Windows.Services
             string language,
             bool vadEnabled,
             bool filterEnabled,
-            DecodingOptions? decodingOptions = null);
+            DecodingOptions? decodingOptions = null,
+            IProgress<TranscriptionProgress>? progress = null);
 
         /// <summary>
         /// Exports segments to VTT (WebVTT) format.

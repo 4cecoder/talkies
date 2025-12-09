@@ -225,7 +225,7 @@ This session continued previous enhancements to the Talkies Windows transcriptio
 - Creative - Rephrase creatively
 
 ### Settings Persistence
-- Location: `%APPDATA%\Talkies\talkies_settings.json`
+- Location: `%USERPROFILE%\.talkies\config.json`
 - Format: JSON
 - Persisted: Model, language, microphone, LLM provider, endpoint, model, mode, filters
 
