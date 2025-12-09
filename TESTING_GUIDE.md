@@ -11,7 +11,7 @@ This guide provides detailed test cases for verifying that the waveform visualiz
 - .NET 8.0 runtime
 - Working microphone
 - Talkies Windows application built and ready to run
-- Whisper.net model downloaded (ggml-base.bin minimum)
+- Whisper.net model downloaded under `%USERPROFILE%\.talkies\models\` (ggml-base.bin minimum)
 
 ### Starting the Application
 ```bash
