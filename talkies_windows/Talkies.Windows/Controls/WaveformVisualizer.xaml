@@ -1,8 +1,0 @@
-<UserControl x:Class="Talkies.Windows.Controls.WaveformVisualizer"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Height="60" Background="Transparent">
-    <Border Background="#1a1a1a" CornerRadius="4" Padding="4">
-        <Canvas x:Name="WaveformCanvas" Background="Transparent"/>
-    </Border>
-</UserControl>
