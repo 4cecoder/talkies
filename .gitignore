@@ -1,4 +1,29 @@
-# Python
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Swift build artifacts (mac/)
+mac/.build/
+mac/.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# .NET build artifacts (windows/)
+**/bin/
+**/obj/
+windows/models/
+
+# Node.js (frontend/)
+node_modules/
+.next/
+.env.local
+.env*.local
+
+# Python (archive/)
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,54 +32,15 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-
-# Coverage
 .coverage
 htmlcov/
-
-# Cache
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 
-# macOS
-.DS_Store
-
-# IDE
-.idea/
-.vscode/
-
-# .NET build artifacts
-talkies_windows/Talkies.Windows/bin/
-talkies_windows/Talkies.Windows/bin/**
-talkies_windows/Talkies.Windows/obj/
-talkies_windows/Talkies.Windows/obj/**
-talkies_windows/Talkies.Windows.Tests/bin/
-talkies_windows/Talkies.Windows.Tests/bin/**
-talkies_windows/Talkies.Windows.Tests/obj/
-talkies_windows/Talkies.Windows.Tests/obj/**
-talkies_windows/Talkies.Windows/bin/Debug/**
-talkies_windows/models/**
-talkies_windows/models/*
-talkies_windows/models/
-**/bin/
-**/obj/
-**\\bin\\
-**\\obj\\
-
-# Lock files (optional - comment out if you want to track)
-# uv.lock
+# Large ML model files
+*.safetensors
+*.npz
 
 # Misc
 *.log
-
-# Swift build artifacts
-Talkies/.build/
-Talkies/.swiftpm/
-*.xcodeproj
-*.xcworkspace
-DerivedData/
-
-# Large ML model files (use Git LFS or download separately)
-*.safetensors
-*.npz
