@@ -24,6 +24,24 @@ htmlcov/
 .idea/
 .vscode/
 
+# .NET build artifacts
+talkies_windows/Talkies.Windows/bin/
+talkies_windows/Talkies.Windows/bin/**
+talkies_windows/Talkies.Windows/obj/
+talkies_windows/Talkies.Windows/obj/**
+talkies_windows/Talkies.Windows.Tests/bin/
+talkies_windows/Talkies.Windows.Tests/bin/**
+talkies_windows/Talkies.Windows.Tests/obj/
+talkies_windows/Talkies.Windows.Tests/obj/**
+talkies_windows/Talkies.Windows/bin/Debug/**
+talkies_windows/models/**
+talkies_windows/models/*
+talkies_windows/models/
+**/bin/
+**/obj/
+**\\bin\\
+**\\obj\\
+
 # Lock files (optional - comment out if you want to track)
 # uv.lock
 

@@ -1,0 +1,16 @@
+<Application x:Class="Talkies.Windows.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Talkies.Windows.Converters"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- Value Converters -->
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:BooleanInverterConverter x:Key="BooleanInverterConverter" />
+        <DropShadowEffect x:Key="DropShadowEffect"
+                          Color="#000000"
+                          Opacity="0.6"
+                          BlurRadius="18"
+                          ShadowDepth="0" />
+    </Application.Resources>
+</Application>
