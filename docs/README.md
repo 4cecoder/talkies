@@ -33,11 +33,29 @@ Whisper CLI is designed to work **primarily locally** with no external dependenc
 - ElevenLabs, Deepgram for speaker recognition
 - DeepL for translation
 
+## Documentation
+
+### Reference Docs
+- [Installation Guide](installation.md)
+- [Configuration Guide](configuration.md)
+- [Usage Guide](usage.md)
+- [API Reference](api.md)
+- [Changelog](CHANGELOG.md)
+
+### User Guides
+- [Quick Start](guides/QUICKSTART.md) - Get started with real-time features
+- [GUI Guide](guides/GUI.md) - Using the graphical interface
+- [MLX Setup](guides/MLX_SETUP.md) - Metal GPU acceleration setup
+- [Hallucination Filter](guides/HALLUCINATION_FILTER.md) - Filtering Whisper artifacts
+- [What's New](guides/WHATS_NEW.md) - Feature highlights
+- [Ready Checklist](guides/READY.md) - Setup verification
+- [Start Here](guides/START_HERE.md) - Getting started guide
+
 ## Installation
 
 1. Install uv: `pip install uv`
 2. Clone this repo
-3. Run `./run.sh --help`
+3. Run `scripts/run.sh --help`
 
 ## Configuration
 
@@ -69,36 +87,36 @@ channels = 1
 ### Check System Compatibility
 ```bash
 # Show system information and capabilities
-./run.sh system
+scripts/run.sh system
 
 # Get recommended configuration for your system
-./run.sh system --recommend
+scripts/run.sh system --recommend
 ```
 
 ### Transcribe a file
 ```bash
-./run.sh transcribe audio.mp3 --model large --language en
+scripts/run.sh transcribe audio.mp3 --model large --language en
 ```
 
 ### Batch transcribe
 ```bash
-./run.sh batch /path/to/audio/files --output-dir /path/to/output
+scripts/run.sh batch /path/to/audio/files --output-dir /path/to/output
 ```
 
 ### Watch folder
 ```bash
-./run.sh watch /path/to/watch --output-dir /path/to/output
+scripts/run.sh watch /path/to/watch --output-dir /path/to/output
 ```
 
 ### Record and transcribe
 ```bash
-./run.sh record --duration 30 --output recording.wav
-./run.sh transcribe recording.wav
+scripts/run.sh record --duration 30 --output recording.wav
+scripts/run.sh transcribe recording.wav
 ```
 
 ### Transcribe YouTube
 ```bash
-./run.sh youtube "https://youtube.com/watch?v=..." --format srt
+scripts/run.sh youtube "https://youtube.com/watch?v=..." --format srt
 ```
 
 ## Supported Models

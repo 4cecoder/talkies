@@ -30,6 +30,13 @@ htmlcov/
 # Misc
 *.log
 
+# Generated transcription files
+*.vtt
+*.srt
+
+# Pip install artifacts
+=*
+
 # Swift build artifacts
 Talkies/.build/
 Talkies/.swiftpm/

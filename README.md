@@ -14,7 +14,7 @@ The world's fastest open-source voice-to-VTT system with Metal GPU acceleration,
 - 🧹 **Hallucination Filter** - Removes common Whisper artifacts ("Thanks for watching", etc.)
 - 📊 **Real-Time Statistics** - WPM tracking, word count, segment count
 
-[**→ See QUICKSTART.md for real-time features**](./QUICKSTART.md) | [**→ See GUI.md for GUI guide**](./GUI.md)
+[**→ See QUICKSTART.md for real-time features**](docs/guides/QUICKSTART.md) | [**→ See GUI.md for GUI guide**](docs/guides/GUI.md)
 
 ## Core Features
 
@@ -55,25 +55,25 @@ The world's fastest open-source voice-to-VTT system with Metal GPU acceleration,
 
 ```bash
 # Launch native dark-mode GUI (recommended!)
-./run.sh live --gui
+scripts/run.sh live --gui
 
 # Terminal mode with live display
-./run.sh live --language en
+scripts/run.sh live --language en
 
 # Save to file
-./run.sh live --output meeting.vtt
+scripts/run.sh live --output meeting.vtt
 
 # Quick test (5 seconds, tiny for speed)
-./run.sh live --model tiny --duration 5
+scripts/run.sh live --model tiny --duration 5
 
 # Best quality with GUI
-./run.sh live --gui --model large
+scripts/run.sh live --gui --model large
 
 # CPU mode (no GPU)
-./run.sh live --gui --cpu
+scripts/run.sh live --gui --cpu
 ```
 
-[**→ Full real-time guide in QUICKSTART.md**](./QUICKSTART.md) | [**→ GUI guide in GUI.md**](./GUI.md)
+[**→ Full real-time guide in QUICKSTART.md**](docs/guides/QUICKSTART.md) | [**→ GUI guide in GUI.md**](docs/guides/GUI.md)
 
 ### Basic Configuration
 
@@ -104,28 +104,28 @@ channels = 1
 
 #### Transcribe a file
 ```bash
-./run.sh transcribe audio.mp3 --model large --language en
+scripts/run.sh transcribe audio.mp3 --model large --language en
 ```
 
 #### Batch transcribe
 ```bash
-./run.sh batch /path/to/audio/files --output-dir /path/to/output
+scripts/run.sh batch /path/to/audio/files --output-dir /path/to/output
 ```
 
 #### Watch folder
 ```bash
-./run.sh watch /path/to/watch --output-dir /path/to/output
+scripts/run.sh watch /path/to/watch --output-dir /path/to/output
 ```
 
 #### Record and transcribe
 ```bash
-./run.sh record --duration 30 --output recording.wav
-./run.sh transcribe recording.wav
+scripts/run.sh record --duration 30 --output recording.wav
+scripts/run.sh transcribe recording.wav
 ```
 
 #### Transcribe YouTube
 ```bash
-./run.sh youtube "https://youtube.com/watch?v=..." --format srt
+scripts/run.sh youtube "https://youtube.com/watch?v=..." --format srt
 ```
 
 ## Supported Models
