@@ -1,6 +1,44 @@
 import SwiftUI
 import AVFoundation
 import Combine
+import os.lock
+
+// Thread-safe handler for audio tap - completely separate from MainActor
+final class AudioTapHandler: @unchecked Sendable {
+    private var _level: Float = 0.0
+    private let lock = OSAllocatedUnfairLock()
+    let audioFile: AVAudioFile?
+
+    init(audioFile: AVAudioFile?) {
+        self.audioFile = audioFile
+    }
+
+    var level: Float {
+        get { lock.withLock { _level } }
+        set { lock.withLock { _level = newValue } }
+    }
+
+    func handleTap(buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        // Write buffer to file
+        try? audioFile?.write(from: buffer)
+
+        // Calculate audio level
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let channelDataArray = Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+
+        let rms = sqrt(channelDataArray.map { $0 * $0 }.reduce(0, +) / Float(buffer.frameLength))
+        let normalizedLevel = min(max(20 * log10(rms + 0.0001), -60), 0) / 60
+
+        level = normalizedLevel + 1.0
+    }
+
+    // Install tap from a nonisolated context to avoid MainActor closure inference
+    nonisolated static func installTap(on inputNode: AVAudioInputNode, format: AVAudioFormat?, handler: AudioTapHandler) {
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, time in
+            handler.handleTap(buffer: buffer, time: time)
+        }
+    }
+}
 
 @MainActor
 class AudioRecorder: NSObject, ObservableObject {
@@ -16,6 +54,9 @@ class AudioRecorder: NSObject, ObservableObject {
     private var audioFileURL: URL?
     private var timer: Timer?
     private var audioLevelTimer: Timer?
+
+    // Thread-safe handler for audio tap
+    private var tapHandler: AudioTapHandler?
 
     var onRecordingComplete: ((URL) -> Void)?
     
@@ -80,25 +121,9 @@ class AudioRecorder: NSObject, ObservableObject {
             
             // Install tap directly on input node for recording and level monitoring
             // DO NOT connect to mainMixerNode to avoid feedback loop
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputNode.outputFormat(forBus: 0)) { [weak self] buffer, time in
-                guard let self = self,
-                      let audioFile = self.audioFile else { return }
-                
-                // Write buffer to file
-                try? audioFile.write(from: buffer)
-                
-                // Calculate audio level
-                let channelData = buffer.floatChannelData![0]
-                let channelDataPointer = UnsafeMutablePointer<Float>(channelData)
-                let channelDataArray = Array(UnsafeBufferPointer(start: channelDataPointer, count: Int(buffer.frameLength)))
-                
-                let rms = sqrt(channelDataArray.map { $0 * $0 }.reduce(0, +) / Float(buffer.frameLength))
-                let normalizedLevel = min(max(20 * log10(rms + 0.0001), -60), 0) / 60
-                
-                DispatchQueue.main.async {
-                    self.audioLevel = normalizedLevel + 1.0
-                }
-            }
+            // Use a nonisolated static method to install the tap, avoiding MainActor closure inference
+            tapHandler = AudioTapHandler(audioFile: audioFile)
+            AudioTapHandler.installTap(on: inputNode, format: inputNode.outputFormat(forBus: 0), handler: tapHandler!)
             
             print("      Starting audio engine...")
             try audioEngine.start()
@@ -149,6 +174,7 @@ class AudioRecorder: NSObject, ObservableObject {
         self.inputNode = nil
         self.audioFile = nil
         self.audioFileURL = nil
+        self.tapHandler = nil
     }
     
     func pauseRecording() {
@@ -174,7 +200,9 @@ class AudioRecorder: NSObject, ObservableObject {
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.duration += 0.1
+            Task { @MainActor in
+                self.duration += 0.1
+            }
         }
     }
     
@@ -184,8 +212,13 @@ class AudioRecorder: NSObject, ObservableObject {
     }
     
     private func startAudioLevelTimer() {
+        guard let handler = tapHandler else { return }
         audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            // Audio level is updated in the tap callback
+            guard let self = self else { return }
+            // Read from thread-safe handler and update published property on main thread
+            Task { @MainActor in
+                self.audioLevel = handler.level
+            }
         }
     }
     
