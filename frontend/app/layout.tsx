@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Talkies - Voice-Powered Writing Assistant",
-  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available for Mac, Windows, and Linux.",
+  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS.",
 };
 
 export default function RootLayout({
