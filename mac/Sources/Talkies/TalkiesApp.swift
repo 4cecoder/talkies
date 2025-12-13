@@ -235,29 +235,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupKeyboardShortcut() {
-        // Handler for right option key
+        // Handler for right option key - must dispatch to main actor
         let handler: (NSEvent) -> Void = { [weak self] event in
-            guard let self = self else { return }
-
             // Right Option key (keyCode 61)
-            if event.keyCode == 61 {
-                let isPressed = event.modifierFlags.contains(.option)
+            guard event.keyCode == 61 else { return }
+
+            let isPressed = event.modifierFlags.contains(.option)
+
+            // Dispatch all main-actor-isolated property access to main thread
+            DispatchQueue.main.async {
+                guard let self = self else { return }
 
                 print("🔑 Right Option key event - isPressed: \(isPressed), wasPressed: \(self.rightOptionKeyWasPressed)")
 
                 // Key pressed down
                 if isPressed && !self.rightOptionKeyWasPressed {
                     print("⬇️ Key pressed DOWN")
-                    DispatchQueue.main.async {
-                        self.handleKeyPressDown()
-                    }
+                    self.handleKeyPressDown()
                 }
                 // Key released
                 else if !isPressed && self.rightOptionKeyWasPressed {
                     print("⬆️ Key released UP")
-                    DispatchQueue.main.async {
-                        self.handleKeyRelease()
-                    }
+                    self.handleKeyRelease()
                 }
 
                 // Update state
