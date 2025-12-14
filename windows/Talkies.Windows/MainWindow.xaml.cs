@@ -22,6 +22,10 @@ namespace Talkies.Windows
             {
                 Dispatcher.InvokeAsync(() => WaveformVisualizer.AudioLevel = level);
             };
+            _vm.OnResetWaveform += () =>
+            {
+                Dispatcher.InvokeAsync(() => WaveformVisualizer.Clear());
+            };
 
             _vm.OnOverlayShow += msg => Dispatcher.Invoke(() => ShowOverlay(msg));
             _vm.OnOverlayUpdate += msg => Dispatcher.Invoke(() => UpdateOverlay(msg));

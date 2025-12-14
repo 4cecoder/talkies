@@ -33,10 +33,18 @@ namespace Talkies.Windows.Tests
             var transcriber = new FakeTranscriber();
             var vm = new MainViewModel(recorder, transcriber, new FakeDevices());
 
+            vm.EnhanceEnabled = false;
+            vm.InsertEnabled = false;
+
             vm.StartCommand.Execute(null);
             recorder.RaiseCompleted("dummy.wav");
 
-            await Task.Delay(50);
+            var waitMs = 0;
+            while (vm.SegmentCount == 0 && waitMs < 1000)
+            {
+                await Task.Delay(50);
+                waitMs += 50;
+            }
 
             Assert.Equal(1, vm.SegmentCount);
             Assert.Equal(4, vm.WordCount);
@@ -57,6 +65,16 @@ namespace Talkies.Windows.Tests
             {
                 File.Delete(f);
             }
+        }
+
+        [Fact]
+        public void SelectingEnhancementMode_UpdatesPromptEditor()
+        {
+            var vm = new MainViewModel(new FakeRecorder(), new FakeTranscriber(), new FakeDevices());
+
+            vm.SelectedEnhancementMode = "Technical";
+
+            Assert.Contains("technical writing assistant", vm.NewPromptText, StringComparison.OrdinalIgnoreCase);
         }
     }
 
