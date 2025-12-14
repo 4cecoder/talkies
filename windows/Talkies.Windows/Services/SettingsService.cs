@@ -11,10 +11,19 @@ namespace Talkies.Windows.Services
 
         public SettingsService()
         {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var dir = Path.Combine(home, ".talkies");
-            Directory.CreateDirectory(dir);
-            _path = Path.Combine(dir, "config.json");
+            var overridePath = Environment.GetEnvironmentVariable("TALKIES_CONFIG_PATH");
+            if (!string.IsNullOrWhiteSpace(overridePath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(overridePath)!);
+                _path = overridePath;
+            }
+            else
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var dir = Path.Combine(home, ".talkies");
+                Directory.CreateDirectory(dir);
+                _path = Path.Combine(dir, "config.json");
+            }
         }
 
         public AppSettings Load()

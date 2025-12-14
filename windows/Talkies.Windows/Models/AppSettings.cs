@@ -22,12 +22,32 @@ namespace Talkies.Windows.Models
         public bool FilterEnabled { get; set; } = true;
 
         // LLM Provider Settings
-        public string SelectedLlmProvider { get; set; } = "Ollama";
-        public string LlmEndpoint { get; set; } = "http://localhost:11434";
-        public string? SelectedLlmModelName { get; set; }
+        public string SelectedLlmProvider { get; set; } = "LM Studio";
+        public string LlmEndpoint { get; set; } = "http://127.0.0.1:1234";
+        public string? SelectedLlmModelName { get; set; } = "openai/gpt-oss-20b";
         public string SelectedEnhancementMode { get; set; } = "Grammar";
 
         // User-defined enhancement prompts
         public List<CustomPrompt> CustomPrompts { get; set; } = new();
+
+        // Plugin settings
+        public AdvancedTtsSettings AdvancedTts { get; set; } = new();
+        public SentimentSettings Sentiment { get; set; } = new();
+    }
+
+    public class AdvancedTtsSettings
+    {
+        public bool IsEnabled { get; set; } = true;
+        public string SelectedVoice { get; set; } = string.Empty;
+        public int Rate { get; set; } = 0;
+        public int Pitch { get; set; } = 0;
+        public int Volume { get; set; } = 100;
+    }
+
+    public class SentimentSettings
+    {
+        public bool IsEnabled { get; set; } = true;
+        public string Endpoint { get; set; } = "http://127.0.0.1:1234";
+        public string Model { get; set; } = "lm-kit.sentiment_analysis-tinyllama-1.1b-1t-openorca-en";
     }
 }
