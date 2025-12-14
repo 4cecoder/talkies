@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
 namespace Talkies.Windows.Services
 {
@@ -193,6 +195,76 @@ namespace Talkies.Windows.Services
                 Logger.Error($"TextInjector: Exception in SendChar: {ex.Message}");
                 return false;
             }
+        }
+
+        private static bool TryClipboardPaste(string text)
+        {
+            try
+            {
+                if (!TrySetClipboardText(text))
+                {
+                    return false;
+                }
+
+                // Small pause to reduce clipboard race conditions
+                Thread.Sleep(50);
+                return PasteClipboard();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"TextInjector: Clipboard paste fallback failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static string GetWindowTitle(IntPtr hwnd)
+        {
+            var sb = new StringBuilder(256);
+            var length = GetWindowText(hwnd, sb, sb.Capacity);
+            return length > 0 ? sb.ToString() : "<unknown>";
+        }
+
+        public static bool TrySetClipboardText(string text, int retries = 5, int delayMs = 100)
+        {
+            for (var attempt = 1; attempt <= retries; attempt++)
+            {
+                Exception? clipboardError = null;
+                void SetClipboard()
+                {
+                    try
+                    {
+                        System.Windows.Forms.Clipboard.SetText(text);
+                    }
+                    catch (Exception ex)
+                    {
+                        clipboardError = ex;
+                    }
+                }
+
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null)
+                {
+                    dispatcher.Invoke(SetClipboard);
+                }
+                else
+                {
+                    var t = new Thread(SetClipboard);
+                    t.SetApartmentState(ApartmentState.STA);
+                    t.Start();
+                    t.Join();
+                }
+
+                if (clipboardError == null)
+                {
+                    return true;
+                }
+
+                Logger.Warn($"TextInjector: Clipboard busy (attempt {attempt}/{retries}) - {clipboardError.Message}");
+                Thread.Sleep(delayMs);
+            }
+
+            Logger.Error("TextInjector: Clipboard set failed after retries");
+            return false;
         }
 
         [DllImport("user32.dll", SetLastError = true)]
