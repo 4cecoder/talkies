@@ -4,6 +4,13 @@ import Cocoa
 @MainActor
 class TextInserter {
     static let shared = TextInserter()
+    
+    // Timing constants for clipboard operations
+    /// Delay to ensure clipboard is ready before pasting (50ms)
+    private static let clipboardReadyDelay: TimeInterval = 0.05
+    /// Delay before restoring previous clipboard contents (200ms)
+    /// This gives the paste operation time to complete before we modify the clipboard
+    private static let clipboardRestoreDelay: TimeInterval = 0.2
 
     private init() {}
 
@@ -19,12 +26,12 @@ class TextInserter {
         pasteboard.setString(text, forType: .string)
 
         // Small delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
             // Simulate Cmd+V paste
             self.simulatePaste()
 
             // Restore previous clipboard contents after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) {
                 if let previous = previousContents {
                     pasteboard.clearContents()
                     pasteboard.setString(previous, forType: .string)
