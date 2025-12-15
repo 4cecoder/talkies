@@ -31,8 +31,14 @@ namespace Talkies.Windows.ViewModels
             set
             {
                 _plugin.IsEnabled = value;
-                PersistAdvancedTtsSettings();
-                PersistSentimentSettings();
+                if (_plugin is AdvancedTtsPlugin)
+                {
+                    PersistAdvancedTtsSettings();
+                }
+                if (_plugin is SentimentAnalyzerPlugin)
+                {
+                    PersistSentimentSettings();
+                }
             }
         }
 
