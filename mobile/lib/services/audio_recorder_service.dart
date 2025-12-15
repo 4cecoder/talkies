@@ -162,9 +162,21 @@ class AudioRecorderService extends ChangeNotifier {
     }
   }
 
+  /// TODO: Replace with actual Whisper transcription implementation
+  /// This is a placeholder method that creates mock transcription segments
+  /// for demonstration purposes.
+  /// 
+  /// Real implementation should:
+  /// 1. Load Whisper model (using whisper_flutter or similar package)
+  /// 2. Process the recorded audio file
+  /// 3. Generate actual transcript segments with accurate timestamps
+  /// 4. Support multiple languages and model sizes (tiny, base, small, etc.)
+  /// 
+  /// See macOS implementation: mac/Sources/Talkies/TranscriptionService.swift
+  /// See Windows implementation: windows/Talkies.Windows/Services/WhisperNetTranscriptionService.cs
   void _addMockTranscription() {
-    // Mock transcription for demonstration
-    // In real implementation, this would use Whisper or similar
+    // PLACEHOLDER: Mock transcription for demonstration
+    // This will be replaced with actual Whisper integration
     final segment = TranscriptSegment(
       text: 'Transcription will appear here after implementing Whisper integration',
       start: 0.0,
