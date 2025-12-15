@@ -203,8 +203,10 @@ namespace Talkies.Windows.ViewModels
             PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin() { IsEnabled = true };
 
             // Initialize text enhancer plugins
-            var sentimentAnalyzer = new SentimentAnalyzerPlugin() { IsEnabled = true };
-            PluginManager.TextEnhancer ??= sentimentAnalyzer;
+            if (PluginManager.TextEnhancer == null)
+            {
+                PluginManager.TextEnhancer = new SentimentAnalyzerPlugin() { IsEnabled = true };
+            }
         }
 
         private async void AutoFetchLlmModelsAsync()
