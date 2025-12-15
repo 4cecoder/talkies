@@ -7,8 +7,7 @@ class TextInserter {
     
     // Track original clipboard state and pending operations
     private var originalClipboardContent: String?
-    private var isOperationInProgress = false
-    private var pendingOperations: [(String, DispatchTime)] = []
+    private var pendingOperations: [UUID] = []
 
     private init() {}
 
@@ -18,25 +17,24 @@ class TextInserter {
         let pasteboard = NSPasteboard.general
         
         // Capture original clipboard content only on the first call
-        if !isOperationInProgress {
+        if pendingOperations.isEmpty {
             originalClipboardContent = pasteboard.string(forType: .string)
-            isOperationInProgress = true
         }
         
-        // Queue this operation
-        let executionTime = DispatchTime.now() + 0.05
-        pendingOperations.append((text, executionTime))
+        // Create unique operation identifier
+        let operationId = UUID()
+        pendingOperations.append(operationId)
         
         // Copy text to clipboard
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         
         // Schedule paste operation
-        DispatchQueue.main.asyncAfter(deadline: executionTime) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             self.simulatePaste()
             
-            // Remove this operation from pending
-            if let index = self.pendingOperations.firstIndex(where: { $0.0 == text && $0.1 == executionTime }) {
+            // Remove this operation from pending using unique ID
+            if let index = self.pendingOperations.firstIndex(of: operationId) {
                 self.pendingOperations.remove(at: index)
             }
             
@@ -50,7 +48,6 @@ class TextInserter {
                             pasteboard.setString(original, forType: .string)
                         }
                         self.originalClipboardContent = nil
-                        self.isOperationInProgress = false
                     }
                 }
             }
