@@ -276,27 +276,59 @@ box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 
 ## File Structure
 
+All brand assets are centralized in the `/branding` directory for use across all platforms:
+
 ```
 talkies/
-├── BRAND_KIT.md                    # This file
+├── BRAND_KIT.md                        # This file - complete brand guidelines
+├── branding/                            # Centralized brand assets (single source of truth)
+│   ├── README.md                       # Platform integration guide
+│   ├── logos/                          # Logo variations
+│   │   ├── talkies-logo.svg           # Primary logo (512×512)
+│   │   ├── talkies-logo-light.svg     # For light backgrounds
+│   │   ├── talkies-logo-monochrome-white.svg
+│   │   └── talkies-logo-monochrome-black.svg
+│   ├── icons/                          # App icons (multiple sizes)
+│   │   ├── favicon.svg                # 32×32 favicon
+│   │   ├── icon-16.svg
+│   │   ├── icon-32.svg
+│   │   ├── icon-64.svg
+│   │   ├── icon-128.svg
+│   │   └── icon-256.svg
+│   ├── social/                         # Social media assets
+│   │   └── og-image.svg               # Open Graph image (1200×630)
+│   ├── colors/                         # Color palettes
+│   │   ├── palette.json               # Universal definitions
+│   │   ├── palette.css                # CSS custom properties (web)
+│   │   ├── palette.swift              # Swift extensions (macOS)
+│   │   └── palette.xaml               # XAML resources (Windows)
+│   └── guidelines/                     # Reserved for additional guidelines
 ├── frontend/
-│   └── public/
-│       ├── talkies-logo.svg        # Primary logo
-│       ├── favicon.svg             # Favicon
-│       └── og-image.png            # Social sharing image (to be created)
-└── assets/                          # Additional brand assets
-    └── logos/                       # Logo variations
+│   └── public/                         # Frontend copies of assets
+│       ├── talkies-logo.svg
+│       ├── favicon.svg
+│       └── og-image.svg
+├── mac/                                # macOS app (use branding/ assets)
+└── windows/                            # Windows app (use branding/ assets)
 ```
+
+**Note:** The `/branding` directory is the **single source of truth** for all brand assets. Platform-specific directories (frontend/public/, mac/Resources/, windows/Resources/) should copy or reference assets from `/branding`.
 
 ## Updates & Maintenance
 
 This brand kit is maintained by the Talkies team. For questions or suggestions:
 - Open an issue on GitHub
 - Contact the design team
-- Last updated: 2025-12-15
+- See `/branding/README.md` for platform integration guides
+
+**Asset Location:** All brand assets are in `/branding` directory
+**Platform Integration:** See `/branding/README.md` for macOS, Windows, and web integration
 
 ---
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Last Updated**: December 2025
 **Maintained By**: Talkies Team
+**Changelog:**
+- v2.0.0 (2025-12-15): Added centralized `/branding` folder with platform-specific color palettes
+- v1.0.0 (2025-12-15): Initial brand kit creation

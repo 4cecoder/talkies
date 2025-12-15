@@ -1,0 +1,30 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="micGrad128" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ec4899;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect x="44" y="16" width="40" height="56" rx="20" fill="url(#micGrad128)" stroke="url(#micGrad128)" stroke-width="2"/>
+  <line x1="52" y1="32" x2="76" y2="32" stroke="#ffffff" strokeWidth="3" opacity="0.4" strokeLinecap="round"/>
+  <line x1="52" y1="44" x2="76" y2="44" stroke="#ffffff" strokeWidth="3" opacity="0.4" strokeLinecap="round"/>
+  <line x1="52" y1="56" x2="76" y2="56" stroke="#ffffff" strokeWidth="3" opacity="0.4" strokeLinecap="round"/>
+  <path d="M 64 72 L 64 88 M 48 88 L 80 88 M 56 88 L 56 104 M 72 104 L 56 104"
+        stroke="url(#micGrad128)"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"/>
+  <path d="M 88 44 Q 96 44 96 52 Q 96 60 88 60"
+        stroke="url(#micGrad128)"
+        strokeWidth="4"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"/>
+  <path d="M 40 44 Q 32 44 32 52 Q 32 60 40 60"
+        stroke="url(#micGrad128)"
+        strokeWidth="4"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"/>
+</svg>
