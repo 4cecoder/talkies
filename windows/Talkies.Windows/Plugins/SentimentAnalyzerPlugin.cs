@@ -17,7 +17,8 @@ namespace Talkies.Windows.Plugins
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
         private string _endpoint = "http://127.0.0.1:1234";
 
-        private const string DefaultModel = "smollm2-1.7b-instruct-uncensored";
+        // Default model name updated to match SentimentSettings/AppSettings.cs for consistency.
+        private const string DefaultModel = "lm-kit.sentiment_analysis-tinyllama-1.1b-1t-openorca-en";
         private const string SystemPrompt = """
 You are a strict sentiment classifier for short messages and transcripts. Follow these rules exactly:
 
