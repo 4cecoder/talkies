@@ -211,6 +211,36 @@ namespace Talkies.Windows.Services
         {
             try
             {
+                if (!TrySetClipboardText(text))
+                {
+                    return false;
+                }
+
+                // Small pause to reduce clipboard race conditions
+                Thread.Sleep(50);
+                return PasteClipboard();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"TextInjector: Clipboard paste fallback failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static string GetWindowTitle(IntPtr hwnd)
+        {
+            var sb = new StringBuilder(256);
+            var length = GetWindowText(hwnd, sb, sb.Capacity);
+            return length > 0 ? sb.ToString() : "<unknown>";
+        }
+
+        /// <summary>
+        /// Attempts to set clipboard text with retry logic for busy clipboard scenarios.
+        /// </summary>
+        public static bool TrySetClipboardText(string text, int retries = 5, int delayMs = 100)
+        {
+            for (var attempt = 1; attempt <= retries; attempt++)
+            {
                 Exception? clipboardError = null;
                 void SetClipboard()
                 {
@@ -237,25 +267,17 @@ namespace Talkies.Windows.Services
                     t.Join();
                 }
 
-                if (clipboardError != null)
+                if (clipboardError == null)
                 {
-                    throw clipboardError;
+                    return true;
                 }
 
-                return PasteClipboard();
+                Logger.Warn($"TextInjector: Clipboard busy (attempt {attempt}/{retries}) - {clipboardError.Message}");
+                Thread.Sleep(delayMs);
             }
-            catch (Exception ex)
-            {
-                Logger.Error($"TextInjector: Clipboard paste fallback failed: {ex.Message}");
-                return false;
-            }
-        }
 
-        private static string GetWindowTitle(IntPtr hwnd)
-        {
-            var sb = new StringBuilder(256);
-            var length = GetWindowText(hwnd, sb, sb.Capacity);
-            return length > 0 ? sb.ToString() : "<unknown>";
+            Logger.Error("TextInjector: Clipboard set failed after retries");
+            return false;
         }
 
         [DllImport("user32.dll", SetLastError = true)]
