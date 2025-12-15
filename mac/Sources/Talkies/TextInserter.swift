@@ -7,7 +7,7 @@ class TextInserter {
     
     // Track original clipboard state and pending operations
     private var originalClipboardContent: String?
-    private var pendingOperations: [UUID] = []
+    private var pendingOperations: Set<UUID> = []
 
     private init() {}
 
@@ -23,7 +23,7 @@ class TextInserter {
         
         // Create unique operation identifier
         let operationId = UUID()
-        pendingOperations.append(operationId)
+        pendingOperations.insert(operationId)
         
         // Copy text to clipboard
         pasteboard.clearContents()
@@ -35,7 +35,7 @@ class TextInserter {
             self.simulatePaste()
             
             // Remove this operation from pending using unique ID
-            self.pendingOperations.removeAll { $0 == operationId }
+            self.pendingOperations.remove(operationId)
             
             // If no more operations are pending, restore the original clipboard
             if self.pendingOperations.isEmpty {
