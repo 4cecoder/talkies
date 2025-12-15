@@ -1,5 +1,32 @@
 import SwiftUI
 import Foundation
+import AppKit
+
+// MARK: - Placeholder Types for Diffusion (actual implementation requires DiffusionKit)
+struct DiffusionConfiguration {
+    let prompt: String
+    let negativePrompt: String?
+    let guidanceScale: Float
+    let numInferenceSteps: Int
+    let width: Int
+    let height: Int
+    let seed: UInt32?
+}
+
+class StableDiffusionPipeline {
+    let modelName: String
+
+    init(modelName: String) async throws {
+        self.modelName = modelName
+    }
+
+    func generate(configuration: DiffusionConfiguration) async throws -> NSImage {
+        // Placeholder - actual implementation would use DiffusionKit
+        throw NSError(domain: "MLXImageGenPlugin", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Image generation requires DiffusionKit models. Please install models to use this feature."
+        ])
+    }
+}
 
 // MARK: - MLX Image Generation Plugin
 // NOTE: MLX dependency temporarily removed - image generation is currently a placeholder
