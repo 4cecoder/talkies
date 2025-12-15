@@ -973,7 +973,7 @@ namespace Talkies.Windows.ViewModels
             }
             catch (Exception ex)
             {
-                Logger.Warn($"Failed to load prompt from resource '{resourceName}': {ex.Message}");
+                Logger.Warn($"Failed to load prompt from resource '{resourceName}': {ex}");
             }
             
             return fallback;
