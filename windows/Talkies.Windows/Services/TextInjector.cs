@@ -243,7 +243,7 @@ namespace Talkies.Windows.Services
                 {
                     try
                     {
-                        System.Windows.Clipboard.SetText(text);
+                        Clipboard.SetText(text);
                     }
                     catch (Exception ex)
                     {
