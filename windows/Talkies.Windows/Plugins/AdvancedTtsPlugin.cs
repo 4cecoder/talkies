@@ -96,12 +96,12 @@ namespace Talkies.Windows.Plugins
             var pitchPercent = Math.Clamp(pitch * 5, -100, 100);      // -20..20 -> -100%..100%
             var safeVolume = Math.Clamp(volume, 0, 100);
 
-            string Escape(string input) => System.Security.SecurityElement.Escape(input) ?? string.Empty;
+            string EscapeXml(string input) => System.Security.SecurityElement.Escape(input) ?? string.Empty;
 
             return $"""
 <speak version="1.0" xml:lang="en-US">
   <prosody rate="{ratePercent}%" pitch="{pitchPercent}%" volume="{safeVolume}%">
-    {Escape(text)}
+    {EscapeXml(text)}
   </prosody>
 </speak>
 """;
