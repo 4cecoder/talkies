@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -36,6 +36,7 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<Plugins.LlmModel> AvailableLlmModels { get; } = new();
         public ObservableCollection<string> EnhancementModes { get; } = new();
         public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
+        public ObservableCollection<string> ErrorMessages { get; } = new();
 
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
@@ -74,10 +75,10 @@ namespace Talkies.Windows.ViewModels
         private bool _insertEnabled;
 
         public string SelectedLlmProvider { get => _selectedLlmProvider; set { _selectedLlmProvider = value; OnPropertyChanged(); OnLlmProviderChanged(); } }
-        private string _selectedLlmProvider = "Ollama";
+        private string _selectedLlmProvider = "LM Studio";
 
         public string LlmEndpoint { get => _llmEndpoint; set { _llmEndpoint = value; OnPropertyChanged(); } }
-        private string _llmEndpoint = "http://localhost:11434";
+        private string _llmEndpoint = "http://127.0.0.1:1234";
 
         public Plugins.LlmModel? SelectedLlmModel
         {
@@ -128,6 +129,7 @@ namespace Talkies.Windows.ViewModels
         private bool _isTranscriptionIndeterminate;
         public double TranscriptionProgress { get => _transcriptionProgress; set { _transcriptionProgress = value; OnPropertyChanged(); } }
         private double _transcriptionProgress;
+        public bool HasErrors => ErrorMessages.Count > 0;
 
         public bool ShowOverlay { get => _showOverlay; set { _showOverlay = value; OnPropertyChanged(); } }
         private bool _showOverlay;
@@ -150,6 +152,7 @@ namespace Talkies.Windows.ViewModels
         public ICommand ExportSrtCommand { get; }
         public ICommand ExportTxtCommand { get; }
         public ICommand SavePromptCommand { get; }
+        public ICommand ShowPluginsCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -158,6 +161,7 @@ namespace Talkies.Windows.ViewModels
         public event Action<string>? OnOverlayUpdate;
         public event Action? OnOverlayHide;
         private bool _autoPastePending;
+        private const string DefaultLlmModel = "openai/gpt-oss-20b";
 
         public MainViewModel()
             : this(new AudioRecorder(), new WhisperNetTranscriptionService(), new AudioDeviceService())
@@ -178,6 +182,7 @@ namespace Talkies.Windows.ViewModels
             ExportSrtCommand = new RelayCommand(_ => ExportSrt(), _ => CanSave);
             ExportTxtCommand = new RelayCommand(_ => ExportTxt(), _ => CanSave);
             SavePromptCommand = new RelayCommand(_ => SaveCustomPrompt());
+            ShowPluginsCommand = new RelayCommand(_ => ShowPluginsWindow());
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
@@ -191,12 +196,42 @@ namespace Talkies.Windows.ViewModels
             };
 
             _timer.Tick += (_, _) => UpdateElapsed();
+            ErrorMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasErrors));
 
             LoadSettings();
             LoadDevices();
             InitializeLlmProvider();
             RefreshEnhancementModes();
             DetectBackend();
+            InitializePlugins();
+            AutoFetchLlmModelsAsync();
+        }
+
+        private void InitializePlugins()
+        {
+            // Initialize TTS plugin if not already set
+            PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin() { IsEnabled = true };
+
+            // Initialize text enhancer plugins
+            if (PluginManager.TextEnhancer == null)
+            {
+                PluginManager.TextEnhancer = new SentimentAnalyzerPlugin() { IsEnabled = true };
+            }
+        }
+
+        private async void AutoFetchLlmModelsAsync()
+        {
+            try
+            {
+                if (AvailableLlmModels.Count == 0)
+                {
+                    await FetchLlmModelsAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Auto-fetch LLM models failed: {ex.Message}");
+            }
         }
 
         public void StartHotkey() => _hotkey.Start();
@@ -277,7 +312,7 @@ namespace Talkies.Windows.ViewModels
         private void InitializeLlmProvider()
         {
             // Create initial LLM provider
-            _currentLlmProvider = new OllamaEnhancer(LlmEndpoint, "llama2");
+            _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = "openai/gpt-oss-20b" };
         }
 
         private async System.Threading.Tasks.Task FetchLlmModelsAsync()
@@ -302,7 +337,7 @@ namespace Talkies.Windows.ViewModels
                 }
                 else if (SelectedLlmProvider == "LM Studio")
                 {
-                    _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint };
+                    _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = _settings.SelectedLlmModelName ?? DefaultLlmModel };
                 }
 
                 if (_currentLlmProvider == null)
@@ -337,10 +372,12 @@ namespace Talkies.Windows.ViewModels
                     AvailableLlmModels.Add(model);
                 }
 
-                // Auto-select first model
+                // Auto-select remembered model or first available
                 if (AvailableLlmModels.Count > 0)
                 {
-                    SelectedLlmModel = AvailableLlmModels[0];
+                    var remembered = _settings.SelectedLlmModelName;
+                    var match = AvailableLlmModels.FirstOrDefault(m => m.Name == remembered);
+                    SelectedLlmModel = match ?? AvailableLlmModels[0];
                     _currentLlmProvider.SelectedModel = SelectedLlmModel.Name;
                     Logger.Success($"Fetched {AvailableLlmModels.Count} models from {SelectedLlmProvider}");
                 }
@@ -513,6 +550,44 @@ namespace Talkies.Windows.ViewModels
                     catch (Exception ex)
                     {
                         Logger.OperationFailed("Text enhancement", ex.Message);
+                        AddUserError("Text enhancement failed. Please retry or disable LLM enhancement.");
+                    }
+                }
+
+                // Apply text enhancer plugins (sentiment analysis, etc.)
+                if (PluginManager.TextEnhancer != null && PluginManager.TextEnhancer.IsEnabled)
+                {
+                    try
+                    {
+                        Logger.OperationStart("Text enhancement with plugins");
+                        var enhancedWithPlugins = await PluginManager.TextEnhancer.EnhanceAsync(finalText);
+                        if (!string.IsNullOrWhiteSpace(enhancedWithPlugins) && enhancedWithPlugins != finalText)
+                        {
+                            finalText = enhancedWithPlugins;
+
+                            // Update segments with plugin-enhanced text
+                            var start = finalSegments.FirstOrDefault()?.Start ?? 0;
+                            var end = finalSegments.LastOrDefault()?.End ?? 0;
+                            if (end <= start) end = Math.Max(1, end + 1);
+
+                            finalSegments = new List<TranscriptSegment>
+                            {
+                                new TranscriptSegment
+                                {
+                                    Start = start,
+                                    End = end,
+                                    Timestamp = ToTimestamp(start),
+                                    Text = enhancedWithPlugins
+                                }
+                            };
+                            finalVtt = TranscriptExporter.ExportToVtt(finalSegments);
+                        }
+                        Logger.OperationComplete("Text enhancement with plugins");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"Plugin text enhancement failed: {ex.Message}");
+                        AddUserError("A text enhancement plugin encountered an error and was skipped.");
                     }
                 }
 
@@ -547,8 +622,16 @@ namespace Talkies.Windows.ViewModels
                     try
                     {
                         Logger.OperationStart("Text-to-speech");
-                        var tts = PluginManager.TtsSynthesizer ?? (PluginManager.TtsSynthesizer = new SystemSpeechTtsPlugin());
-                        if (tts.IsEnabled)
+                        var tts = PluginManager.TtsSynthesizer ?? (PluginManager.TtsSynthesizer = new AdvancedTtsPlugin());
+
+                        // If the configured plugin is disabled, fall back to basic System.Speech so the checkbox still works
+                        if (!tts.IsEnabled)
+                        {
+                            var fallbackTts = new SystemSpeechTtsPlugin();
+                            await fallbackTts.SynthesizeAndPlayAsync(finalText);
+                            Logger.OperationComplete("Text-to-speech (fallback)");
+                        }
+                        else
                         {
                             await tts.SynthesizeAndPlayAsync(finalText);
                             Logger.OperationComplete("Text-to-speech");
@@ -557,6 +640,7 @@ namespace Talkies.Windows.ViewModels
                     catch (Exception ex)
                     {
                         Logger.OperationFailed("Text-to-speech", ex.Message);
+                        AddUserError("Speaking the response failed. Please check your TTS settings.");
                     }
                 }
 
@@ -586,15 +670,22 @@ namespace Talkies.Windows.ViewModels
                     try
                     {
                         Logger.OperationStart("Auto-paste (clipboard + Ctrl+V)");
-                        await dispatcher.InvokeAsync(() => System.Windows.Clipboard.SetText(finalText));
-                        var pasted = TextInjector.PasteClipboard();
-                        if (pasted)
+                        var set = TextInjector.TrySetClipboardText(finalText);
+                        if (set)
                         {
-                            Logger.OperationComplete("Auto-paste");
+                            var pasted = TextInjector.PasteClipboard();
+                            if (pasted)
+                            {
+                                Logger.OperationComplete("Auto-paste");
+                            }
+                            else
+                            {
+                                Logger.OperationFailed("Auto-paste", "Ctrl+V failed");
+                            }
                         }
                         else
                         {
-                            Logger.OperationFailed("Auto-paste", "Ctrl+V failed");
+                            Logger.OperationFailed("Auto-paste", "Clipboard busy");
                         }
                         OnOverlayUpdate?.Invoke("Pasted transcript");
                         OnOverlayHide?.Invoke();
@@ -615,6 +706,7 @@ namespace Talkies.Windows.ViewModels
             {
                 HotkeyStatus = $"Error: {ex.Message}";
                 Logger.OperationFailed("Transcription", ex.Message);
+                AddUserError("Transcription failed. Please try again or check your audio setup.");
             }
             finally
             {
@@ -732,6 +824,7 @@ namespace Talkies.Windows.ViewModels
             OnPropertyChanged(nameof(WordCount));
             OnPropertyChanged(nameof(WordsPerMinute));
             OnPropertyChanged(nameof(CanSave));
+            ErrorMessages.Clear();
         }
 
         public void Dispose()
@@ -781,9 +874,33 @@ namespace Talkies.Windows.ViewModels
             RefreshEnhancementModes();
 
             // Load LLM provider settings
-            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "Ollama";
-            LlmEndpoint = _settings.LlmEndpoint ?? "http://localhost:11434";
+            if (string.IsNullOrWhiteSpace(_settings.SelectedLlmModelName))
+            {
+                _settings.SelectedLlmModelName = DefaultLlmModel;
+            }
+
+            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "LM Studio";
+            LlmEndpoint = _settings.LlmEndpoint ?? "http://127.0.0.1:1234";
             SelectedEnhancementMode = _settings.SelectedEnhancementMode ?? "Grammar";
+
+            // Load Advanced TTS settings
+            _settings.AdvancedTts ??= new AdvancedTtsSettings();
+            var adv = PluginManager.TtsSynthesizer as AdvancedTtsPlugin 
+                      ?? (AdvancedTtsPlugin)(PluginManager.TtsSynthesizer = new AdvancedTtsPlugin());
+            adv.IsEnabled = _settings.AdvancedTts.IsEnabled;
+            adv.SelectedVoice = _settings.AdvancedTts.SelectedVoice;
+            adv.Rate = _settings.AdvancedTts.Rate;
+            adv.Pitch = _settings.AdvancedTts.Pitch;
+            adv.Volume = _settings.AdvancedTts.Volume;
+
+            // Load Sentiment plugin settings
+            _settings.Sentiment ??= new SentimentSettings();
+            if (PluginManager.TextEnhancer is SentimentAnalyzerPlugin sentiment)
+            {
+                sentiment.IsEnabled = _settings.Sentiment.IsEnabled;
+                sentiment.Endpoint = _settings.Sentiment.Endpoint;
+                sentiment.Model = _settings.Sentiment.Model;
+            }
 
             if (!string.IsNullOrWhiteSpace(_settings.MicrophoneId) && Microphones.Count > 0)
             {
@@ -811,6 +928,26 @@ namespace Talkies.Windows.ViewModels
             _settings.SelectedLlmModelName = SelectedLlmModel?.Name;
             _settings.SelectedEnhancementMode = SelectedEnhancementMode;
             _settings.CustomPrompts = CustomPrompts.ToList();
+
+            // Persist Advanced TTS plugin settings
+            if (PluginManager.TtsSynthesizer is AdvancedTtsPlugin adv)
+            {
+                _settings.AdvancedTts ??= new AdvancedTtsSettings();
+                _settings.AdvancedTts.IsEnabled = adv.IsEnabled;
+                _settings.AdvancedTts.SelectedVoice = adv.SelectedVoice;
+                _settings.AdvancedTts.Rate = adv.Rate;
+                _settings.AdvancedTts.Pitch = adv.Pitch;
+                _settings.AdvancedTts.Volume = adv.Volume;
+            }
+
+            // Persist Sentiment plugin settings
+            if (PluginManager.TextEnhancer is SentimentAnalyzerPlugin sentiment)
+            {
+                _settings.Sentiment ??= new SentimentSettings();
+                _settings.Sentiment.IsEnabled = sentiment.IsEnabled;
+                _settings.Sentiment.Endpoint = sentiment.Endpoint;
+                _settings.Sentiment.Model = sentiment.Model;
+            }
             _settingsService.Save(_settings);
         }
 
@@ -909,6 +1046,20 @@ namespace Talkies.Windows.ViewModels
             OnPropertyChanged(nameof(CanSave));
         }
 
+        private void AddUserError(string message)
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            dispatcher.Invoke(() =>
+            {
+                ErrorMessages.Insert(0, message);
+                while (ErrorMessages.Count > 5)
+                {
+                    ErrorMessages.RemoveAt(ErrorMessages.Count - 1);
+                }
+                OnPropertyChanged(nameof(HasErrors));
+            });
+        }
+
         protected void OnPropertyChanged([CallerMemberName] string? name = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -936,6 +1087,12 @@ namespace Talkies.Windows.ViewModels
             {
                 SaveSettings();
             }
+        }
+
+        private void ShowPluginsWindow()
+        {
+            var pluginsWindow = new Views.PluginsManagementWindow();
+            pluginsWindow.ShowDialog();
         }
 
         private static string ToTimestamp(double seconds)

@@ -90,6 +90,8 @@
                         <TextBlock Text="Additional Features" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
                         <CheckBox Content="Speak response (TTS)" IsChecked="{Binding TtsEnabled}" Margin="0,6,0,6" FontSize="11"/>
                         <CheckBox Content="Insert text after transcription" IsChecked="{Binding InsertEnabled}" Margin="0,0,0,0" FontSize="11"/>
+
+                        <Button Content="Manage Plugins" Command="{Binding ShowPluginsCommand}" Height="32" Margin="0,8,0,0"/>
                     </StackPanel>
                 </Border>
 
@@ -117,29 +119,50 @@
 
                 <!-- Transcript Display -->
                 <Border Grid.Row="1" Margin="12,8,12,12" Background="#252525" CornerRadius="6" BorderThickness="1" BorderBrush="#333333" Padding="0">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="8">
-                        <ItemsControl ItemsSource="{Binding Segments}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Vertical" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#2d2d2d" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{Binding Timestamp}" FontFamily="Consolas" Foreground="#66b3ff" FontSize="11" Margin="0,0,12,0" MinWidth="90" VerticalAlignment="Top"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18" Foreground="White" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="8">
+                            <ItemsControl ItemsSource="{Binding Segments}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#2d2d2d" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Timestamp}" FontFamily="Consolas" Foreground="#66b3ff" FontSize="11" Margin="0,0,12,0" MinWidth="90" VerticalAlignment="Top"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18" Foreground="White" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <Border Grid.Row="1" Background="#2d1f1f" BorderBrush="#ff4d4f" BorderThickness="1" CornerRadius="0,0,6,6" Padding="10"
+                                Visibility="{Binding HasErrors, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Issues" FontWeight="SemiBold" FontSize="12" Foreground="#ffb3b3" Margin="0,0,0,6"/>
+                                <ItemsControl ItemsSource="{Binding ErrorMessages}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#ffd6d6" FontSize="11" Margin="0,0,0,4"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </Border>
 
                 <!-- Footer: status + stats + hotkey spanning full width -->
