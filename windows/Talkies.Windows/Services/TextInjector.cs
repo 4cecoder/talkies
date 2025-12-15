@@ -233,7 +233,7 @@ namespace Talkies.Windows.Services
 
         /// <summary>
         /// Sets clipboard text on an STA thread when no dispatcher is available.
-        /// Uses Task-based approach with proper STA configuration.
+        /// Uses TaskCompletionSource for thread synchronization with proper STA configuration.
         /// </summary>
         private static void SetClipboardSta(string text)
         {
@@ -255,7 +255,12 @@ namespace Talkies.Windows.Services
             };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
-            tcs.Task.Wait();
+            
+            // Wait with timeout to prevent indefinite blocking
+            if (!tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Clipboard operation timed out after 5 seconds");
+            }
         }
 
         private static string GetWindowTitle(IntPtr hwnd)
