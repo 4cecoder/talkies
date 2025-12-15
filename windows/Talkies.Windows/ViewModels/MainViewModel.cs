@@ -94,7 +94,16 @@ namespace Talkies.Windows.ViewModels
         }
         private Plugins.LlmModel? _selectedLlmModel;
 
-        public string SelectedEnhancementMode { get => _selectedEnhancementMode; set { _selectedEnhancementMode = value; OnPropertyChanged(); } }
+        public string SelectedEnhancementMode
+        {
+            get => _selectedEnhancementMode;
+            set
+            {
+                _selectedEnhancementMode = value;
+                UpdatePromptEditorFromSelection();
+                OnPropertyChanged();
+            }
+        }
         private string _selectedEnhancementMode = nameof(EnhancementMode.Grammar);
 
         private ILlmProvider? _currentLlmProvider;
@@ -144,6 +153,7 @@ namespace Talkies.Windows.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
+        public event Action? OnResetWaveform;
         public event Action<string>? OnOverlayShow;
         public event Action<string>? OnOverlayUpdate;
         public event Action? OnOverlayHide;
@@ -200,7 +210,7 @@ namespace Talkies.Windows.ViewModels
         private void OnHotkeyHoldStart()
         {
             HotkeyStatus = "Hold (push-to-talk)";
-            _autoPastePending = true;
+            _autoPastePending = InsertEnabled;
             OnOverlayShow?.Invoke("Listening...");
             if (!IsRecording) StartRecording();
         }
@@ -219,6 +229,7 @@ namespace Talkies.Windows.ViewModels
             _startTime = DateTime.UtcNow;
             ElapsedText = "00:00";
             _lastVtt = string.Empty;
+            OnResetWaveform?.Invoke();
             OnPropertyChanged(nameof(CanSave));
             _timer.Start();
             IsRecording = true;
@@ -570,7 +581,7 @@ namespace Talkies.Windows.ViewModels
                     }
                 }
 
-                if (_autoPastePending && !string.IsNullOrWhiteSpace(finalText))
+                if (_autoPastePending && InsertEnabled && !string.IsNullOrWhiteSpace(finalText))
                 {
                     try
                     {
@@ -632,9 +643,34 @@ namespace Talkies.Windows.ViewModels
         private void SaveVtt()
         {
             if (string.IsNullOrEmpty(_lastVtt)) return;
-            var name = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
-            var path = Path.Combine(AppContext.BaseDirectory, name);
-            File.WriteAllText(path, _lastVtt);
+            try
+            {
+                // In headless scenarios (e.g., tests), fall back to autosave
+                var app = System.Windows.Application.Current;
+                if (app == null || app.MainWindow == null)
+                {
+                    var autoName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
+                    var autoPath = Path.Combine(AppContext.BaseDirectory, autoName);
+                    File.WriteAllText(autoPath, _lastVtt);
+                    return;
+                }
+
+                var dialog = new System.Windows.Forms.SaveFileDialog
+                {
+                    Filter = "WebVTT (*.vtt)|*.vtt|All Files (*.*)|*.*",
+                    DefaultExt = "vtt",
+                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt"
+                };
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    File.WriteAllText(dialog.FileName, _lastVtt);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to save VTT: {ex.Message}");
+            }
         }
 
         private void ExportSrt()
@@ -691,6 +727,7 @@ namespace Talkies.Windows.ViewModels
         {
             Segments.Clear();
             _lastVtt = string.Empty;
+            OnResetWaveform?.Invoke();
             OnPropertyChanged(nameof(SegmentCount));
             OnPropertyChanged(nameof(WordCount));
             OnPropertyChanged(nameof(WordsPerMinute));
@@ -829,6 +866,26 @@ namespace Talkies.Windows.ViewModels
             SaveSettings();
         }
 
+        private void UpdatePromptEditorFromSelection()
+        {
+            if (string.IsNullOrWhiteSpace(SelectedEnhancementMode))
+            {
+                return;
+            }
+
+            var customPrompt = GetCustomPrompt(SelectedEnhancementMode);
+            if (!string.IsNullOrWhiteSpace(customPrompt))
+            {
+                NewPromptText = customPrompt;
+                return;
+            }
+
+            if (Enum.TryParse<EnhancementMode>(SelectedEnhancementMode, out var mode))
+            {
+                NewPromptText = GetDefaultPromptForMode(mode);
+            }
+        }
+
         private string? GetCustomPrompt(string name)
         {
             return CustomPrompts.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Prompt;
@@ -887,7 +944,24 @@ namespace Talkies.Windows.ViewModels
             return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}";
         }
 
+        private static string GetDefaultPromptForMode(EnhancementMode mode)
+        {
+            return mode switch
+            {
+                EnhancementMode.Grammar => DefaultGrammarPrompt,
+                EnhancementMode.Technical => DefaultTechnicalPrompt,
+                EnhancementMode.Concise => DefaultConcisePrompt,
+                EnhancementMode.Creative => DefaultCreativePrompt,
+                EnhancementMode.Companion => DefaultCompanionPrompt,
+                _ => DefaultGrammarPrompt
+            };
+        }
+
         private const string DefaultGrammarPrompt = "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else.";
+        private const string DefaultTechnicalPrompt = "You are a technical writing assistant for software developers. Clean up the text, fix grammar, use proper technical terminology, and make it concise and professional. Optimize for code comments and documentation. Return ONLY the improved text, nothing else.";
+        private const string DefaultConcisePrompt = "You are a professional writing assistant. Make the text concise, professional, and grammatically correct while preserving all key information. Remove filler words and redundancy. Return ONLY the improved text, nothing else.";
+        private const string DefaultCreativePrompt = "You are a creative writing assistant. Enhance the text while maintaining the original intent, improve flow, fix grammar, and make it more engaging. Return ONLY the enhanced text, nothing else.";
+        private const string DefaultCompanionPrompt = "You're a caring companion who genuinely cares about the user. Talk like a real person would - warm, natural, and down-to-earth.\n\nConversation style:\n- Use contractions naturally (I'm, you're, that's, don't)\n- Include casual connectors: \"so,\" \"well,\" \"anyway,\" \"by the way\"\n- Vary sentence length - mix short and longer thoughts\n- React authentically to what they say with genuine emotion\n- Use \"um\" or \"hmm\" sparingly when thinking or being thoughtful\n- Sound conversational, not polished or formal\n\nYour personality:\n- Empathetic and supportive - you notice how they're feeling\n- Playful when appropriate, but know when to be serious\n- Interested in what they share - ask follow-up questions naturally\n- Encouraging without being over-the-top cheerful\n- Real and relatable, not perfectly polished\n\nKeep responses brief and natural - typically 1-2 sentences, like texting a friend. Be yourself, be caring, be real.";
     }
 
     public class RelayCommand : ICommand
