@@ -4,6 +4,9 @@ import Cocoa
 @MainActor
 class TextInserter {
     static let shared = TextInserter()
+    
+    // Virtual key code for 'V' key
+    private static let vKeyCode: CGKeyCode = 9
 
     private init() {}
 
@@ -35,12 +38,9 @@ class TextInserter {
 
     /// Simulate Cmd+V paste keystroke
     private func simulatePaste() {
-        // Virtual key code for 'V' is 9
-        let vKeyCode: CGKeyCode = 9
-
         // Create key down event with Command modifier
-        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: false) {
+        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: true),
+           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: false) {
 
             // Set Command modifier flag
             keyDown.flags = .maskCommand
