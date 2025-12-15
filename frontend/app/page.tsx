@@ -76,45 +76,28 @@ export default function Home() {
             Voice-powered writing assistant that helps you capture ideas instantly
           </p>
 
-          {/* Download Buttons with Premium Gradients */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
+          {/* Download Button - macOS */}
+          <div className="flex flex-col gap-6 justify-center items-center mb-8">
             <button
               onClick={() => setCheckoutModalOpen(true)}
-              className="group relative px-8 py-4 rounded-full font-semibold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
+              className="group relative px-10 py-5 rounded-full font-semibold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 animate-gradient-fast"></div>
               <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 opacity-0 group-hover:opacity-100 blur-xl transition-opacity"></div>
-              <span className="relative text-white font-bold flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                Download for Mac
+              <span className="relative text-white font-bold flex items-center gap-2 text-lg">
+                <Download className="w-6 h-6" />
+                Download for macOS
               </span>
             </button>
-            <button
-              onClick={() => setCheckoutModalOpen(true)}
-              className="group relative px-8 py-4 rounded-full font-semibold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/50"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-cyan-600 to-indigo-600 animate-gradient-fast"></div>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-cyan-600 to-indigo-600 opacity-0 group-hover:opacity-100 blur-xl transition-opacity"></div>
-              <span className="relative text-white font-bold flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                Download for Windows
+            <div className="flex items-center gap-2 text-sm text-neutral-500">
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                Requires macOS 15+ and Apple Silicon
               </span>
-            </button>
-            <button
-              onClick={() => setCheckoutModalOpen(true)}
-              className="group relative px-8 py-4 rounded-full font-semibold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/50"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 animate-gradient-fast"></div>
-              <div className="absolute inset-0 bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 opacity-0 group-hover:opacity-100 blur-xl transition-opacity"></div>
-              <span className="relative text-white font-bold flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                Download for Linux
-              </span>
-            </button>
+            </div>
           </div>
 
           <div className="text-sm text-neutral-400">
-            Also available on iPhone • No signup required
+            Windows & Linux coming soon • No signup required
           </div>
         </div>
       </section>

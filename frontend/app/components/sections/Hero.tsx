@@ -28,28 +28,23 @@ export function Hero() {
 
         <p className="text-xl md:text-2xl text-neutral-300 mb-12 max-w-2xl mx-auto">
           Transform your voice into text with lightning-fast accuracy.
-          Available on all your devices.
+          Native macOS app optimized for Apple Silicon.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
-          <Button variant="gradient" size="lg" className="gap-2 min-w-[200px]">
-            <Download size={20} aria-hidden="true" />
-            Download for Mac
+        <div className="flex flex-col gap-6 justify-center items-center mb-8">
+          <Button variant="gradient" size="lg" className="gap-2 min-w-[250px] text-lg py-6">
+            <Download size={24} aria-hidden="true" />
+            Download for macOS
           </Button>
-          <Button variant="secondary" size="lg" className="gap-2 min-w-[200px]">
-            <Download size={20} aria-hidden="true" />
-            Download for Windows
-          </Button>
-          <Button variant="secondary" size="lg" className="gap-2 min-w-[200px]">
-            <Download size={20} aria-hidden="true" />
-            Download for Linux
-          </Button>
+          <p className="text-sm text-neutral-500">
+            <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
+              Requires macOS 15+ and Apple Silicon
+            </span>
+          </p>
         </div>
 
         <p className="text-sm text-neutral-400">
-          Also available on{' '}
-          <span className="text-neutral-300 font-medium">iPhone</span> •{' '}
-          No signup required
+          Windows & Linux coming soon • No signup required
         </p>
       </div>
     </section>
