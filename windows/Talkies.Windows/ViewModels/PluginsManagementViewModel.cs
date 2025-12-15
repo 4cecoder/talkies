@@ -116,12 +116,10 @@ namespace Talkies.Windows.ViewModels
             // Set defaults based on plugin type
             if (plugin is ITtsSynthesizer)
             {
-                Description = "Text-to-speech synthesis plugin";
                 Icon = "TTS";
 
                 if (plugin is AdvancedTtsPlugin)
                 {
-                    Description = "Advanced Text-to-Speech with voice selection and audio controls";
                     Icon = "TTS+";
 
                     // Initialize advanced controls
@@ -141,17 +139,14 @@ namespace Talkies.Windows.ViewModels
             {
                 if (enhancer is OllamaEnhancer)
                 {
-                    Description = "LLM-powered text enhancement with multiple modes";
                     Icon = "LLM";
                 }
                 else if (enhancer is SentimentAnalyzerPlugin)
                 {
-                    Description = "Analyzes emotional tone (requires LM Studio sentiment model)";
                     Icon = "SENT";
                 }
                 else
                 {
-                    Description = $"Text enhancement: {enhancer.GetType().Name}";
                     Icon = "TXT";
                 }
             }
