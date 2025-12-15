@@ -649,7 +649,7 @@ namespace Talkies.Windows.ViewModels
                 var app = System.Windows.Application.Current;
                 if (app == null || app.MainWindow == null)
                 {
-                    var autoName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
+                    var autoName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt";
                     var autoPath = Path.Combine(AppContext.BaseDirectory, autoName);
                     File.WriteAllText(autoPath, _lastVtt);
                     return;
@@ -659,7 +659,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "WebVTT (*.vtt)|*.vtt|All Files (*.*)|*.*",
                     DefaultExt = "vtt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -683,7 +683,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "SubRip (*.srt)|*.srt|All Files (*.*)|*.*",
                     DefaultExt = "srt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.srt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.srt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -708,7 +708,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "Text (*.txt)|*.txt|All Files (*.*)|*.*",
                     DefaultExt = "txt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.txt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
