@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Windows;
 
 namespace Talkies.Windows.Services
 {
@@ -34,20 +36,30 @@ namespace Talkies.Windows.Services
                     return false;
                 }
 
-                Logger.Info($"TextInjector: Injecting {text.Length} characters into active window");
+                var windowTitle = GetWindowTitle(foregroundWindow);
+                Logger.Info($"TextInjector: Injecting {text.Length} characters into active window '{windowTitle}'");
+
+                var sendFailed = false;
 
                 foreach (var ch in text)
                 {
                     if (!SendChar(ch))
                     {
                         Logger.Error($"TextInjector: Failed to send character '{ch}' (U+{(int)ch:X4})");
-                        return false;
+                        sendFailed = true;
+                        break;
                     }
 
                     if (delayMs > 0)
                     {
                         System.Threading.Thread.Sleep(delayMs);
                     }
+                }
+
+                if (sendFailed)
+                {
+                    Logger.Warn("TextInjector: SendInput failed, falling back to clipboard paste");
+                    return TryClipboardPaste(text);
                 }
 
                 Logger.Info("TextInjector: Text injection completed successfully");
@@ -193,6 +205,57 @@ namespace Talkies.Windows.Services
                 Logger.Error($"TextInjector: Exception in SendChar: {ex.Message}");
                 return false;
             }
+        }
+
+        private static bool TryClipboardPaste(string text)
+        {
+            try
+            {
+                Exception? clipboardError = null;
+                void SetClipboard()
+                {
+                    try
+                    {
+                        System.Windows.Clipboard.SetText(text);
+                    }
+                    catch (Exception ex)
+                    {
+                        clipboardError = ex;
+                    }
+                }
+
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null)
+                {
+                    dispatcher.Invoke(SetClipboard);
+                }
+                else
+                {
+                    var t = new Thread(SetClipboard);
+                    t.SetApartmentState(ApartmentState.STA);
+                    t.Start();
+                    t.Join();
+                }
+
+                if (clipboardError != null)
+                {
+                    throw clipboardError;
+                }
+
+                return PasteClipboard();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"TextInjector: Clipboard paste fallback failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static string GetWindowTitle(IntPtr hwnd)
+        {
+            var sb = new StringBuilder(256);
+            var length = GetWindowText(hwnd, sb, sb.Capacity);
+            return length > 0 ? sb.ToString() : "<unknown>";
         }
 
         [DllImport("user32.dll", SetLastError = true)]

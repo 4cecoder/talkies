@@ -129,6 +129,12 @@ namespace Talkies.Windows.Controls
             }
         }
 
+        public void Clear()
+        {
+            _audioLevels.Clear();
+            WaveformCanvas?.Children.Clear();
+        }
+
         private static LinearGradientBrush BuildGradient(Color top, Color bottom)
         {
             return new LinearGradientBrush
