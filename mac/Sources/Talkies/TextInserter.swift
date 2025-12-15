@@ -8,54 +8,48 @@ class TextInserter {
     // Track original clipboard state and pending operations
     private var originalClipboardContent: String?
     private var pendingOperations: [UUID] = []
-    // Serial queue to synchronize clipboard operations
-    private let clipboardQueue = DispatchQueue(label: "com.talkies.clipboard", qos: .userInitiated)
 
     private init() {}
 
     /// Insert text at the current cursor position using clipboard + paste
     /// This is more reliable than character-by-character typing which can cause reordering issues
     func insertTextAtCursor(_ text: String) {
-        clipboardQueue.sync {
-            let pasteboard = NSPasteboard.general
+        let pasteboard = NSPasteboard.general
+        
+        // Capture original clipboard content only on the first call
+        if pendingOperations.isEmpty {
+            originalClipboardContent = pasteboard.string(forType: .string)
+        }
+        
+        // Create unique operation identifier
+        let operationId = UUID()
+        pendingOperations.append(operationId)
+        
+        // Copy text to clipboard
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        
+        // Schedule paste operation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self else { return }
+            self.simulatePaste()
             
-            // Capture original clipboard content only on the first call
-            if pendingOperations.isEmpty {
-                originalClipboardContent = pasteboard.string(forType: .string)
+            // Remove this operation from pending using unique ID
+            if let index = self.pendingOperations.firstIndex(of: operationId) {
+                self.pendingOperations.remove(at: index)
             }
             
-            // Create unique operation identifier
-            let operationId = UUID()
-            pendingOperations.append(operationId)
-            
-            // Copy text to clipboard
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            
-            // Schedule paste operation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self.simulatePaste()
-                
-                // Remove this operation from pending using unique ID
-                self.clipboardQueue.sync {
-                    if let index = self.pendingOperations.firstIndex(of: operationId) {
-                        self.pendingOperations.remove(at: index)
-                    }
-                    
-                    // If no more operations are pending, restore the original clipboard
+            // If no more operations are pending, restore the original clipboard
+            if self.pendingOperations.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self = self else { return }
+                    // Double-check no new operations were added during the delay
                     if self.pendingOperations.isEmpty {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            self.clipboardQueue.sync {
-                                // Double-check no new operations were added during the delay
-                                if self.pendingOperations.isEmpty {
-                                    if let original = self.originalClipboardContent {
-                                        pasteboard.clearContents()
-                                        pasteboard.setString(original, forType: .string)
-                                    }
-                                    self.originalClipboardContent = nil
-                                }
-                            }
+                        if let original = self.originalClipboardContent {
+                            pasteboard.clearContents()
+                            pasteboard.setString(original, forType: .string)
                         }
+                        self.originalClipboardContent = nil
                     }
                 }
             }
