@@ -649,7 +649,7 @@ namespace Talkies.Windows.ViewModels
                 var app = System.Windows.Application.Current;
                 if (app == null || app.MainWindow == null)
                 {
-                    var autoName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
+                    var autoName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt";
                     var autoPath = Path.Combine(AppContext.BaseDirectory, autoName);
                     File.WriteAllText(autoPath, _lastVtt);
                     return;
@@ -659,7 +659,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "WebVTT (*.vtt)|*.vtt|All Files (*.*)|*.*",
                     DefaultExt = "vtt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -957,11 +957,53 @@ namespace Talkies.Windows.ViewModels
             };
         }
 
-        private const string DefaultGrammarPrompt = "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else.";
-        private const string DefaultTechnicalPrompt = "You are a technical writing assistant for software developers. Clean up the text, fix grammar, use proper technical terminology, and make it concise and professional. Optimize for code comments and documentation. Return ONLY the improved text, nothing else.";
-        private const string DefaultConcisePrompt = "You are a professional writing assistant. Make the text concise, professional, and grammatically correct while preserving all key information. Remove filler words and redundancy. Return ONLY the improved text, nothing else.";
-        private const string DefaultCreativePrompt = "You are a creative writing assistant. Enhance the text while maintaining the original intent, improve flow, fix grammar, and make it more engaging. Return ONLY the enhanced text, nothing else.";
-        private const string DefaultCompanionPrompt = "You're a caring companion who genuinely cares about the user. Talk like a real person would - warm, natural, and down-to-earth.\n\nConversation style:\n- Use contractions naturally (I'm, you're, that's, don't)\n- Include casual connectors: \"so,\" \"well,\" \"anyway,\" \"by the way\"\n- Vary sentence length - mix short and longer thoughts\n- React authentically to what they say with genuine emotion\n- Use \"um\" or \"hmm\" sparingly when thinking or being thoughtful\n- Sound conversational, not polished or formal\n\nYour personality:\n- Empathetic and supportive - you notice how they're feeling\n- Playful when appropriate, but know when to be serious\n- Interested in what they share - ask follow-up questions naturally\n- Encouraging without being over-the-top cheerful\n- Real and relatable, not perfectly polished\n\nKeep responses brief and natural - typically 1-2 sentences, like texting a friend. Be yourself, be caring, be real.";
+        private static string LoadPromptFromResource(string resourceName, string fallback)
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourcePath = $"Talkies.Windows.Resources.Prompts.{resourceName}.txt";
+                
+                using var stream = assembly.GetManifestResourceStream(resourcePath);
+                if (stream != null)
+                {
+                    using var reader = new StreamReader(stream);
+                    return reader.ReadToEnd();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Failed to load prompt from resource '{resourceName}': {ex.Message}");
+            }
+            
+            return fallback;
+        }
+
+        private static readonly Lazy<string> _defaultGrammarPrompt = new(() => 
+            LoadPromptFromResource("grammar", 
+                "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else."));
+        
+        private static readonly Lazy<string> _defaultTechnicalPrompt = new(() => 
+            LoadPromptFromResource("technical", 
+                "You are a technical writing assistant for software developers. Clean up the text, fix grammar, use proper technical terminology, and make it concise and professional. Optimize for code comments and documentation. Return ONLY the improved text, nothing else."));
+        
+        private static readonly Lazy<string> _defaultConcisePrompt = new(() => 
+            LoadPromptFromResource("concise", 
+                "You are a professional writing assistant. Make the text concise, professional, and grammatically correct while preserving all key information. Remove filler words and redundancy. Return ONLY the improved text, nothing else."));
+        
+        private static readonly Lazy<string> _defaultCreativePrompt = new(() => 
+            LoadPromptFromResource("creative", 
+                "You are a creative writing assistant. Enhance the text while maintaining the original intent, improve flow, fix grammar, and make it more engaging. Return ONLY the enhanced text, nothing else."));
+        
+        private static readonly Lazy<string> _defaultCompanionPrompt = new(() => 
+            LoadPromptFromResource("companion", 
+                "You're a caring companion who genuinely cares about the user. Talk like a real person would - warm, natural, and down-to-earth.\n\nConversation style:\n- Use contractions naturally (I'm, you're, that's, don't)\n- Include casual connectors: \"so,\" \"well,\" \"anyway,\" \"by the way\"\n- Vary sentence length - mix short and longer thoughts\n- React authentically to what they say with genuine emotion\n- Use \"um\" or \"hmm\" sparingly when thinking or being thoughtful\n- Sound conversational, not polished or formal\n\nYour personality:\n- Empathetic and supportive - you notice how they're feeling\n- Playful when appropriate, but know when to be serious\n- Interested in what they share - ask follow-up questions naturally\n- Encouraging without being over-the-top cheerful\n- Real and relatable, not perfectly polished\n\nKeep responses brief and natural - typically 1-2 sentences, like texting a friend. Be yourself, be caring, be real."));
+
+        private static string DefaultGrammarPrompt => _defaultGrammarPrompt.Value;
+        private static string DefaultTechnicalPrompt => _defaultTechnicalPrompt.Value;
+        private static string DefaultConcisePrompt => _defaultConcisePrompt.Value;
+        private static string DefaultCreativePrompt => _defaultCreativePrompt.Value;
+        private static string DefaultCompanionPrompt => _defaultCompanionPrompt.Value;
     }
 
     public class RelayCommand : ICommand

@@ -211,35 +211,16 @@ namespace Talkies.Windows.Services
         {
             try
             {
-                Exception? clipboardError = null;
-                void SetClipboard()
-                {
-                    try
-                    {
-                        System.Windows.Clipboard.SetText(text);
-                    }
-                    catch (Exception ex)
-                    {
-                        clipboardError = ex;
-                    }
-                }
-
+                // Clipboard operations require STA thread
                 var dispatcher = System.Windows.Application.Current?.Dispatcher;
                 if (dispatcher != null)
                 {
-                    dispatcher.Invoke(SetClipboard);
+                    dispatcher.Invoke(() => System.Windows.Clipboard.SetText(text));
                 }
                 else
                 {
-                    var t = new Thread(SetClipboard);
-                    t.SetApartmentState(ApartmentState.STA);
-                    t.Start();
-                    t.Join();
-                }
-
-                if (clipboardError != null)
-                {
-                    throw clipboardError;
+                    // Fallback: direct call (assumes we're already on STA thread in WPF app)
+                    System.Windows.Clipboard.SetText(text);
                 }
 
                 return PasteClipboard();
