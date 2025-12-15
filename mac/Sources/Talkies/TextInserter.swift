@@ -25,8 +25,8 @@ class TextInserter {
 
             // Restore previous clipboard contents after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                pasteboard.clearContents()
                 if let previous = previousContents {
-                    pasteboard.clearContents()
                     pasteboard.setString(previous, forType: .string)
                 }
             }
