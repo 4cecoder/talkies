@@ -4,30 +4,54 @@ import Cocoa
 @MainActor
 class TextInserter {
     static let shared = TextInserter()
+    
+    // Track original clipboard state and pending operations
+    private var originalClipboardContent: String?
+    private var isOperationInProgress = false
+    private var pendingOperations: [(String, DispatchTime)] = []
 
     private init() {}
 
     /// Insert text at the current cursor position using clipboard + paste
     /// This is more reliable than character-by-character typing which can cause reordering issues
     func insertTextAtCursor(_ text: String) {
-        // Save current clipboard contents to restore later
         let pasteboard = NSPasteboard.general
-        let previousContents = pasteboard.string(forType: .string)
-
+        
+        // Capture original clipboard content only on the first call
+        if !isOperationInProgress {
+            originalClipboardContent = pasteboard.string(forType: .string)
+            isOperationInProgress = true
+        }
+        
+        // Queue this operation
+        let executionTime = DispatchTime.now() + 0.05
+        pendingOperations.append((text, executionTime))
+        
         // Copy text to clipboard
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-
-        // Small delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            // Simulate Cmd+V paste
+        
+        // Schedule paste operation
+        DispatchQueue.main.asyncAfter(deadline: executionTime) {
             self.simulatePaste()
-
-            // Restore previous clipboard contents after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                if let previous = previousContents {
-                    pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
+            
+            // Remove this operation from pending
+            if let index = self.pendingOperations.firstIndex(where: { $0.0 == text && $0.1 == executionTime }) {
+                self.pendingOperations.remove(at: index)
+            }
+            
+            // If no more operations are pending, restore the original clipboard
+            if self.pendingOperations.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Double-check no new operations were added during the delay
+                    if self.pendingOperations.isEmpty {
+                        if let original = self.originalClipboardContent {
+                            pasteboard.clearContents()
+                            pasteboard.setString(original, forType: .string)
+                        }
+                        self.originalClipboardContent = nil
+                        self.isOperationInProgress = false
+                    }
                 }
             }
         }
