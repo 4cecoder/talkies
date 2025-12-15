@@ -11,7 +11,7 @@ namespace Talkies.Windows.ViewModels
     public class PluginInfoViewModel : ViewModelBase
     {
         private readonly IPlugin _plugin;
-        private readonly SettingsService _settingsService = new();
+        private readonly SettingsService _settingsService;
         private string _status = "Ready";
         private bool _hasSettings;
         private string _selectedVoice = string.Empty;
@@ -108,9 +108,10 @@ namespace Talkies.Windows.ViewModels
 
         public ICommand ConfigureCommand { get; }
 
-        public PluginInfoViewModel(IPlugin plugin)
+        public PluginInfoViewModel(IPlugin plugin, SettingsService settingsService)
         {
             _plugin = plugin;
+            _settingsService = settingsService;
             ConfigureCommand = new RelayCommand(_ => Configure());
 
             // Set defaults based on plugin type
@@ -213,14 +214,16 @@ namespace Talkies.Windows.ViewModels
     public class PluginsManagementViewModel : ViewModelBase
     {
         private readonly Action _closeAction;
+        private readonly SettingsService _settingsService;
 
         public ObservableCollection<PluginInfoViewModel> Plugins { get; } = new();
 
         public ICommand CloseCommand { get; }
 
-        public PluginsManagementViewModel(Action closeAction)
+        public PluginsManagementViewModel(Action closeAction, SettingsService settingsService)
         {
             _closeAction = closeAction;
+            _settingsService = settingsService;
             CloseCommand = new RelayCommand(_ => Close());
 
             LoadPlugins();
@@ -232,7 +235,7 @@ namespace Talkies.Windows.ViewModels
 
             foreach (var plugin in plugins)
             {
-                var pluginInfo = new PluginInfoViewModel(plugin)
+                var pluginInfo = new PluginInfoViewModel(plugin, _settingsService)
                 {
                     Description = GetPluginDescription(plugin),
                     HasSettings = HasConfigurationOptions(plugin)

@@ -1,4 +1,5 @@
 using System.Windows;
+using Talkies.Windows.Services;
 using Talkies.Windows.ViewModels;
 
 namespace Talkies.Windows.Views
@@ -10,7 +11,8 @@ namespace Talkies.Windows.Views
         public PluginsManagementWindow()
         {
             InitializeComponent();
-            _viewModel = new PluginsManagementViewModel(Close);
+            var settingsService = new SettingsService();
+            _viewModel = new PluginsManagementViewModel(Close, settingsService);
             DataContext = _viewModel;
         }
     }
