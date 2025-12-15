@@ -200,7 +200,8 @@ namespace Talkies.Windows.ViewModels
         private void InitializePlugins()
         {
             // Initialize TTS plugin if not already set
-            PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin() { IsEnabled = true };
+            // Note: IsEnabled state is set by LoadSettings() based on saved preferences
+            PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin();
 
             // Initialize text enhancer plugins
             if (PluginManager.TextEnhancer == null)
