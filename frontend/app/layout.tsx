@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Talkies - Voice-Powered Writing Assistant",
-  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available for Mac, Windows, and Linux.",
+  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS, with Windows and mobile coming soon.",
   keywords: ["voice to text", "transcription", "writing assistant", "productivity", "AI", "speech to text", "dictation"],
   authors: [{ name: "Talkies Team" }],
   creator: "Talkies",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://talkies.app",
     title: "Talkies - Voice-Powered Writing Assistant",
-    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available for Mac, Windows, and Linux.",
+    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS.",
     siteName: "Talkies",
     images: [
       {
