@@ -219,8 +219,35 @@ namespace Talkies.Windows.Services
                 }
                 else
                 {
-                    // Fallback: direct call (assumes we're already on STA thread in WPF app)
-                    System.Windows.Clipboard.SetText(text);
+                    // Fallback for when no dispatcher is available (e.g., during tests)
+                    // Check if we're on an STA thread, otherwise create one
+                    if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
+                    {
+                        System.Windows.Clipboard.SetText(text);
+                    }
+                    else
+                    {
+                        Exception? clipboardError = null;
+                        var staThread = new Thread(() =>
+                        {
+                            try
+                            {
+                                System.Windows.Clipboard.SetText(text);
+                            }
+                            catch (Exception ex)
+                            {
+                                clipboardError = ex;
+                            }
+                        });
+                        staThread.SetApartmentState(ApartmentState.STA);
+                        staThread.Start();
+                        staThread.Join();
+                        
+                        if (clipboardError != null)
+                        {
+                            throw clipboardError;
+                        }
+                    }
                 }
 
                 return PasteClipboard();
