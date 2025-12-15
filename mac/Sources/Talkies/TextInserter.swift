@@ -43,6 +43,7 @@ class TextInserter {
             if self.pendingOperations.isEmpty {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                     guard let self = self else { return }
+                    let pasteboard = NSPasteboard.general
                     // Double-check no new operations were added during the delay
                     if self.pendingOperations.isEmpty {
                         if let original = self.originalClipboardContent {
