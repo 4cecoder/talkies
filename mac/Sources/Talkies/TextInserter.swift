@@ -35,15 +35,12 @@ class TextInserter {
             self.simulatePaste()
             
             // Remove this operation from pending using unique ID
-            if let index = self.pendingOperations.firstIndex(of: operationId) {
-                self.pendingOperations.remove(at: index)
-            }
+            self.pendingOperations.removeAll { $0 == operationId }
             
             // If no more operations are pending, restore the original clipboard
             if self.pendingOperations.isEmpty {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, pasteboard] in
                     guard let self = self else { return }
-                    let pasteboard = NSPasteboard.general
                     // Double-check no new operations were added during the delay
                     if self.pendingOperations.isEmpty {
                         if let original = self.originalClipboardContent {
