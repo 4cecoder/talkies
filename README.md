@@ -8,6 +8,7 @@ Voice transcription application for multiple platforms.
 talkies/
 ├── mac/        # macOS native app (Swift/SwiftUI + WhisperKit)
 ├── windows/    # Windows native app (.NET WPF + WhisperNet)
+├── mobile/     # Mobile app (Flutter for iOS & Android)
 ├── linux/      # Linux native app (planned)
 ├── frontend/   # Web app (Next.js)
 └── archive/    # Experimental Python CLI (deprecated)
@@ -22,6 +23,11 @@ Native macOS application built with Swift and SwiftUI, using WhisperKit for on-d
 Native Windows application built with .NET WPF and WhisperNet. Features real-time transcription, LLM enhancement (Ollama/LM Studio), and multi-format export (SRT, VTT, TXT).
 
 See [windows/README.md](windows/README.md) for detailed documentation.
+
+### Mobile (`mobile/`)
+Flutter mobile application for iOS and Android. Combines the best features from macOS and Windows versions with audio recording, transcription display, LLM enhancement, and multi-format export (SRT, VTT, TXT).
+
+See [mobile/README.md](mobile/README.md) for detailed documentation.
 
 ### Linux (`linux/`)
 Linux native application (planned).
