@@ -211,35 +211,15 @@ namespace Talkies.Windows.Services
         {
             try
             {
-                Exception? clipboardError = null;
-                void SetClipboard()
-                {
-                    try
-                    {
-                        System.Windows.Clipboard.SetText(text);
-                    }
-                    catch (Exception ex)
-                    {
-                        clipboardError = ex;
-                    }
-                }
-
                 var dispatcher = System.Windows.Application.Current?.Dispatcher;
                 if (dispatcher != null)
                 {
-                    dispatcher.Invoke(SetClipboard);
+                    dispatcher.Invoke(() => System.Windows.Clipboard.SetText(text));
                 }
                 else
                 {
-                    var t = new Thread(SetClipboard);
-                    t.SetApartmentState(ApartmentState.STA);
-                    t.Start();
-                    t.Join();
-                }
-
-                if (clipboardError != null)
-                {
-                    throw clipboardError;
+                    // Use Task with STA scheduler for clipboard access when no dispatcher is available
+                    SetClipboardSta(text);
                 }
 
                 return PasteClipboard();
@@ -249,6 +229,33 @@ namespace Talkies.Windows.Services
                 Logger.Error($"TextInjector: Clipboard paste fallback failed: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Sets clipboard text on an STA thread when no dispatcher is available.
+        /// Uses Task-based approach with proper STA configuration.
+        /// </summary>
+        private static void SetClipboardSta(string text)
+        {
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    System.Windows.Clipboard.SetText(text);
+                    tcs.SetResult(true);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            })
+            {
+                IsBackground = true
+            };
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            tcs.Task.Wait();
         }
 
         private static string GetWindowTitle(IntPtr hwnd)
