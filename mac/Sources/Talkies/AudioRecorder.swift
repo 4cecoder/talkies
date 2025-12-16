@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import Combine
 import os.lock
+import CoreAudio
 
 // Thread-safe handler for audio tap - completely separate from MainActor
 final class AudioTapHandler: @unchecked Sendable {
@@ -88,7 +89,7 @@ class AudioRecorder: NSObject, ObservableObject {
         #endif
     }
     
-    func startRecording() {
+    func startRecording(deviceID: String? = nil) {
         print("      AudioRecorder.startRecording() - START")
         guard hasPermission else {
             print("      ❌ No microphone permission")
@@ -102,6 +103,13 @@ class AudioRecorder: NSObject, ObservableObject {
             #if !os(macOS)
             try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
+            #endif
+
+            // Set the preferred input device if specified (macOS only)
+            #if os(macOS)
+            if let deviceID = deviceID {
+                setPreferredInputDevice(deviceID: deviceID)
+            }
             #endif
 
             audioEngine = AVAudioEngine()
@@ -234,6 +242,93 @@ class AudioRecorder: NSObject, ObservableObject {
         return String(format: "%02d:%02d", minutes, seconds)
     }
     
+    #if os(macOS)
+    private func setPreferredInputDevice(deviceID: String) {
+        // Find all CoreAudio devices
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize
+        ) == noErr else {
+            print("      ❌ Failed to get audio devices size")
+            return
+        }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var audioDevices = [AudioDeviceID](repeating: 0, count: deviceCount)
+
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &audioDevices
+        ) == noErr else {
+            print("      ❌ Failed to get audio devices")
+            return
+        }
+
+        // Find matching device by UID
+        for audioDeviceID in audioDevices {
+            var uidPropertyAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            var uid: Unmanaged<CFString>?
+            var uidSize = UInt32(MemoryLayout<CFString>.size)
+
+            let status = AudioObjectGetPropertyData(
+                audioDeviceID,
+                &uidPropertyAddress,
+                0,
+                nil,
+                &uidSize,
+                &uid
+            )
+
+            if status == noErr, let uidString = uid?.takeUnretainedValue() as String?, uidString == deviceID {
+                print("      ✓ Found device with UID: \(uidString), setting as default input")
+
+                // Set as default input device
+                var defaultInputPropertyAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+
+                var deviceToSet = audioDeviceID
+                let setStatus = AudioObjectSetPropertyData(
+                    AudioObjectID(kAudioObjectSystemObject),
+                    &defaultInputPropertyAddress,
+                    0,
+                    nil,
+                    UInt32(MemoryLayout<AudioDeviceID>.size),
+                    &deviceToSet
+                )
+
+                if setStatus == noErr {
+                    print("      ✓ Successfully set default input device")
+                } else {
+                    print("      ❌ Failed to set default input device: \(setStatus)")
+                }
+                break
+            }
+        }
+    }
+    #endif
+
     deinit {
         // Cleanup will happen automatically when deallocated
     }
