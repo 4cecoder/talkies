@@ -24,15 +24,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var localEventMonitor: Any?
     var rightOptionKeyWasPressed = false
 
+    // Settings service
+    var settingsService = SettingsService.shared
+
     // Intelligent mode detection
     var keyPressStartTime: Date?
     var isPushToTalkMode = false
     var isWaitingForRelease = false
-    let pushToTalkThreshold: TimeInterval = 0.15 // 150ms threshold
+
+    var pushToTalkThreshold: TimeInterval {
+        settingsService.settings.pushToTalkThreshold
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Setup Crash Logger
         CrashLogger.shared.setup()
+
+        // Migrate from UserDefaults if needed (one-time)
+        settingsService.migrateFromUserDefaults()
         
         // Create menu bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -69,8 +78,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
 
                 await MainActor.run {
-                    let voiceAssistantMode = UserDefaults.standard.bool(forKey: "voiceAssistantMode")
-                    let insertTextInAssistantMode = UserDefaults.standard.bool(forKey: "insertTextInAssistantMode")
+                    let voiceAssistantMode = self?.settingsService.settings.voiceAssistantMode ?? false
+                    let insertTextInAssistantMode = self?.settingsService.settings.insertTextInAssistantMode ?? false
 
                     // Voice Assistant Mode: Speak the response
                     if voiceAssistantMode {

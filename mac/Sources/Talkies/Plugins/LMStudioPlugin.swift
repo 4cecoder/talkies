@@ -9,18 +9,28 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
     let description = "Clean up and enhance transcriptions using LM Studio's OpenAI-compatible API"
     let icon = "server.rack"
 
-    @Published var isEnabled = false {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "lmstudio.isEnabled") }
+    private let settingsService = SettingsService.shared
+
+    var isEnabled: Bool {
+        get { settingsService.settings.lmStudio.isEnabled }
+        set { settingsService.settings.lmStudio.isEnabled = newValue; objectWillChange.send() }
     }
-    @Published var selectedModel = "" {
-        didSet { UserDefaults.standard.set(selectedModel, forKey: "lmstudio.selectedModel") }
+
+    var selectedModel: String {
+        get { settingsService.settings.lmStudio.selectedModel }
+        set { settingsService.settings.lmStudio.selectedModel = newValue; objectWillChange.send() }
     }
-    @Published var endpoint = "http://127.0.0.1:1234" {
-        didSet { UserDefaults.standard.set(endpoint, forKey: "lmstudio.endpoint") }
+
+    var endpoint: String {
+        get { settingsService.settings.lmStudio.endpoint }
+        set { settingsService.settings.lmStudio.endpoint = newValue; objectWillChange.send() }
     }
-    @Published var enhancementMode: EnhancementMode = .grammar {
-        didSet { UserDefaults.standard.set(enhancementMode.rawValue, forKey: "lmstudio.enhancementMode") }
+
+    var enhancementMode: EnhancementMode {
+        get { EnhancementMode(rawValue: settingsService.settings.lmStudio.enhancementMode) ?? .grammar }
+        set { settingsService.settings.lmStudio.enhancementMode = newValue.rawValue; objectWillChange.send() }
     }
+
     @Published var isProcessing = false
     @Published var lastError: String?
 
@@ -30,14 +40,19 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
     @Published var isCheckingStatus = false
 
     // Advanced LLM Controls
-    @Published var temperature: Double = 0.3 {
-        didSet { UserDefaults.standard.set(temperature, forKey: "lmstudio.temperature") }
+    var temperature: Double {
+        get { settingsService.settings.lmStudio.temperature }
+        set { settingsService.settings.lmStudio.temperature = newValue; objectWillChange.send() }
     }
-    @Published var topP: Double = 0.9 {
-        didSet { UserDefaults.standard.set(topP, forKey: "lmstudio.topP") }
+
+    var topP: Double {
+        get { settingsService.settings.lmStudio.topP }
+        set { settingsService.settings.lmStudio.topP = newValue; objectWillChange.send() }
     }
-    @Published var maxTokens: Int = 4096 {
-        didSet { UserDefaults.standard.set(maxTokens, forKey: "lmstudio.maxTokens") }
+
+    var maxTokens: Int {
+        get { settingsService.settings.lmStudio.maxTokens }
+        set { settingsService.settings.lmStudio.maxTokens = newValue; objectWillChange.send() }
     }
 
     enum LMStudioStatus {
@@ -71,40 +86,9 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
     }
 
     init() {
-        // Load saved settings
-        loadSettings()
-
         // Auto-check on init
         Task {
             await checkStatus()
-        }
-    }
-
-    private func loadSettings() {
-        isEnabled = UserDefaults.standard.bool(forKey: "lmstudio.isEnabled")
-
-        if let model = UserDefaults.standard.string(forKey: "lmstudio.selectedModel") {
-            selectedModel = model
-        }
-
-        if let savedEndpoint = UserDefaults.standard.string(forKey: "lmstudio.endpoint") {
-            endpoint = savedEndpoint
-        }
-
-        if let modeRaw = UserDefaults.standard.string(forKey: "lmstudio.enhancementMode"),
-           let mode = EnhancementMode(rawValue: modeRaw) {
-            enhancementMode = mode
-        }
-
-        // Load advanced settings
-        if UserDefaults.standard.object(forKey: "lmstudio.temperature") != nil {
-            temperature = UserDefaults.standard.double(forKey: "lmstudio.temperature")
-        }
-        if UserDefaults.standard.object(forKey: "lmstudio.topP") != nil {
-            topP = UserDefaults.standard.double(forKey: "lmstudio.topP")
-        }
-        if UserDefaults.standard.object(forKey: "lmstudio.maxTokens") != nil {
-            maxTokens = UserDefaults.standard.integer(forKey: "lmstudio.maxTokens")
         }
     }
 
