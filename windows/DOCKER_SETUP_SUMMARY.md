@@ -6,23 +6,23 @@ This setup enables running Windows .NET tests on macOS using Docker containeriza
 
 ### Core Files
 
-1. **Dockerfile** (`/Users/fource/bytecats/talkies/windows/Dockerfile`)
+1. **Dockerfile** (`windows/Dockerfile`)
    - Uses `mcr.microsoft.com/dotnet/sdk:8.0` base image
    - Copies project files and restores dependencies
    - Default command runs `dotnet test`
 
-2. **docker-compose.yml** (`/Users/fource/bytecats/talkies/windows/docker-compose.yml`)
+2. **docker-compose.yml** (`windows/docker-compose.yml`)
    - Defines services: `test`, `build`, `restore`, `shell`
    - Mounts source directories for live updates
    - Configures test result output directory
 
-3. **test-docker.sh** (`/Users/fource/bytecats/talkies/windows/test-docker.sh`)
+3. **test-docker.sh** (`windows/test-docker.sh`)
    - User-friendly wrapper script
    - Commands: `test`, `build`, `restore`, `shell`, `clean`
    - Error handling and colored output
    - Docker availability checks
 
-4. **.dockerignore** (`/Users/fource/bytecats/talkies/windows/.dockerignore`)
+4. **.dockerignore** (`windows/.dockerignore`)
    - Excludes build outputs, IDE files, documentation
    - Optimizes Docker build context size
    - Speeds up image building
@@ -73,7 +73,7 @@ This setup enables running Windows .NET tests on macOS using Docker containeriza
 # 2. Start Docker Desktop
 
 # 3. Run tests
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh
 ```
 
@@ -160,7 +160,7 @@ cd /Users/fource/bytecats/talkies/windows
 
 ### Manual Test Attempted
 ```bash
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh test
 ```
 

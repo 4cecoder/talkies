@@ -127,7 +127,7 @@ git commit -am "feat: your feature"
 # 2. Start Docker Desktop
 
 # 3. Test it works
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh
 ```
 

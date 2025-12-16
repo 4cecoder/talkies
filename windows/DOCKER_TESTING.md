@@ -15,7 +15,7 @@ The Talkies Windows application is built with .NET 8.0 targeting Windows (`net8.
 
 ### Run Tests
 ```bash
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh
 ```
 
@@ -178,7 +178,7 @@ Split tests into two projects:
 
 ## Test Results Output
 
-Test results are saved to `/Users/fource/bytecats/talkies/windows/TestResults/` with:
+Test results are saved to `windows/TestResults/` (from repository root) with:
 
 - TRX format (Visual Studio test results)
 - Console output with detailed verbosity

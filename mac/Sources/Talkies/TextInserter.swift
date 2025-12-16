@@ -22,48 +22,64 @@ class TextInserter {
     /// Stores the original clipboard content before the first operation in a sequence
     private var originalClipboardContent: String?
 
-    /// Tracks pending paste operations to handle rapid successive calls
-    private var pendingOperations: Set<UUID> = []
+    /// Queue to serialize paste operations and prevent race conditions
+    private var operationQueue: [(text: String, id: UUID)] = []
+
+    /// Whether an operation is currently being executed
+    private var isExecutingOperation = false
 
     private init() {}
 
     /// Insert text at the current cursor position using clipboard + paste
     /// This is more reliable than character-by-character typing which can cause reordering issues
-    /// Handles rapid successive calls by preserving the original clipboard content
+    /// Handles rapid successive calls by queueing operations to prevent clipboard race conditions
     func insertTextAtCursor(_ text: String) {
         let pasteboard = NSPasteboard.general
 
         // Capture original clipboard only on first call in a sequence
-        if pendingOperations.isEmpty {
+        if operationQueue.isEmpty && !isExecutingOperation {
             originalClipboardContent = pasteboard.string(forType: .string)
         }
 
+        // Enqueue the operation
         let operationId = UUID()
-        pendingOperations.insert(operationId)
+        operationQueue.append((text: text, id: operationId))
+
+        // Start processing if not already running
+        processNextOperation()
+    }
+
+    /// Process the next operation in the queue serially
+    private func processNextOperation() {
+        // Don't start a new operation if one is already running or queue is empty
+        guard !isExecutingOperation, !operationQueue.isEmpty else { return }
+
+        isExecutingOperation = true
+        let operation = operationQueue.removeFirst()
+        let pasteboard = NSPasteboard.general
 
         // Copy text to clipboard
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.setString(operation.text, forType: .string)
 
         // Small delay to ensure clipboard is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
             // Simulate Cmd+V paste
             self.simulatePaste()
 
-            // Restore previous clipboard contents after a delay
+            // Wait for paste to complete before processing next operation
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) {
-                // Mark this operation as complete
-                self.pendingOperations.remove(operationId)
+                self.isExecutingOperation = false
 
-                // Only restore original clipboard after ALL operations complete
-                if self.pendingOperations.isEmpty {
-                    // Always clear the clipboard first
+                // If more operations queued, process them
+                if !self.operationQueue.isEmpty {
+                    self.processNextOperation()
+                } else {
+                    // All operations complete - restore original clipboard
                     pasteboard.clearContents()
-                    // Restore original content only if there was some
                     if let original = self.originalClipboardContent {
                         pasteboard.setString(original, forType: .string)
                     }
-                    // Reset for next sequence
                     self.originalClipboardContent = nil
                 }
             }

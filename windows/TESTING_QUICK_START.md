@@ -7,7 +7,7 @@
 # Download from: https://www.docker.com/products/docker-desktop
 
 # Run tests
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh
 ```
 

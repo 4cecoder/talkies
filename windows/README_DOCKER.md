@@ -11,7 +11,7 @@ Run Windows .NET tests on macOS without needing a Windows installation.
 # 2. Start Docker Desktop
 
 # 3. Run tests
-cd /Users/fource/bytecats/talkies/windows
+cd windows  # from repository root
 ./test-docker.sh
 ```
 
