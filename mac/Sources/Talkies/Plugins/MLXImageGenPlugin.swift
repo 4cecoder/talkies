@@ -37,12 +37,20 @@ class MLXImageGenPlugin: TalkiesPlugin, ObservableObject {
     let description = "Generate images from text using Stable Diffusion on Apple Silicon"
     let icon = "photo.on.rectangle.angled"
 
-    @Published var isEnabled = false {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "mlx-image-gen.isEnabled") }
+    private let settingsService = SettingsService.shared
+
+    var isEnabled: Bool {
+        get { settingsService.settings.mlxImageGen.isEnabled }
+        set { settingsService.settings.mlxImageGen.isEnabled = newValue; objectWillChange.send() }
     }
+
     @Published var pluginStatus: MLXImageGenStatus = .notInstalled
     @Published var availableModels: [String] = []
-    @Published var selectedModel = "FLUX.1-schnell"
+
+    var selectedModel: String {
+        get { settingsService.settings.mlxImageGen.selectedModel.isEmpty ? "FLUX.1-schnell" : settingsService.settings.mlxImageGen.selectedModel }
+        set { settingsService.settings.mlxImageGen.selectedModel = newValue; objectWillChange.send() }
+    }
 
     // Generation parameters
     @Published var prompt: String = ""
@@ -65,9 +73,6 @@ class MLXImageGenPlugin: TalkiesPlugin, ObservableObject {
     }
 
     init() {
-        // Load saved settings
-        isEnabled = UserDefaults.standard.bool(forKey: "mlx-image-gen.isEnabled")
-
         // Default available models
         availableModels = [
             "FLUX.1-schnell",
@@ -76,10 +81,6 @@ class MLXImageGenPlugin: TalkiesPlugin, ObservableObject {
             "Stable Diffusion XL",
             "Stable Diffusion 2.1"
         ]
-
-        if let savedModel = UserDefaults.standard.string(forKey: "mlx-image-gen.selectedModel") {
-            selectedModel = savedModel
-        }
 
         Task {
             await checkStatus()

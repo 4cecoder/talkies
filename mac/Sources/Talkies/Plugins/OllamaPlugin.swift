@@ -9,18 +9,28 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
     let description = "Clean up and enhance transcriptions using local LLMs"
     let icon = "brain"
 
-    @Published var isEnabled = false {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "ollama.isEnabled") }
+    private let settingsService = SettingsService.shared
+
+    var isEnabled: Bool {
+        get { settingsService.settings.ollama.isEnabled }
+        set { settingsService.settings.ollama.isEnabled = newValue; objectWillChange.send() }
     }
-    @Published var selectedModel = "llama3.2:3b" {
-        didSet { UserDefaults.standard.set(selectedModel, forKey: "ollama.selectedModel") }
+
+    var selectedModel: String {
+        get { settingsService.settings.ollama.selectedModel }
+        set { settingsService.settings.ollama.selectedModel = newValue; objectWillChange.send() }
     }
-    @Published var ollamaHost = "http://localhost:11434" {
-        didSet { UserDefaults.standard.set(ollamaHost, forKey: "ollama.host") }
+
+    var ollamaHost: String {
+        get { settingsService.settings.ollama.host }
+        set { settingsService.settings.ollama.host = newValue; objectWillChange.send() }
     }
-    @Published var enhancementMode: EnhancementMode = .grammar {
-        didSet { UserDefaults.standard.set(enhancementMode.rawValue, forKey: "ollama.enhancementMode") }
+
+    var enhancementMode: EnhancementMode {
+        get { EnhancementMode(rawValue: settingsService.settings.ollama.enhancementMode) ?? .grammar }
+        set { settingsService.settings.ollama.enhancementMode = newValue.rawValue; objectWillChange.send() }
     }
+
     @Published var isProcessing = false
     @Published var lastError: String?
 
@@ -30,32 +40,49 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
     @Published var isCheckingStatus = false
 
     // Advanced LLM Controls
-    @Published var temperature: Double = 0.3 {
-        didSet { UserDefaults.standard.set(temperature, forKey: "ollama.temperature") }
+    var temperature: Double {
+        get { settingsService.settings.ollama.temperature }
+        set { settingsService.settings.ollama.temperature = newValue; objectWillChange.send() }
     }
-    @Published var topP: Double = 0.9 {
-        didSet { UserDefaults.standard.set(topP, forKey: "ollama.topP") }
+
+    var topP: Double {
+        get { settingsService.settings.ollama.topP }
+        set { settingsService.settings.ollama.topP = newValue; objectWillChange.send() }
     }
-    @Published var topK: Int = 40 {
-        didSet { UserDefaults.standard.set(topK, forKey: "ollama.topK") }
+
+    var topK: Int {
+        get { settingsService.settings.ollama.topK }
+        set { settingsService.settings.ollama.topK = newValue; objectWillChange.send() }
     }
-    @Published var repeatPenalty: Double = 1.1 {
-        didSet { UserDefaults.standard.set(repeatPenalty, forKey: "ollama.repeatPenalty") }
+
+    var repeatPenalty: Double {
+        get { settingsService.settings.ollama.repeatPenalty }
+        set { settingsService.settings.ollama.repeatPenalty = newValue; objectWillChange.send() }
     }
-    @Published var contextLength: Int = 2048 {
-        didSet { UserDefaults.standard.set(contextLength, forKey: "ollama.contextLength") }
+
+    var contextLength: Int {
+        get { settingsService.settings.ollama.contextLength }
+        set { settingsService.settings.ollama.contextLength = newValue; objectWillChange.send() }
     }
-    @Published var customSystemPrompt: String = "" {
-        didSet { UserDefaults.standard.set(customSystemPrompt, forKey: "ollama.customSystemPrompt") }
+
+    var customSystemPrompt: String {
+        get { settingsService.settings.ollama.customSystemPrompt }
+        set { settingsService.settings.ollama.customSystemPrompt = newValue; objectWillChange.send() }
     }
-    @Published var useCustomPrompt: Bool = false {
-        didSet { UserDefaults.standard.set(useCustomPrompt, forKey: "ollama.useCustomPrompt") }
+
+    var useCustomPrompt: Bool {
+        get { settingsService.settings.ollama.useCustomPrompt }
+        set { settingsService.settings.ollama.useCustomPrompt = newValue; objectWillChange.send() }
     }
-    @Published var maxTokens: Int = 500 {
-        didSet { UserDefaults.standard.set(maxTokens, forKey: "ollama.maxTokens") }
+
+    var maxTokens: Int {
+        get { settingsService.settings.ollama.maxTokens }
+        set { settingsService.settings.ollama.maxTokens = newValue; objectWillChange.send() }
     }
-    @Published var stopSequences: String = "" {
-        didSet { UserDefaults.standard.set(stopSequences, forKey: "ollama.stopSequences") }
+
+    var stopSequences: String {
+        get { settingsService.settings.ollama.stopSequences }
+        set { settingsService.settings.ollama.stopSequences = newValue; objectWillChange.send() }
     }
 
     enum OllamaStatus {
@@ -93,58 +120,9 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
     }
 
     init() {
-        // Load saved settings
-        loadSettings()
-
         // Auto-check on init
         Task {
             await checkOllamaStatus()
-        }
-    }
-
-    private func loadSettings() {
-        isEnabled = UserDefaults.standard.bool(forKey: "ollama.isEnabled")
-
-        if let model = UserDefaults.standard.string(forKey: "ollama.selectedModel") {
-            selectedModel = model
-        }
-
-        if let host = UserDefaults.standard.string(forKey: "ollama.host") {
-            ollamaHost = host
-        }
-
-        if let modeRaw = UserDefaults.standard.string(forKey: "ollama.enhancementMode"),
-           let mode = EnhancementMode(rawValue: modeRaw) {
-            enhancementMode = mode
-        }
-
-        // Load advanced settings
-        if UserDefaults.standard.object(forKey: "ollama.temperature") != nil {
-            temperature = UserDefaults.standard.double(forKey: "ollama.temperature")
-        }
-        if UserDefaults.standard.object(forKey: "ollama.topP") != nil {
-            topP = UserDefaults.standard.double(forKey: "ollama.topP")
-        }
-        if UserDefaults.standard.object(forKey: "ollama.topK") != nil {
-            topK = UserDefaults.standard.integer(forKey: "ollama.topK")
-        }
-        if UserDefaults.standard.object(forKey: "ollama.repeatPenalty") != nil {
-            repeatPenalty = UserDefaults.standard.double(forKey: "ollama.repeatPenalty")
-        }
-        if UserDefaults.standard.object(forKey: "ollama.contextLength") != nil {
-            contextLength = UserDefaults.standard.integer(forKey: "ollama.contextLength")
-        }
-        if UserDefaults.standard.object(forKey: "ollama.maxTokens") != nil {
-            maxTokens = UserDefaults.standard.integer(forKey: "ollama.maxTokens")
-        }
-        if let prompt = UserDefaults.standard.string(forKey: "ollama.customSystemPrompt") {
-            customSystemPrompt = prompt
-        }
-        if UserDefaults.standard.object(forKey: "ollama.useCustomPrompt") != nil {
-            useCustomPrompt = UserDefaults.standard.bool(forKey: "ollama.useCustomPrompt")
-        }
-        if let sequences = UserDefaults.standard.string(forKey: "ollama.stopSequences") {
-            stopSequences = sequences
         }
     }
 
