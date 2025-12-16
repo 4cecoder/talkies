@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,7 +15,7 @@ class AudioRecorderService extends ChangeNotifier {
   double _duration = 0.0;
   double _audioLevel = 0.0;
   String? _currentRecordingPath;
-  List<TranscriptSegment> _segments = [];
+  final List<TranscriptSegment> _segments = [];
   String _transcriptionText = '';
   Timer? _durationTimer;
   Timer? _amplitudeTimer;
