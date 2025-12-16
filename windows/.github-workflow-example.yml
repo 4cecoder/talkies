@@ -1,0 +1,74 @@
+# Example GitHub Actions workflow for Windows .NET testing
+# Copy this to .github/workflows/windows-tests.yml in the repository root
+
+name: Windows .NET Tests
+
+on:
+  push:
+    branches: [ master, main, develop ]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-tests.yml'
+  pull_request:
+    branches: [ master, main, develop ]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows-tests.yml'
+
+jobs:
+  test:
+    name: Test on Windows
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: windows
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx" --logger "console;verbosity=detailed"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: windows/**/TestResults/*.trx
+          retention-days: 30
+
+  # Optional: Cross-platform build verification (doesn't run tests, just builds)
+  build-cross-platform:
+    name: Build verification on Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        working-directory: windows
+        run: dotnet restore
+
+      - name: Build (no tests)
+        working-directory: windows
+        run: dotnet build --no-restore --configuration Release || echo "Expected to fail - Windows-specific project"
+        continue-on-error: true
