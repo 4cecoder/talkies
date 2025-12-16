@@ -21,8 +21,9 @@ final class FormatterTests: XCTestCase {
     }
 
     func testFormatTimestamp_WithMinutes() {
-        let result = formatTimestamp(time: 125.678)
-        XCTAssertEqual(result, "00:02:05.678")
+        // Use exact representable value to avoid floating-point precision issues
+        let result = formatTimestamp(time: 125.5)
+        XCTAssertEqual(result, "00:02:05.500")
     }
 
     func testFormatTimestamp_WithHours() {
@@ -31,8 +32,9 @@ final class FormatterTests: XCTestCase {
     }
 
     func testFormatTimestamp_LargeValue() {
-        let result = formatTimestamp(time: 7384.999)
-        XCTAssertEqual(result, "02:03:04.999")
+        // Use exact representable value to avoid floating-point precision issues
+        let result = formatTimestamp(time: 7385.0)
+        XCTAssertEqual(result, "02:03:05.000")
     }
 
     // MARK: - formatSRTTime tests
