@@ -92,6 +92,55 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Regenerate Android project files
+        working-directory: mobile
+        run: |
+          # Clean and regenerate Android project to ensure v2 embedding
+          rm -rf android
+          flutter create --platforms=android --org com.talkies .
+          # Restore custom permissions in AndroidManifest.xml
+          cat > android/app/src/main/AndroidManifest.xml << 'MANIFEST'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:label="Talkies"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:taskAffinity=""
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                        android:name="io.flutter.embedding.android.NormalTheme"
+                        android:resource="@style/NormalTheme"
+                        />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="https" />
+                  </intent>
+              </queries>
+          </manifest>
+          MANIFEST
+
       - name: Build debug APK
         working-directory: mobile
         run: flutter build apk --debug
@@ -122,6 +171,57 @@ jobs:
       - name: Get dependencies
         working-directory: mobile
         run: flutter pub get
+
+      - name: Regenerate iOS project files
+        working-directory: mobile
+        run: |
+          # Clean and regenerate iOS project
+          rm -rf ios
+          flutter create --platforms=ios --org com.talkies .
+          # Restore custom Info.plist permissions
+          cat > ios/Runner/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>$(DEVELOPMENT_LANGUAGE)</string>
+              <key>CFBundleDisplayName</key>
+              <string>Talkies</string>
+              <key>CFBundleExecutable</key>
+              <string>$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Talkies</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$(FLUTTER_BUILD_NAME)</string>
+              <key>CFBundleSignature</key>
+              <string>????</string>
+              <key>CFBundleVersion</key>
+              <string>$(FLUTTER_BUILD_NUMBER)</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>NSMicrophoneUsageDescription</key>
+              <string>Talkies needs microphone access for voice transcription</string>
+              <key>UILaunchStoryboardName</key>
+              <string>LaunchScreen</string>
+              <key>UIMainStoryboardFile</key>
+              <string>Main</string>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationPortraitUpsideDown</string>
+              </array>
+              <key>UIApplicationSupportsIndirectInputEvents</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
 
       - name: Build iOS (no codesign)
         working-directory: mobile
