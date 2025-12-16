@@ -5,7 +5,8 @@
         Title="Talkies Windows"
         Height="700" Width="1200"
         MinHeight="600" MinWidth="900"
-        Background="#1a1a1a" Foreground="White"
+        Background="{DynamicResource PrimaryBackgroundBrush}"
+        Foreground="{DynamicResource PrimaryTextBrush}"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
@@ -18,14 +19,14 @@
             <StackPanel>
                 <!-- Header -->
                 <TextBlock Text="Talkies" FontSize="28" FontWeight="Bold" Margin="0,0,0,4" />
-                <TextBlock Text="Real-time transcription" Foreground="#bbbbbb" Margin="0,0,0,12"/>
+                <TextBlock Text="Real-time transcription" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,0,12"/>
 
                 <!-- Waveform Visualizer -->
-                <TextBlock Text="Audio Input" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" Foreground="#999999"/>
+                <TextBlock Text="Audio Input" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" Foreground="{DynamicResource SecondaryTextBrush}"/>
                 <local:WaveformVisualizer x:Name="WaveformVisualizer" Margin="0,0,0,12" />
 
                 <!-- Recording Controls -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                <Border Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
                         <Button Content="Start Recording" Command="{Binding StartCommand}" IsEnabled="{Binding IsIdle}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
                         <Button Content="Stop Recording" Command="{Binding StopCommand}" IsEnabled="{Binding IsRecording}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
@@ -35,7 +36,7 @@
                 </Border>
 
                 <!-- Transcription Settings -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                <Border Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="Transcription Settings" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
 
@@ -54,7 +55,7 @@
                 </Border>
 
                 <!-- LLM Enhancement Settings -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                <Border Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="LLM Enhancement" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
 
@@ -84,8 +85,18 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Theme Settings -->
+                <Border Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+
+                        <TextBlock Text="Theme" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding SelectedTheme}" Margin="0,0,0,8" Height="32" Padding="8,6"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Additional Features -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                <Border Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="Additional Features" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
                         <CheckBox Content="Speak response (TTS)" IsChecked="{Binding TtsEnabled}" Margin="0,6,0,6" FontSize="11"/>
@@ -99,7 +110,7 @@
         </ScrollViewer>
 
         <!-- Right Content Area -->
-        <Border Grid.Column="1" Background="#1f1f1f" CornerRadius="8">
+        <Border Grid.Column="1" Background="{DynamicResource SecondaryBackgroundBrush}" CornerRadius="8">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -118,7 +129,7 @@
                 </DockPanel>
 
                 <!-- Transcript Display -->
-                <Border Grid.Row="1" Margin="12,8,12,12" Background="#252525" CornerRadius="6" BorderThickness="1" BorderBrush="#333333" Padding="0">
+                <Border Grid.Row="1" Margin="12,8,12,12" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="6" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}" Padding="0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -134,14 +145,14 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#2d2d2d" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0">
+                                        <Border Background="{DynamicResource SegmentBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding Timestamp}" FontFamily="Consolas" Foreground="#66b3ff" FontSize="11" Margin="0,0,12,0" MinWidth="90" VerticalAlignment="Top"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18" Foreground="White" />
+                                                <TextBlock Grid.Column="0" Text="{Binding Timestamp}" FontFamily="Consolas" Foreground="{DynamicResource AccentBrush}" FontSize="11" Margin="0,0,12,0" MinWidth="90" VerticalAlignment="Top"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18" Foreground="{DynamicResource PrimaryTextBrush}" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -149,14 +160,14 @@
                             </ItemsControl>
                         </ScrollViewer>
 
-                        <Border Grid.Row="1" Background="#2d1f1f" BorderBrush="#ff4d4f" BorderThickness="1" CornerRadius="0,0,6,6" Padding="10"
+                        <Border Grid.Row="1" Background="{DynamicResource ErrorBackgroundBrush}" BorderBrush="{DynamicResource ErrorBorderBrush}" BorderThickness="1" CornerRadius="0,0,6,6" Padding="10"
                                 Visibility="{Binding HasErrors, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <StackPanel>
-                                <TextBlock Text="Issues" FontWeight="SemiBold" FontSize="12" Foreground="#ffb3b3" Margin="0,0,0,6"/>
+                                <TextBlock Text="Issues" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource ErrorTextBrush}" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding ErrorMessages}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#ffd6d6" FontSize="11" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource ErrorTextBrush}" FontSize="11" Margin="0,0,0,4"/>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -173,19 +184,19 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,8,0">
+                    <Border Grid.Column="0" Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="0,0,8,0">
                         <StackPanel>
                             <TextBlock Text="Status" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
-                            <TextBlock Text="Backend:" Foreground="#999999" FontSize="11"/>
-                            <TextBlock Text="{Binding Backend}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="Elapsed:" Foreground="#999999" FontSize="11"/>
-                            <TextBlock Text="{Binding ElapsedText}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <TextBlock Text="Hotkey Status:" Foreground="#999999" FontSize="11"/>
-                            <TextBlock Text="{Binding HotkeyStatus}" Foreground="#66b3ff" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock Text="Backend:" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding Backend}" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Elapsed:" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding ElapsedText}" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBlock Text="Hotkey Status:" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding HotkeyStatus}" Foreground="{DynamicResource AccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Background="#242424" Padding="12" CornerRadius="8" Margin="4,0,8,0">
+                    <Border Grid.Column="1" Background="{DynamicResource TertiaryBackgroundBrush}" Padding="12" CornerRadius="8" Margin="4,0,8,0">
                         <StackPanel>
                             <TextBlock Text="Transcript Statistics" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
                             <Grid>
@@ -195,26 +206,26 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                    <TextBlock Text="Segments" Foreground="#999999" FontSize="10"/>
-                                    <TextBlock Text="{Binding SegmentCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Text="Segments" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="10"/>
+                                    <TextBlock Text="{Binding SegmentCount}" Foreground="{DynamicResource AccentBrush}" FontSize="14" FontWeight="Bold"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Margin="4,0,4,0">
-                                    <TextBlock Text="Words" Foreground="#999999" FontSize="10"/>
-                                    <TextBlock Text="{Binding WordCount}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Text="Words" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="10"/>
+                                    <TextBlock Text="{Binding WordCount}" Foreground="{DynamicResource AccentBrush}" FontSize="14" FontWeight="Bold"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Margin="8,0,0,0">
-                                    <TextBlock Text="WPM" Foreground="#999999" FontSize="10"/>
-                                    <TextBlock Text="{Binding WordsPerMinute}" Foreground="#66b3ff" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Text="WPM" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="10"/>
+                                    <TextBlock Text="{Binding WordsPerMinute}" Foreground="{DynamicResource AccentBrush}" FontSize="14" FontWeight="Bold"/>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="2" Background="#2d2d2d" Padding="12" CornerRadius="8">
+                    <Border Grid.Column="2" Background="{DynamicResource SegmentBackgroundBrush}" Padding="12" CornerRadius="8">
                         <StackPanel>
                             <TextBlock Text="Hotkey" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
-                            <TextBlock Text="Right Alt" FontFamily="Consolas" Foreground="#66b3ff" FontSize="10" Margin="0,0,0,2"/>
-                            <TextBlock Text="Tap: Start/Stop | Hold: Push-to-talk" Foreground="#999999" FontSize="10"/>
+                            <TextBlock Text="Right Alt" FontFamily="Consolas" Foreground="{DynamicResource AccentBrush}" FontSize="10" Margin="0,0,0,2"/>
+                            <TextBlock Text="Tap: Start/Stop | Hold: Push-to-talk" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="10"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -223,14 +234,14 @@
 
         <!-- Busy Overlay -->
         <Grid Grid.ColumnSpan="2"
-              Background="#AA000000"
+              Background="{DynamicResource OverlayBrush}"
               Visibility="{Binding ShowOverlay, Converter={StaticResource BooleanToVisibilityConverter}}"
               Panel.ZIndex="10">
-            <Border Width="420" Padding="20" Background="#1f1f1f" CornerRadius="10" BorderBrush="#333" BorderThickness="1"
+            <Border Width="420" Padding="20" Background="{DynamicResource SecondaryBackgroundBrush}" CornerRadius="10" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Effect="{StaticResource DropShadowEffect}">
                 <StackPanel>
                     <TextBlock Text="{Binding OverlayTitle}" FontSize="18" FontWeight="Bold" Margin="0,0,0,6"/>
-                    <TextBlock Text="{Binding OverlayMessage}" Foreground="#cccccc" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding OverlayMessage}" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
                     <ProgressBar Minimum="0" Maximum="100"
                                  Value="{Binding OverlayProgress}"
                                  IsIndeterminate="{Binding OverlayIsIndeterminate}"

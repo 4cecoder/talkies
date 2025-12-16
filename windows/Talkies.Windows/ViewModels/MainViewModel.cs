@@ -38,6 +38,7 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<string> EnhancementModes { get; } = new();
         public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
         public ObservableCollection<string> ErrorMessages { get; } = new();
+        public ObservableCollection<string> ThemeOptions { get; } = new(new[] { "System", "Light", "Dark" });
 
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
@@ -74,6 +75,18 @@ namespace Talkies.Windows.ViewModels
         private bool _ttsEnabled;
         public bool InsertEnabled { get => _insertEnabled; set { _insertEnabled = value; OnPropertyChanged(); } }
         private bool _insertEnabled;
+
+        public string SelectedTheme
+        {
+            get => _selectedTheme;
+            set
+            {
+                _selectedTheme = value;
+                OnPropertyChanged();
+                ApplyTheme(value);
+            }
+        }
+        private string _selectedTheme = "System";
 
         public string SelectedLlmProvider { get => _selectedLlmProvider; set { _selectedLlmProvider = value; OnPropertyChanged(); OnLlmProviderChanged(); } }
         private string _selectedLlmProvider = "LM Studio";
@@ -296,6 +309,22 @@ namespace Talkies.Windows.ViewModels
             if (_startTime == null) return 0;
             var elapsedMinutes = Math.Max((DateTime.UtcNow - _startTime.Value).TotalMinutes, 0.01);
             return (int)(WordCount / elapsedMinutes);
+        }
+
+        private void ApplyTheme(string themeSetting)
+        {
+            string themeToApply;
+
+            if (themeSetting == "System")
+            {
+                themeToApply = DarkModeService.GetSystemTheme();
+            }
+            else
+            {
+                themeToApply = themeSetting;
+            }
+
+            DarkModeService.ApplyTheme(themeToApply);
         }
 
         private void OnLlmProviderChanged()
@@ -886,6 +915,9 @@ namespace Talkies.Windows.ViewModels
             LlmEndpoint = _settings.LlmEndpoint ?? "http://127.0.0.1:1234";
             SelectedEnhancementMode = _settings.SelectedEnhancementMode ?? "Grammar";
 
+            // Load theme setting
+            SelectedTheme = _settings.Theme ?? "System";
+
             // Load Advanced TTS settings
             _settings.AdvancedTts ??= new AdvancedTtsSettings();
             var adv = PluginManager.TtsSynthesizer as AdvancedTtsPlugin 
@@ -931,6 +963,9 @@ namespace Talkies.Windows.ViewModels
             _settings.SelectedLlmModelName = SelectedLlmModel?.Name;
             _settings.SelectedEnhancementMode = SelectedEnhancementMode;
             _settings.CustomPrompts = CustomPrompts.ToList();
+
+            // Save theme setting
+            _settings.Theme = SelectedTheme;
 
             // Persist Advanced TTS plugin settings
             if (PluginManager.TtsSynthesizer is AdvancedTtsPlugin adv)
@@ -1080,6 +1115,7 @@ namespace Talkies.Windows.ViewModels
                 or nameof(OllamaModel)
                 or nameof(TtsEnabled)
                 or nameof(InsertEnabled)
+                or nameof(SelectedTheme)
                 or nameof(SelectedLlmProvider)
                 or nameof(LlmEndpoint)
                 or nameof(SelectedLlmModel)
