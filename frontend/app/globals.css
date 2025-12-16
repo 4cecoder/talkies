@@ -15,7 +15,12 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family:
+    var(--font-geist-sans),
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -40,7 +45,8 @@ html {
 }
 
 @keyframes gradient-shift {
-  0%, 100% {
+  0%,
+  100% {
     background-position: 0% 50%;
   }
   50% {
@@ -58,7 +64,8 @@ html {
 }
 
 @keyframes glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.5;
     transform: scale(1);
   }
@@ -69,7 +76,8 @@ html {
 }
 
 @keyframes border-flow {
-  0%, 100% {
+  0%,
+  100% {
     background-position: 0% 50%;
   }
   50% {
@@ -93,17 +101,23 @@ html {
 
 .gradient-border {
   position: relative;
-  background: linear-gradient(135deg, rgba(16, 16, 18, 0.95), rgba(24, 24, 27, 0.95));
+  background: linear-gradient(
+    135deg,
+    rgba(16, 16, 18, 0.95),
+    rgba(24, 24, 27, 0.95)
+  );
 }
 
 .gradient-border::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 2px;
   background: linear-gradient(135deg, #667eea, #764ba2, #f093fb, #4facfe);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   background-size: 200% 200%;
@@ -149,4 +163,3 @@ html {
     background-position: 200% 0;
   }
 }
-

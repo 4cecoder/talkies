@@ -14,12 +14,21 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Talkies - Voice-Powered Writing Assistant",
-  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS, with Windows and mobile coming soon.",
-  keywords: ["voice to text", "transcription", "writing assistant", "productivity", "AI", "speech to text", "dictation"],
+  description:
+    "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS, with Windows and mobile coming soon.",
+  keywords: [
+    "voice to text",
+    "transcription",
+    "writing assistant",
+    "productivity",
+    "AI",
+    "speech to text",
+    "dictation",
+  ],
   authors: [{ name: "Talkies Team" }],
   creator: "Talkies",
   publisher: "Talkies",
-  metadataBase: new URL('https://talkies.app'), // Update with actual domain
+  metadataBase: new URL("https://talkies.app"), // Update with actual domain
 
   // Open Graph
   openGraph: {
@@ -27,7 +36,8 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://talkies.app",
     title: "Talkies - Voice-Powered Writing Assistant",
-    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS.",
+    description:
+      "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS.",
     siteName: "Talkies",
     images: [
       {
@@ -44,7 +54,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Talkies - Voice-Powered Writing Assistant",
-    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly.",
+    description:
+      "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly.",
     images: ["/og-image.svg"],
     creator: "@talkiesapp", // Update with actual Twitter handle
     site: "@talkiesapp", // Update with actual Twitter handle
@@ -56,9 +67,7 @@ export const metadata: Metadata = {
       { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/talkies-logo.svg", type: "image/svg+xml", sizes: "any" },
     ],
-    apple: [
-      { url: "/talkies-logo.svg", type: "image/svg+xml" },
-    ],
+    apple: [{ url: "/talkies-logo.svg", type: "image/svg+xml" }],
   },
 
   // Additional metadata
@@ -68,9 +77,9 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
 
