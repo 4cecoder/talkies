@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Shield, Check, Lock } from 'lucide-react';
+import { X, Shield, Check, Lock, Loader2 } from 'lucide-react';
+import { PLAN_PRICING } from '../lib/stripe';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -11,12 +12,55 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalProps) {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const pricing = {
     monthly: 10,
     yearly: 8, // $96/year = $8/month
+  };
+
+  const handleCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get the price ID based on billing cycle
+      const priceId = PLAN_PRICING[billingCycle].priceId;
+
+      // Create checkout session
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          priceId,
+          billingCycle,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+
+      // Redirect to Stripe Checkout
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setLoading(false);
+    }
   };
 
   return (
@@ -110,61 +154,33 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
               </div>
             </div>
 
-            {/* Payment Form */}
-            <form className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Card Number
-                </label>
-                <input
-                  type="text"
-                  placeholder="1234 5678 9012 3456"
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all text-white"
-                />
+            {/* Error Message */}
+            {error && (
+              <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                {error}
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    Expiry Date
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="MM / YY"
-                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    CVC
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="123"
-                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
-                  Billing Address
-                </label>
-                <input
-                  type="text"
-                  placeholder="123 Main St, City, Country"
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all text-white"
-                />
-              </div>
-
+            {/* Checkout Button */}
+            <form onSubmit={handleCheckout} className="space-y-4">
               <button
                 type="submit"
-                className="w-full relative py-4 rounded-xl font-bold overflow-hidden group transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50 mt-6"
+                disabled={loading}
+                className="w-full relative py-4 rounded-xl font-bold overflow-hidden group transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 animate-gradient-fast"></div>
                 <span className="relative text-white flex items-center justify-center gap-2">
-                  <Lock className="w-5 h-5" />
-                  Subscribe Now
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Redirecting to Stripe...
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5" />
+                      Continue to Checkout
+                    </>
+                  )}
                 </span>
               </button>
 
