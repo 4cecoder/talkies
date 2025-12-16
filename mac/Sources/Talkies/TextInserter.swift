@@ -5,29 +5,66 @@ import Cocoa
 class TextInserter {
     static let shared = TextInserter()
 
+    // MARK: - Constants
+
+    /// Virtual key code for 'V' key (used for Cmd+V paste)
+    private static let vKeyCode: CGKeyCode = 9
+
+    /// Delay to ensure clipboard is ready before pasting (50ms)
+    private static let clipboardReadyDelay: TimeInterval = 0.05
+
+    /// Delay before restoring previous clipboard contents (200ms)
+    /// This gives the paste operation time to complete before we modify the clipboard
+    private static let clipboardRestoreDelay: TimeInterval = 0.2
+
+    // MARK: - State for handling rapid successive operations
+
+    /// Stores the original clipboard content before the first operation in a sequence
+    private var originalClipboardContent: String?
+
+    /// Tracks pending paste operations to handle rapid successive calls
+    private var pendingOperations: Set<UUID> = []
+
     private init() {}
 
     /// Insert text at the current cursor position using clipboard + paste
     /// This is more reliable than character-by-character typing which can cause reordering issues
+    /// Handles rapid successive calls by preserving the original clipboard content
     func insertTextAtCursor(_ text: String) {
-        // Save current clipboard contents to restore later
         let pasteboard = NSPasteboard.general
-        let previousContents = pasteboard.string(forType: .string)
+
+        // Capture original clipboard only on first call in a sequence
+        if pendingOperations.isEmpty {
+            originalClipboardContent = pasteboard.string(forType: .string)
+        }
+
+        let operationId = UUID()
+        pendingOperations.insert(operationId)
 
         // Copy text to clipboard
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
         // Small delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
             // Simulate Cmd+V paste
             self.simulatePaste()
 
             // Restore previous clipboard contents after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                if let previous = previousContents {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) {
+                // Mark this operation as complete
+                self.pendingOperations.remove(operationId)
+
+                // Only restore original clipboard after ALL operations complete
+                if self.pendingOperations.isEmpty {
+                    // Always clear the clipboard first
                     pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
+                    // Restore original content only if there was some
+                    if let original = self.originalClipboardContent {
+                        pasteboard.setString(original, forType: .string)
+                    }
+                    // Reset for next sequence
+                    self.originalClipboardContent = nil
                 }
             }
         }
@@ -35,12 +72,9 @@ class TextInserter {
 
     /// Simulate Cmd+V paste keystroke
     private func simulatePaste() {
-        // Virtual key code for 'V' is 9
-        let vKeyCode: CGKeyCode = 9
-
         // Create key down event with Command modifier
-        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: false) {
+        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: true),
+           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: false) {
 
             // Set Command modifier flag
             keyDown.flags = .maskCommand

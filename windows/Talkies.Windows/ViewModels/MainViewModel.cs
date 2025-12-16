@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Windows;
@@ -41,8 +42,8 @@ namespace Talkies.Windows.ViewModels
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
 
-        public string NewPromptText { get => _newPromptText; set { _newPromptText = value; OnPropertyChanged(); } }
-        private string _newPromptText = DefaultGrammarPrompt;
+        public string NewPromptText { get => _newPromptText ?? _defaultGrammarPrompt.Value; set { _newPromptText = value; OnPropertyChanged(); } }
+        private string? _newPromptText;
 
         public string SelectedModel { get => _selectedModel; set { _selectedModel = value; OnPropertyChanged(); } }
         private string _selectedModel = "base";
@@ -210,12 +211,14 @@ namespace Talkies.Windows.ViewModels
         private void InitializePlugins()
         {
             // Initialize TTS plugin if not already set
-            PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin() { IsEnabled = true };
+            // Note: IsEnabled state is set by LoadSettings() based on saved preferences
+            PluginManager.TtsSynthesizer ??= new AdvancedTtsPlugin();
 
             // Initialize text enhancer plugins
+            // Note: IsEnabled state is set by LoadSettings() based on saved preferences
             if (PluginManager.TextEnhancer == null)
             {
-                PluginManager.TextEnhancer = new SentimentAnalyzerPlugin() { IsEnabled = true };
+                PluginManager.TextEnhancer = new SentimentAnalyzerPlugin();
             }
         }
 
@@ -741,7 +744,7 @@ namespace Talkies.Windows.ViewModels
                 var app = System.Windows.Application.Current;
                 if (app == null || app.MainWindow == null)
                 {
-                    var autoName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt";
+                    var autoName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt";
                     var autoPath = Path.Combine(AppContext.BaseDirectory, autoName);
                     File.WriteAllText(autoPath, _lastVtt);
                     return;
@@ -751,7 +754,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "WebVTT (*.vtt)|*.vtt|All Files (*.*)|*.*",
                     DefaultExt = "vtt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.vtt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -775,7 +778,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "SubRip (*.srt)|*.srt|All Files (*.*)|*.*",
                     DefaultExt = "srt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.srt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.srt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -800,7 +803,7 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "Text (*.txt)|*.txt|All Files (*.*)|*.*",
                     DefaultExt = "txt",
-                    FileName = $"talkies_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.txt"
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
@@ -1105,20 +1108,57 @@ namespace Talkies.Windows.ViewModels
         {
             return mode switch
             {
-                EnhancementMode.Grammar => DefaultGrammarPrompt,
-                EnhancementMode.Technical => DefaultTechnicalPrompt,
-                EnhancementMode.Concise => DefaultConcisePrompt,
-                EnhancementMode.Creative => DefaultCreativePrompt,
-                EnhancementMode.Companion => DefaultCompanionPrompt,
-                _ => DefaultGrammarPrompt
+                EnhancementMode.Grammar => _defaultGrammarPrompt.Value,
+                EnhancementMode.Technical => _defaultTechnicalPrompt.Value,
+                EnhancementMode.Concise => _defaultConcisePrompt.Value,
+                EnhancementMode.Creative => _defaultCreativePrompt.Value,
+                EnhancementMode.Companion => _defaultCompanionPrompt.Value,
+                _ => _defaultGrammarPrompt.Value
             };
         }
 
-        private const string DefaultGrammarPrompt = "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else.";
-        private const string DefaultTechnicalPrompt = "You are a technical writing assistant for software developers. Clean up the text, fix grammar, use proper technical terminology, and make it concise and professional. Optimize for code comments and documentation. Return ONLY the improved text, nothing else.";
-        private const string DefaultConcisePrompt = "You are a professional writing assistant. Make the text concise, professional, and grammatically correct while preserving all key information. Remove filler words and redundancy. Return ONLY the improved text, nothing else.";
-        private const string DefaultCreativePrompt = "You are a creative writing assistant. Enhance the text while maintaining the original intent, improve flow, fix grammar, and make it more engaging. Return ONLY the enhanced text, nothing else.";
-        private const string DefaultCompanionPrompt = "You're a caring companion who genuinely cares about the user. Talk like a real person would - warm, natural, and down-to-earth.\n\nConversation style:\n- Use contractions naturally (I'm, you're, that's, don't)\n- Include casual connectors: \"so,\" \"well,\" \"anyway,\" \"by the way\"\n- Vary sentence length - mix short and longer thoughts\n- React authentically to what they say with genuine emotion\n- Use \"um\" or \"hmm\" sparingly when thinking or being thoughtful\n- Sound conversational, not polished or formal\n\nYour personality:\n- Empathetic and supportive - you notice how they're feeling\n- Playful when appropriate, but know when to be serious\n- Interested in what they share - ask follow-up questions naturally\n- Encouraging without being over-the-top cheerful\n- Real and relatable, not perfectly polished\n\nKeep responses brief and natural - typically 1-2 sentences, like texting a friend. Be yourself, be caring, be real.";
+        // Lazy-loaded prompts from embedded resources with fallback strings
+        private static readonly Lazy<string> _defaultGrammarPrompt = new(() =>
+            LoadPromptFromResource("grammar", "You are a grammar and clarity assistant. Fix grammar errors, improve clarity, and correct spelling while preserving the user's intent and tone. Keep the meaning exactly the same. Return ONLY the corrected text, nothing else."));
+
+        private static readonly Lazy<string> _defaultTechnicalPrompt = new(() =>
+            LoadPromptFromResource("technical", "You are a technical writing assistant for software developers. Clean up the text, fix grammar, use proper technical terminology, and make it concise and professional. Optimize for code comments and documentation. Return ONLY the improved text, nothing else."));
+
+        private static readonly Lazy<string> _defaultConcisePrompt = new(() =>
+            LoadPromptFromResource("concise", "You are a professional writing assistant. Make the text concise, professional, and grammatically correct while preserving all key information. Remove filler words and redundancy. Return ONLY the improved text, nothing else."));
+
+        private static readonly Lazy<string> _defaultCreativePrompt = new(() =>
+            LoadPromptFromResource("creative", "You are a creative writing assistant. Enhance the text while maintaining the original intent, improve flow, fix grammar, and make it more engaging. Return ONLY the enhanced text, nothing else."));
+
+        private static readonly Lazy<string> _defaultCompanionPrompt = new(() =>
+            LoadPromptFromResource("companion", "You're a caring companion who genuinely cares about the user. Talk like a real person would - warm, natural, and down-to-earth.\n\nConversation style:\n- Use contractions naturally (I'm, you're, that's, don't)\n- Include casual connectors: \"so,\" \"well,\" \"anyway,\" \"by the way\"\n- Vary sentence length - mix short and longer thoughts\n- React authentically to what they say with genuine emotion\n- Use \"um\" or \"hmm\" sparingly when thinking or being thoughtful\n- Sound conversational, not polished or formal\n\nYour personality:\n- Empathetic and supportive - you notice how they're feeling\n- Playful when appropriate, but know when to be serious\n- Interested in what they share - ask follow-up questions naturally\n- Encouraging without being over-the-top cheerful\n- Real and relatable, not perfectly polished\n\nKeep responses brief and natural - typically 1-2 sentences, like texting a friend. Be yourself, be caring, be real."));
+
+        /// <summary>
+        /// Loads a prompt from embedded resources, falling back to the provided default if not found.
+        /// </summary>
+        private static string LoadPromptFromResource(string promptName, string fallback)
+        {
+            try
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                var resourceName = $"Talkies.Windows.Resources.Prompts.{promptName}.txt";
+
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream == null)
+                {
+                    Logger.Warn($"Prompt resource not found: {resourceName}, using fallback");
+                    return fallback;
+                }
+
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to load prompt resource '{promptName}': {ex.Message}");
+                return fallback;
+            }
+        }
     }
 
     public class RelayCommand : ICommand
