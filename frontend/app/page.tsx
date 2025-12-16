@@ -226,7 +226,7 @@ export default function Home() {
                   ))}
                 </div>
                 <p className="text-neutral-300 mb-6 leading-relaxed">
-                  "Talkies has completely transformed my workflow. I can now write articles 3x faster just by speaking my thoughts. Game changer!"
+                  &quot;Talkies has completely transformed my workflow. I can now write articles 3x faster just by speaking my thoughts. Game changer!&quot;
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center font-bold">
@@ -249,7 +249,7 @@ export default function Home() {
                   ))}
                 </div>
                 <p className="text-neutral-300 mb-6 leading-relaxed">
-                  "The accuracy is incredible. Works perfectly offline and my data stays private. Exactly what I needed for client meetings."
+                  &quot;The accuracy is incredible. Works perfectly offline and my data stays private. Exactly what I needed for client meetings.&quot;
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center font-bold">
@@ -272,7 +272,7 @@ export default function Home() {
                   ))}
                 </div>
                 <p className="text-neutral-300 mb-6 leading-relaxed">
-                  "As a non-native English speaker, Talkies helps me write professional emails effortlessly. The multi-language support is fantastic!"
+                  &quot;As a non-native English speaker, Talkies helps me write professional emails effortlessly. The multi-language support is fantastic!&quot;
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-600 to-orange-600 flex items-center justify-center font-bold">

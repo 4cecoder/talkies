@@ -1,0 +1,61 @@
+# Docker Compose configuration for running .NET Windows tests on macOS/Linux
+# This provides an easier interface than raw docker commands
+
+version: '3.8'
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source code for live updates
+      - ./Talkies.Windows:/app/Talkies.Windows
+      - ./Talkies.Windows.Tests:/app/Talkies.Windows.Tests
+      # Mount test results output
+      - ./TestResults:/app/TestResults
+    environment:
+      # Disable telemetry
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+      # Enable detailed diagnostics if needed
+      - DOTNET_LOGGING__CONSOLE__DISABLECOLORS=false
+    command: dotnet test Talkies.Windows.Tests/Talkies.Windows.Tests.csproj --logger "trx;LogFileName=test-results.trx" --logger "console;verbosity=detailed" --results-directory /app/TestResults
+
+  # Service for building the project
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./Talkies.Windows:/app/Talkies.Windows
+      - ./Talkies.Windows.Tests:/app/Talkies.Windows.Tests
+    environment:
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    command: dotnet build Talkies.Windows/Talkies.Windows.csproj
+
+  # Service for restoring dependencies
+  restore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./Talkies.Windows:/app/Talkies.Windows
+      - ./Talkies.Windows.Tests:/app/Talkies.Windows.Tests
+    environment:
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    command: dotnet restore
+
+  # Interactive shell for debugging
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./Talkies.Windows:/app/Talkies.Windows
+      - ./Talkies.Windows.Tests:/app/Talkies.Windows.Tests
+      - ./TestResults:/app/TestResults
+    environment:
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    entrypoint: /bin/bash
+    stdin_open: true
+    tty: true
