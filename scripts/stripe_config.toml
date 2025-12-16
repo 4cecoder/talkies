@@ -1,0 +1,252 @@
+# Stripe Provisioning Configuration for Talkies
+# This file defines all Stripe resources to be provisioned
+
+[metadata]
+version = "1.0"
+api_version = "2024-12-18.acacia"
+
+# Base URLs for different environments
+[urls]
+production_webhook = "https://api.talkies.app/webhooks/stripe"
+test_webhook = "https://api.talkies.app/webhooks/stripe-test"
+success_url = "https://talkies.app/success?session_id={CHECKOUT_SESSION_ID}"
+cancel_url = "https://talkies.app/pricing"
+dashboard_url = "https://talkies.app/dashboard"
+privacy_url = "https://talkies.app/privacy"
+terms_url = "https://talkies.app/terms"
+
+# Product Definitions
+[[products]]
+id = "talkies_free"
+name = "Talkies Free"
+description = "Basic voice transcription with limited features"
+active = true
+
+[products.metadata]
+tier = "free"
+features = "basic_transcription,limited_minutes"
+max_minutes_per_month = "60"
+storage_gb = "1"
+support_tier = "community"
+
+[[products]]
+id = "talkies_pro"
+name = "Talkies Pro"
+description = "Full access to Talkies voice transcription with unlimited minutes, cloud storage, and priority support"
+active = true
+
+[products.metadata]
+tier = "pro"
+features = "unlimited_transcription,cloud_storage,priority_support,export_formats,hotkey_support"
+max_minutes_per_month = "unlimited"
+storage_gb = "100"
+support_tier = "priority"
+
+[[products]]
+id = "talkies_enterprise"
+name = "Talkies Enterprise"
+description = "Enterprise-grade transcription with dedicated support, custom integrations, and advanced features"
+active = true
+
+[products.metadata]
+tier = "enterprise"
+features = "unlimited_transcription,unlimited_storage,dedicated_support,api_access,custom_integration,sla,team_management"
+max_minutes_per_month = "unlimited"
+storage_gb = "unlimited"
+support_tier = "dedicated"
+
+# Price Definitions
+[[prices]]
+lookup_key = "talkies_pro_monthly"
+product = "talkies_pro"
+currency = "usd"
+unit_amount = 1999  # $19.99
+tax_behavior = "exclusive"
+
+[prices.recurring]
+interval = "month"
+interval_count = 1
+trial_period_days = 14
+
+[prices.metadata]
+plan_name = "Pro Monthly"
+billing_cycle = "monthly"
+display_price = "$19.99/mo"
+
+[[prices]]
+lookup_key = "talkies_pro_annual"
+product = "talkies_pro"
+currency = "usd"
+unit_amount = 19900  # $199/year (save $39.88)
+tax_behavior = "exclusive"
+
+[prices.recurring]
+interval = "year"
+interval_count = 1
+trial_period_days = 14
+
+[prices.metadata]
+plan_name = "Pro Annual"
+billing_cycle = "annual"
+display_price = "$199/yr"
+savings = "$39.88/yr"
+discount_percentage = "17"
+
+[[prices]]
+lookup_key = "talkies_pro_lifetime"
+product = "talkies_pro"
+currency = "usd"
+unit_amount = 49900  # $499 one-time
+tax_behavior = "exclusive"
+
+[prices.metadata]
+plan_name = "Pro Lifetime"
+billing_cycle = "lifetime"
+display_price = "$499"
+price_type = "one_time"
+
+[[prices]]
+lookup_key = "talkies_enterprise_monthly"
+product = "talkies_enterprise"
+currency = "usd"
+unit_amount = 9900  # $99/month
+tax_behavior = "exclusive"
+
+[prices.recurring]
+interval = "month"
+interval_count = 1
+
+[prices.metadata]
+plan_name = "Enterprise Monthly"
+billing_cycle = "monthly"
+display_price = "Contact Sales"
+requires_approval = "true"
+
+# Webhook Configuration
+[webhooks]
+enabled_events = [
+    # Subscription lifecycle
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "customer.subscription.trial_will_end",
+    "customer.subscription.paused",
+    "customer.subscription.resumed",
+
+    # Payment events
+    "invoice.created",
+    "invoice.finalized",
+    "invoice.paid",
+    "invoice.payment_failed",
+    "invoice.payment_action_required",
+    "charge.succeeded",
+    "charge.failed",
+    "charge.refunded",
+
+    # Customer events
+    "customer.created",
+    "customer.updated",
+    "customer.deleted",
+
+    # Payment method events
+    "payment_method.attached",
+    "payment_method.detached",
+    "payment_method.updated",
+
+    # Checkout events
+    "checkout.session.completed",
+    "checkout.session.expired",
+]
+
+[webhooks.metadata]
+service = "talkies-api"
+auto_provisioned = "true"
+
+# Customer Portal Configuration
+[portal]
+headline = "Manage your Talkies subscription"
+
+[portal.features.customer_update]
+enabled = true
+allowed_updates = ["email", "address", "phone", "tax_id"]
+
+[portal.features.invoice_history]
+enabled = true
+
+[portal.features.payment_method_update]
+enabled = true
+
+[portal.features.subscription_cancel]
+enabled = true
+mode = "at_period_end"
+
+[portal.features.subscription_cancel.cancellation_reason]
+enabled = true
+options = [
+    "too_expensive",
+    "missing_features",
+    "switched_service",
+    "unused",
+    "customer_service",
+    "too_complex",
+    "low_quality",
+    "other"
+]
+
+[portal.features.subscription_pause]
+enabled = false
+
+[portal.features.subscription_update]
+enabled = true
+default_allowed_updates = ["price"]
+proration_behavior = "always_invoice"
+
+# Tax Settings
+[tax]
+enabled = true
+tax_behavior = "exclusive"
+tax_code = "txcd_10000000"  # Software as a Service (SaaS)
+
+# Promotion Codes
+[[promo_codes]]
+code = "TALKIES20"
+coupon_name = "Launch Discount - 20% Off"
+percent_off = 20
+duration = "once"
+
+[promo_codes.metadata]
+campaign = "launch_2025"
+description = "20% off first payment"
+
+[[promo_codes]]
+code = "ANNUAL30"
+coupon_name = "Annual Plan Discount - 30% Off"
+percent_off = 30
+duration = "once"
+
+[promo_codes.metadata]
+campaign = "annual_2025"
+description = "30% off annual plans"
+
+[[promo_codes]]
+code = "TRIAL30"
+coupon_name = "Extended Trial - 30 Days"
+amount_off = 0
+currency = "usd"
+duration = "once"
+
+[promo_codes.metadata]
+campaign = "trial_extension"
+description = "Extended 30-day trial"
+trial_days = "30"
+
+[[promo_codes]]
+code = "LIFETIME50"
+coupon_name = "Lifetime Plan - 50% Off"
+percent_off = 50
+duration = "once"
+
+[promo_codes.metadata]
+campaign = "lifetime_launch"
+description = "50% off lifetime plan"
+applies_to = "lifetime"
