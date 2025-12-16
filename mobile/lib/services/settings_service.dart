@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_settings.dart';
+import '../models/transcript_segment.dart';
+import '../services/export_service.dart';
 
 /// Settings service for persistent configuration
 /// Based on SettingsService.cs from Windows implementation
@@ -96,6 +98,21 @@ class SettingsService extends ChangeNotifier {
   Future<void> setDarkMode(bool darkMode) async {
     _settings = _settings.copyWith(darkMode: darkMode);
     notifyListeners();
+    await saveSettings();
+  }
+
+  /// Export and share transcript in the specified format
+  Future<void> exportAndShare({
+    required List<TranscriptSegment> segments,
+    required String format,
+  }) async {
+    await ExportService.saveAndShare(
+      segments: segments,
+      format: format,
+    );
+
+    // Update last used export format
+    _settings = _settings.copyWith(lastExportFormat: format);
     await saveSettings();
   }
 }
