@@ -28,15 +28,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Build TalkiesCore library
+      - name: Build and test TalkiesCore library
         working-directory: mac
-        run: swift build -c debug --target TalkiesCore
-        # Note: Full app build skipped due to WhisperKit + Swift 6 compiler bug
-        # https://github.com/argmaxinc/WhisperKit/issues - SIL verification error
-
-      - name: Run TalkiesCore tests
-        working-directory: mac
-        run: swift test --filter TalkiesCoreTests
+        run: |
+          # Create a minimal Package.swift for CI that excludes WhisperKit
+          # This avoids the Swift 6 + WhisperKit SIL verification compiler bug
+          cat > Package.swift << 'EOF'
+          // swift-tools-version: 6.0
+          import PackageDescription
+          let package = Package(
+              name: "Talkies",
+              platforms: [.macOS(.v15)],
+              products: [.library(name: "TalkiesCore", targets: ["TalkiesCore"])],
+              targets: [
+                  .target(name: "TalkiesCore", dependencies: [], path: "Sources/TalkiesCore"),
+                  .testTarget(name: "TalkiesCoreTests", dependencies: ["TalkiesCore"], path: "Tests/TalkiesCoreTests"),
+              ]
+          )
+          EOF
+          swift build -c debug --target TalkiesCore
+          swift test --filter TalkiesCoreTests
 
   windows:
     name: Windows Build & Test
