@@ -4,6 +4,7 @@ import AVFoundation
 struct RecordingView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
     @EnvironmentObject var transcriptionService: TranscriptionService
+    @StateObject private var audioDeviceService = AudioDeviceService()
     @State private var selectedModel = "medium"
     @State private var selectedLanguage = "auto"
     @State private var showingSaveAlert = false
@@ -49,11 +50,12 @@ struct RecordingView: View {
                         selectedModel: $selectedModel,
                         selectedLanguage: $selectedLanguage,
                         models: models,
-                        languages: languages
+                        languages: languages,
+                        audioDeviceService: audioDeviceService
                     )
                     
                     // Recording Controls
-                    RecordingControlsView()
+                    RecordingControlsView(audioDeviceService: audioDeviceService)
                     
                     // Audio Level Meter
                     AudioLevelView(audioLevel: audioRecorder.audioLevel)
@@ -179,19 +181,43 @@ struct ModelSettingsCard: View {
     @Binding var selectedLanguage: String
     let models: [String]
     let languages: [String]
-    
+    @ObservedObject var audioDeviceService: AudioDeviceService
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Settings")
                 .font(.headline)
                 .foregroundColor(.primary)
-            
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Microphone")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+
+                Picker("Microphone", selection: $audioDeviceService.selectedDeviceID) {
+                    ForEach(audioDeviceService.availableDevices) { device in
+                        HStack {
+                            Text(device.name)
+                            if device.isDefault {
+                                Text("(Default)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .tag(Optional(device.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity)
+            }
+
             VStack(alignment: .leading, spacing: 12) {
                 Text("Model")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
-                
+
                 Picker("Model", selection: $selectedModel) {
                     ForEach(models, id: \.self) { model in
                         Text(model.capitalized).tag(model)
@@ -200,13 +226,13 @@ struct ModelSettingsCard: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity)
             }
-            
+
             VStack(alignment: .leading, spacing: 12) {
                 Text("Language")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
-                
+
                 Picker("Language", selection: $selectedLanguage) {
                     ForEach(languages, id: \.self) { language in
                         Text(language.uppercased()).tag(language)
@@ -228,8 +254,9 @@ struct ModelSettingsCard: View {
 struct RecordingControlsView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
     @EnvironmentObject var transcriptionService: TranscriptionService
+    @ObservedObject var audioDeviceService: AudioDeviceService
     @State private var isAnimating = false
-    
+
     var body: some View {
         VStack(spacing: 16) {
             // Main Record Button
@@ -274,7 +301,7 @@ struct RecordingControlsView: View {
             audioRecorder.stopRecording()
             transcriptionService.stopTranscription()
         } else {
-            audioRecorder.startRecording()
+            audioRecorder.startRecording(deviceID: audioDeviceService.selectedDeviceID)
             transcriptionService.startTranscription()
         }
     }
