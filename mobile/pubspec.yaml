@@ -16,7 +16,7 @@ dependencies:
   # Audio Recording & Transcription
   record: ^5.0.0  # Cross-platform audio recording
   path_provider: ^2.1.0  # File system paths
-  permission_handler: ^11.0.0  # Microphone permissions
+  permission_handler: ^12.0.1  # Microphone permissions
   
   # State Management
   provider: ^6.1.0
