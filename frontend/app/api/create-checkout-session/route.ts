@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-function getStripe() {
+// Lazy-load Stripe to avoid build-time errors when env vars are missing
+function getStripe(): Stripe {
   return new Stripe(process.env.STRIPE_SECRET_KEY || "", {
     apiVersion: "2025-12-15.clover",
   });

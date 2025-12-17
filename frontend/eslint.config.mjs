@@ -342,5 +342,5 @@ export default tseslint.config(
       "**/playwright-report/**",
       "**/.playwright/**",
     ],
-  },
+  }
 );
