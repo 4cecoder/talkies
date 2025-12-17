@@ -5,6 +5,7 @@ A stunning, conversion-focused SaaS landing page built with Next.js 16, featurin
 ## Features
 
 ### Design & UI/UX
+
 - **Animated Gradient Backgrounds**: Floating orbs with smooth pulsing animations
 - **Glassmorphism Effects**: Frosted glass panels with backdrop blur throughout
 - **Premium Gradient Buttons**: Animated flowing gradients with hover glow effects
@@ -12,12 +13,14 @@ A stunning, conversion-focused SaaS landing page built with Next.js 16, featurin
 - **Micro-interactions**: Smooth hover states, scale animations, and transitions
 
 ### SaaS Subscription Flow
+
 - **Authentication System**: Login/Signup modal with social auth (Google, GitHub)
 - **Checkout Flow**: Beautiful payment modal with monthly/yearly toggle
 - **User Dashboard**: Complete dashboard with stats, subscription management, and activity tracking
 - **Stripe-Ready**: Payment UI designed for easy Stripe integration
 
 ### Conversion Elements
+
 - **Social Proof Stats**: 500K+ users, 87% faster writing, 4.9/5 rating
 - **Testimonials Section**: 3 featured testimonials with 5-star ratings
 - **Multiple CTAs**: Strategic placement throughout the page
@@ -25,6 +28,7 @@ A stunning, conversion-focused SaaS landing page built with Next.js 16, featurin
 - **Final CTA Section**: High-converting pre-FAQ conversion section
 
 ### Sections
+
 1. **Hero**: Gradient text, platform download buttons (Mac, Windows, Linux)
 2. **Features**: 3-card grid with gradient hover effects
 3. **Social Proof**: Key metrics and statistics
@@ -79,18 +83,21 @@ frontend/
 ## Components
 
 ### AuthModal
+
 - Toggle between login/signup modes
 - Social authentication (Google, GitHub)
 - Form validation-ready
 - Glassmorphism design with gradient border
 
 ### CheckoutModal
+
 - Monthly/yearly billing toggle (20% annual discount)
 - Order summary with discount display
 - Stripe-ready payment form
 - Trust badges (secure, money-back, cancel anytime)
 
 ### Dashboard
+
 - Usage statistics (transcriptions, minutes, languages)
 - Subscription management card
 - Recent activity list

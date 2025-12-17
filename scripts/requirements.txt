@@ -1,0 +1,17 @@
+# Stripe Provisioning Script Dependencies
+
+# Stripe Python SDK
+stripe>=11.0.0,<12.0.0
+
+# No other dependencies required - uses standard library:
+# - tomllib (Python 3.11+) for TOML parsing
+# - argparse for CLI
+# - json for output
+# - pathlib for file handling
+# - uuid for idempotency keys
+# - datetime for timestamps
+
+# Development dependencies (optional)
+# pytest>=8.0.0  # For testing
+# black>=24.0.0  # For code formatting
+# mypy>=1.0.0    # For type checking
