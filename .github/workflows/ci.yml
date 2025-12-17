@@ -15,31 +15,9 @@ on:
       - '.github/workflows/ci.yml'
 
 jobs:
-  # Determine which jobs need to run based on changed files
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      macos: ${{ steps.filter.outputs.macos }}
-      windows: ${{ steps.filter.outputs.windows }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            macos:
-              - 'mac/**'
-              - '.github/workflows/ci.yml'
-            windows:
-              - 'windows/**'
-              - '.github/workflows/ci.yml'
-
   macos:
     name: macOS Build & Test
     runs-on: macos-latest
-    needs: changes
-    if: ${{ needs.changes.outputs.macos == 'true' }}
 
     steps:
       - name: Checkout code
@@ -87,8 +65,6 @@ jobs:
   windows:
     name: Windows Build & Test
     runs-on: windows-latest
-    needs: changes
-    if: ${{ needs.changes.outputs.windows == 'true' }}
 
     steps:
       - name: Checkout code
