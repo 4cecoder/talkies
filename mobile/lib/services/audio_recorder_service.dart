@@ -65,10 +65,12 @@ class AudioRecorderService extends ChangeNotifier {
 
       // Start recording with v6.1.2 API using RecordConfig
       await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
         path: _currentRecordingPath!,
-        encoder: AudioEncoder.aacLc,
-        bitRate: 128000,
-        samplingRate: 44100,
       );
 
       _isRecording = true;
