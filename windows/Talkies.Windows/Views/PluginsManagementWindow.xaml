@@ -9,15 +9,28 @@
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <TextBlock Grid.Row="0" Text="Plugin Manager" FontSize="24" FontWeight="Bold" Margin="0,0,0,12"/>
+        <TextBlock Grid.Row="0" Text="Settings & Plugins" FontSize="24" FontWeight="Bold" Margin="0,0,0,12"/>
+
+        <!-- Settings Section -->
+        <Border Grid.Row="1" Background="#1f1f1f" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Crash Reporting & Analytics" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <TextBlock Text="Data collected: PC name, IP address, system specs, crash logs, analytics events" Foreground="#999999" FontSize="11" Margin="0,0,0,8"/>
+                <CheckBox Content="Enable crash reporting and analytics" IsChecked="{Binding CrashReportingEnabled}" Margin="0,0,0,8"/>
+                <TextBlock Text="Endpoint URL:" FontSize="11" Margin="0,0,0,4"/>
+                <TextBox Text="{Binding CrashReportingEndpoint, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" Background="#333333" Foreground="White"/>
+                <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Height="28" Width="120"/>
+            </StackPanel>
+        </Border>
 
         <!-- Plugins List -->
-        <Border Grid.Row="1" Background="#1f1f1f" CornerRadius="8" Padding="0">
+        <Border Grid.Row="2" Background="#1f1f1f" CornerRadius="8" Padding="0">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Plugins}">
                     <ItemsControl.ItemsPanel>
@@ -100,7 +113,7 @@
         </Border>
 
         <!-- Footer -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button Content="Close" Command="{Binding CloseCommand}" Height="32" Width="80"
                     Padding="16,0" Margin="0,0,8,0"/>
         </StackPanel>
