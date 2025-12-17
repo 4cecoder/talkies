@@ -1,35 +1,35 @@
-'use client';
+"use client";
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-white/10 py-12 px-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+    <footer className="border-t border-white/10 px-6 py-12">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
           <p className="text-sm text-neutral-500">
-            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">
+            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text font-semibold text-transparent">
               © {currentYear} Talkies
-            </span>
-            {' '}• All rights reserved
+            </span>{" "}
+            • All rights reserved
           </p>
 
           <nav className="flex gap-6" aria-label="Footer navigation">
             <a
               href="#privacy"
-              className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
+              className="rounded px-2 py-1 text-sm text-neutral-500 transition-colors hover:text-purple-400 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none"
             >
               Privacy
             </a>
             <a
               href="#terms"
-              className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
+              className="rounded px-2 py-1 text-sm text-neutral-500 transition-colors hover:text-purple-400 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none"
             >
               Terms
             </a>
             <a
               href="#contact"
-              className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
+              className="rounded px-2 py-1 text-sm text-neutral-500 transition-colors hover:text-purple-400 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none"
             >
               Contact
             </a>

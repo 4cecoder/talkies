@@ -1,9 +1,9 @@
-import { ButtonHTMLAttributes, forwardRef } from 'react';
-import { cn } from '@/app/lib/utils';
+import { ButtonHTMLAttributes, forwardRef } from "react";
+import { cn } from "@/app/lib/utils";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'gradient';
-  size?: 'sm' | 'md' | 'lg';
+  variant?: "primary" | "secondary" | "ghost" | "gradient";
+  size?: "sm" | "md" | "lg";
   isLoading?: boolean;
   fullWidth?: boolean;
 }
@@ -12,8 +12,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
       className,
-      variant = 'primary',
-      size = 'md',
+      variant = "primary",
+      size = "md",
       isLoading = false,
       fullWidth = false,
       disabled,
@@ -23,53 +23,48 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles = cn(
-      'inline-flex items-center justify-center font-semibold',
-      'rounded-xl transition-all duration-200',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0f]',
-      'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
-      fullWidth && 'w-full'
+      "inline-flex items-center justify-center font-semibold",
+      "rounded-xl transition-all duration-200",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0f]",
+      "disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none",
+      fullWidth && "w-full"
     );
 
     const variants = {
       primary: cn(
-        'bg-white text-[#0a0a0f]',
-        'hover:bg-white/90 hover:scale-105',
-        'active:scale-100'
+        "bg-white text-[#0a0a0f]",
+        "hover:bg-white/90 hover:scale-105",
+        "active:scale-100"
       ),
       secondary: cn(
-        'bg-white/5 border border-white/10 text-white',
-        'hover:bg-white/10 hover:border-white/20',
-        'active:scale-98'
+        "bg-white/5 border border-white/10 text-white",
+        "hover:bg-white/10 hover:border-white/20",
+        "active:scale-98"
       ),
       ghost: cn(
-        'bg-transparent text-white',
-        'hover:bg-white/5',
-        'active:scale-98'
+        "bg-transparent text-white",
+        "hover:bg-white/5",
+        "active:scale-98"
       ),
       gradient: cn(
-        'bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600',
-        'text-white',
-        'hover:shadow-lg hover:shadow-purple-500/50 hover:scale-105',
-        'active:scale-100',
-        'bg-[length:200%_200%] animate-gradient-fast'
+        "bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600",
+        "text-white",
+        "hover:shadow-lg hover:shadow-purple-500/50 hover:scale-105",
+        "active:scale-100",
+        "bg-[length:200%_200%] animate-gradient-fast"
       ),
     };
 
     const sizes = {
-      sm: 'px-4 py-2 text-sm',
-      md: 'px-6 py-3 text-base',
-      lg: 'px-8 py-4 text-lg',
+      sm: "px-4 py-2 text-sm",
+      md: "px-6 py-3 text-base",
+      lg: "px-8 py-4 text-lg",
     };
 
     return (
       <button
         ref={ref}
-        className={cn(
-          baseStyles,
-          variants[variant],
-          sizes[size],
-          className
-        )}
+        className={cn(baseStyles, variants[variant], sizes[size], className)}
         disabled={disabled || isLoading}
         aria-busy={isLoading}
         {...props}
@@ -77,7 +72,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {isLoading ? (
           <>
             <svg
-              className="animate-spin -ml-1 mr-3 h-5 w-5"
+              className="mr-3 -ml-1 h-5 w-5 animate-spin"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -107,6 +102,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   }
 );
 
-Button.displayName = 'Button';
+Button.displayName = "Button";
 
 export { Button };
