@@ -14,23 +14,8 @@ namespace Talkies.Windows
             var settingsService = new SettingsService();
             var settings = settingsService.Load();
 
-            ApplyTheme(settings.Theme);
-        }
-
-        private void ApplyTheme(string themeSetting)
-        {
-            string themeToApply;
-
-            if (themeSetting == "System")
-            {
-                themeToApply = DarkModeService.GetSystemTheme();
-            }
-            else
-            {
-                themeToApply = themeSetting;
-            }
-
-            DarkModeService.ApplyTheme(themeToApply);
+            // Apply theme based on user setting (which may be "System" for auto-detection)
+            DarkModeService.ApplyThemeSetting(settings.Theme);
         }
     }
 }

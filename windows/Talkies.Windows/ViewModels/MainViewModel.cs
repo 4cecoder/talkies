@@ -313,18 +313,8 @@ namespace Talkies.Windows.ViewModels
 
         private void ApplyTheme(string themeSetting)
         {
-            string themeToApply;
-
-            if (themeSetting == "System")
-            {
-                themeToApply = DarkModeService.GetSystemTheme();
-            }
-            else
-            {
-                themeToApply = themeSetting;
-            }
-
-            DarkModeService.ApplyTheme(themeToApply);
+            // Delegate to DarkModeService which handles "System" theme resolution
+            DarkModeService.ApplyThemeSetting(themeSetting);
         }
 
         private void OnLlmProviderChanged()
