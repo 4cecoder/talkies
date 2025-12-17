@@ -22,7 +22,20 @@ namespace Talkies.Windows
             // One-time privacy consent on first launch
             if (!settings.CrashReportingPrivacyAccepted)
             {
-                var privacyPolicy = File.ReadAllText("Resources/PrivacyPolicy.md");
+                string privacyPolicy;
+                try
+                {
+                    var basePath = AppDomain.CurrentDomain.BaseDirectory;
+                    var policyPath = Path.Combine(basePath, "Resources", "PrivacyPolicy.md");
+                    privacyPolicy = File.ReadAllText(policyPath);
+                }
+                catch (Exception ex)
+                {
+                    // Fallback to embedded message if file not found
+                    privacyPolicy = "Talkies collects crash reports and analytics data including PC name, IP address, system specs, and exception details to help improve the application. Data is transmitted securely via HTTPS.";
+                    Debug.WriteLine($"Failed to load privacy policy: {ex.Message}");
+                }
+
                 var result = MessageBox.Show(
                     $"{privacyPolicy}\n\nDo you consent to submit crash reports and analytics to help improve the application?",
                     "Privacy Consent",
@@ -37,27 +50,6 @@ namespace Talkies.Windows
                 _settingsService.Save(settings);
             }
 
-            _crashReporter = new CrashReporter(settings);
-        }
-
-        protected override void OnExit(System.Windows.ExitEventArgs e)
-        {
-            _crashReporter?.OnNormalExit();
-            base.OnExit(e);
-            Environment.ExitCode = 0;
-        }
-    }
-}
-
-            var app = new App();
-            app.Run();
-        }
-
-        protected override void OnStartup(System.Windows.StartupEventArgs e)
-        {
-            base.OnStartup(e);
-            _settingsService = new SettingsService();
-            var settings = _settingsService.Load();
             _crashReporter = new CrashReporter(settings);
         }
 

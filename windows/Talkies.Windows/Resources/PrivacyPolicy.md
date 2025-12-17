@@ -27,8 +27,8 @@ When crash reporting is enabled, Talkies collects the following information to h
 ## Privacy Protections
 - Reporting is disabled by default
 - Users must explicitly accept this privacy policy to enable
-- Data is transmitted securely and only to authorized endpoints
-- No personally identifiable information beyond system specs is collected
+- Data is transmitted securely via HTTPS only to authorized endpoints
+- Personally identifiable information collected includes: PC name, local IP address, username, and system specifications
 - Users can disable reporting at any time
 
 ## GDPR/CCPA Compliance
