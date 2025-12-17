@@ -32,7 +32,7 @@ namespace Talkies.Windows.Services
 
         public static void ApplyTheme(string theme)
         {
-            var app = Application.Current;
+            var app = System.Windows.Application.Current;
             if (app == null) return;
 
             // Remove existing theme dictionaries
