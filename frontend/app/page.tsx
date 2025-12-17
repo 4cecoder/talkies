@@ -6,7 +6,6 @@ import CheckoutModal from "./components/CheckoutModal";
 import {
   Globe,
   Shield,
-  Smartphone,
   TrendingUp,
   Users,
   Award,

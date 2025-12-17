@@ -1,0 +1,233 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  # Allow manual workflow trigger
+  workflow_dispatch:
+
+jobs:
+  # Analyze code for linting issues
+  analyze:
+    name: Flutter Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Run analyzer
+        working-directory: mobile
+        run: flutter analyze --no-fatal-infos
+
+  # Run unit and widget tests
+  test:
+    name: Flutter Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Run tests with coverage
+        working-directory: mobile
+        run: flutter test --coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: mobile/coverage/lcov.info
+          flags: mobile
+          fail_ci_if_error: false
+
+  # Build Android APK
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    needs: [analyze, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Regenerate Android project files
+        working-directory: mobile
+        run: |
+          # Clean and regenerate Android project to ensure v2 embedding
+          rm -rf android .flutter-plugins .flutter-plugins-dependencies
+          flutter create --platforms=android --org=com.example --project-name=talkies_mobile .
+          # Run pub get to register plugins properly
+          flutter pub get
+          # Restore custom permissions in AndroidManifest.xml
+          cat > android/app/src/main/AndroidManifest.xml << 'MANIFEST'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:label="Talkies Mobile"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:taskAffinity=""
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                        android:name="io.flutter.embedding.android.NormalTheme"
+                        android:resource="@style/NormalTheme"
+                        />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="https" />
+                  </intent>
+              </queries>
+          </manifest>
+          MANIFEST
+
+      - name: Build debug APK
+        working-directory: mobile
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+  # Build iOS (no codesigning for CI)
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    needs: [analyze, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Regenerate iOS project files
+        working-directory: mobile
+        run: |
+          # Clean and regenerate iOS project
+          rm -rf ios .flutter-plugins .flutter-plugins-dependencies
+          flutter create --platforms=ios --org=com.example --project-name=talkies_mobile .
+          # Run pub get to register plugins properly
+          flutter pub get
+          # Restore custom Info.plist permissions
+          cat > ios/Runner/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>$(DEVELOPMENT_LANGUAGE)</string>
+              <key>CFBundleDisplayName</key>
+              <string>Talkies</string>
+              <key>CFBundleExecutable</key>
+              <string>$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Talkies</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$(FLUTTER_BUILD_NAME)</string>
+              <key>CFBundleSignature</key>
+              <string>????</string>
+              <key>CFBundleVersion</key>
+              <string>$(FLUTTER_BUILD_NUMBER)</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>NSMicrophoneUsageDescription</key>
+              <string>Talkies needs microphone access for voice transcription</string>
+              <key>UILaunchStoryboardName</key>
+              <string>LaunchScreen</string>
+              <key>UIMainStoryboardFile</key>
+              <string>Main</string>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationPortraitUpsideDown</string>
+              </array>
+              <key>UIApplicationSupportsIndirectInputEvents</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Build iOS (no codesign)
+        working-directory: mobile
+        run: flutter build ios --no-codesign --debug
+
+      - name: Upload iOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-debug-build
+          path: mobile/build/ios/iphoneos/
+          retention-days: 7

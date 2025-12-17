@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/audio_recorder_service.dart';
-import '../services/settings_service.dart';
 import '../services/export_service.dart';
 
 /// Recording control buttons
@@ -12,7 +11,6 @@ class RecordingControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final audioService = context.watch<AudioRecorderService>();
-    final settingsService = context.watch<SettingsService>();
 
     return Container(
       padding: const EdgeInsets.all(16.0),
