@@ -8,7 +8,7 @@ import '../models/transcript_segment.dart';
 /// Audio recording service
 /// Combines functionality from AudioRecorder.swift (macOS) and AudioRecorder.cs (Windows)
 class AudioRecorderService extends ChangeNotifier {
-  final AudioRecorder _recorder = AudioRecorder();
+  final Record _recorder = Record();
   
   bool _isRecording = false;
   bool _isPaused = false;
