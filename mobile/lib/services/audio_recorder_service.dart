@@ -68,7 +68,7 @@ class AudioRecorderService extends ChangeNotifier {
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
           bitRate: 128000,
-          samplingRate: 44100,
+          sampleRate: 44100,
         ),
         path: _currentRecordingPath!,
       );
