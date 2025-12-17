@@ -88,16 +88,12 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Get dependencies
-        working-directory: mobile
-        run: flutter pub get
-
       - name: Regenerate Android project files
         working-directory: mobile
         run: |
           # Clean and regenerate Android project to ensure v2 embedding
           rm -rf android
-          flutter create --platforms=android --org com.talkies .
+          flutter create --platforms=android --org com.example .
           # Restore custom permissions in AndroidManifest.xml
           cat > android/app/src/main/AndroidManifest.xml << 'MANIFEST'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -107,7 +103,7 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET" />
 
               <application
-                  android:label="Talkies"
+                  android:label="Talkies Mobile"
                   android:name="${applicationName}"
                   android:icon="@mipmap/ic_launcher">
                   <activity
@@ -141,6 +137,10 @@ jobs:
           </manifest>
           MANIFEST
 
+      - name: Get dependencies
+        working-directory: mobile
+        run: flutter pub get
+
       - name: Build debug APK
         working-directory: mobile
         run: flutter build apk --debug
@@ -168,16 +168,12 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Get dependencies
-        working-directory: mobile
-        run: flutter pub get
-
       - name: Regenerate iOS project files
         working-directory: mobile
         run: |
           # Clean and regenerate iOS project
           rm -rf ios
-          flutter create --platforms=ios --org com.talkies .
+          flutter create --platforms=ios --org com.example .
           # Restore custom Info.plist permissions
           cat > ios/Runner/Info.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -222,6 +218,10 @@ jobs:
           </dict>
           </plist>
           PLIST
+
+      - name: Get dependencies
+        working-directory: mobile
+        run: flutter pub get
 
       - name: Build iOS (no codesign)
         working-directory: mobile
