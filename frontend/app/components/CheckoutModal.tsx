@@ -13,7 +13,6 @@ interface CheckoutModalProps {
 export default function CheckoutModal({
   isOpen,
   onClose,
-  plan,
 }: CheckoutModalProps) {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">(
     "monthly"
