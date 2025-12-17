@@ -21,6 +21,9 @@ namespace Talkies.Windows.Models
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
 
+        // Theme Settings
+        public string Theme { get; set; } = "System"; // Options: "Light", "Dark", "System"
+
         // LLM Provider Settings
         public string SelectedLlmProvider { get; set; } = "LM Studio";
         public string LlmEndpoint { get; set; } = "http://127.0.0.1:1234";
