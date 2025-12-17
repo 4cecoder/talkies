@@ -56,5 +56,14 @@ namespace Talkies.Windows.Services
                 // ignore errors silently for now
             }
         }
+
+        public bool ValidateCrashReportingSettings(AppSettings settings)
+        {
+            if (settings.CrashReportingEnabled && !settings.CrashReportingPrivacyAccepted)
+            {
+                return false; // Must accept privacy policy to enable
+            }
+            return true;
+        }
     }
 }

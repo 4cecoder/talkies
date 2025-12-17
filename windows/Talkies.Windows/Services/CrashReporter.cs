@@ -19,8 +19,9 @@ namespace Talkies.Windows.Services
         private readonly string _crashLogPath;
         private readonly string _analyticsLogPath;
         private readonly string _crashDataPath;
-        private readonly HttpClient _httpClient;
+        private HttpClient _httpClient;
         private readonly AppSettings _settings;
+        private const long MaxLogSize = 10 * 1024 * 1024; // 10MB
 
         public CrashReporter(AppSettings settings)
         {
@@ -125,7 +126,7 @@ namespace Talkies.Windows.Services
             try
             {
                 var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                File.AppendAllText(_crashLogPath, json + Environment.NewLine);
+                AppendToLogFile(_crashLogPath, json + Environment.NewLine);
                 Logger.Error($"Crash logged: {json}");
             }
             catch (Exception ex)
@@ -136,11 +137,17 @@ namespace Talkies.Windows.Services
 
         private async Task SendCrashReportAsync(object data)
         {
+            if (!IsValidEndpoint(_settings.CrashReportingEndpoint))
+            {
+                Logger.Warn("Invalid endpoint URL for crash reporting");
+                return;
+            }
+
             try
             {
                 var json = JsonSerializer.Serialize(data);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
+                using var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
                 if (response.IsSuccessStatusCode)
                 {
                     Logger.Info("Crash report sent successfully");
@@ -164,6 +171,7 @@ namespace Talkies.Windows.Services
                 {
                     File.Delete(_crashDataPath);
                 }
+                _httpClient?.Dispose();
             }
             catch
             {
@@ -241,8 +249,8 @@ namespace Talkies.Windows.Services
             try
             {
                 var json = JsonSerializer.Serialize(eventData);
-                File.AppendAllText(_analyticsLogPath, json + Environment.NewLine);
-                if (_settings.CrashReportingEnabled && !string.IsNullOrEmpty(_settings.CrashReportingEndpoint))
+                AppendToLogFile(_analyticsLogPath, json + Environment.NewLine);
+                if (_settings.CrashReportingEnabled && IsValidEndpoint(_settings.CrashReportingEndpoint))
                 {
                     _ = SendAnalyticsAsync(eventData); // Fire and forget
                 }
@@ -255,11 +263,17 @@ namespace Talkies.Windows.Services
 
         private async Task SendAnalyticsAsync(object data)
         {
+            if (!IsValidEndpoint(_settings.CrashReportingEndpoint))
+            {
+                Logger.Warn("Invalid endpoint URL for analytics");
+                return;
+            }
+
             try
             {
                 var json = JsonSerializer.Serialize(data);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
+                using var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
                 if (!response.IsSuccessStatusCode)
                 {
                     Logger.Warn($"Failed to send analytics: {response.StatusCode}");
@@ -269,6 +283,35 @@ namespace Talkies.Windows.Services
             {
                 Logger.Error($"Error sending analytics: {ex.Message}");
             }
+        }
+
+        private void AppendToLogFile(string filePath, string content)
+        {
+            try
+            {
+                var fileInfo = new FileInfo(filePath);
+                if (fileInfo.Exists && fileInfo.Length > MaxLogSize)
+                {
+                    // Rotate log: keep last half
+                    var existingContent = File.ReadAllText(filePath);
+                    var halfLength = existingContent.Length / 2;
+                    var truncated = existingContent.Substring(halfLength);
+                    File.WriteAllText(filePath, truncated);
+                }
+                File.AppendAllText(filePath, content);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to append to log file: {ex.Message}");
+            }
+        }
+
+        private bool IsValidEndpoint(string url)
+        {
+            return !string.IsNullOrWhiteSpace(url) &&
+                   Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                   (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) &&
+                   uri.Host != "localhost" && uri.Host != "127.0.0.1"; // Require external for security
         }
 
         public static async Task RunMonitorAsync(int pid, AppSettings settings)

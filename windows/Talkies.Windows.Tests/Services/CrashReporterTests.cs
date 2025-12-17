@@ -16,6 +16,7 @@ namespace Talkies.Windows.Tests.Services
     {
         private string _tempDir;
         private AppSettings _settings;
+        private const long MaxLogSize = 10 * 1024 * 1024; // 10MB
 
         [SetUp]
         public void Setup()
@@ -98,6 +99,52 @@ namespace Talkies.Windows.Tests.Services
 
             // Assert
             // Hard to test without actual process, but check method exists
+        }
+
+        [Test]
+        public void IsValidEndpoint_ValidHttps_ReturnsTrue()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var result = (bool)method?.Invoke(reporter, new[] { "https://example.com" });
+
+            // Assert
+            Assert.IsTrue(result);
+        }
+
+        [Test]
+        public void IsValidEndpoint_InvalidUrl_ReturnsFalse()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var result = (bool)method?.Invoke(reporter, new[] { "invalid-url" });
+
+            // Assert
+            Assert.IsFalse(result);
+        }
+
+        [Test]
+        public void AppendToLogFile_LimitsSize()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+            var testFile = Path.Combine(_tempDir, "test.log");
+            var largeContent = new string('x', (int)CrashReporterTests.MaxLogSize + 1000);
+            File.WriteAllText(testFile, largeContent);
+
+            // Act
+            var method = typeof(CrashReporter).GetMethod("AppendToLogFile", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method?.Invoke(reporter, new[] { testFile, "new content\n" });
+
+            // Assert
+            var fileInfo = new FileInfo(testFile);
+            Assert.IsTrue(fileInfo.Length <= CrashReporterTests.MaxLogSize + 100); // Allow some margin
         }
 
         [Test]
