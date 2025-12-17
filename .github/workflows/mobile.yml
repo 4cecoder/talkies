@@ -92,8 +92,10 @@ jobs:
         working-directory: mobile
         run: |
           # Clean and regenerate Android project to ensure v2 embedding
-          rm -rf android
-          flutter create --platforms=android --org com.example .
+          rm -rf android .flutter-plugins .flutter-plugins-dependencies
+          flutter create --platforms=android --org=com.example --project-name=talkies_mobile .
+          # Run pub get to register plugins properly
+          flutter pub get
           # Restore custom permissions in AndroidManifest.xml
           cat > android/app/src/main/AndroidManifest.xml << 'MANIFEST'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -137,10 +139,6 @@ jobs:
           </manifest>
           MANIFEST
 
-      - name: Get dependencies
-        working-directory: mobile
-        run: flutter pub get
-
       - name: Build debug APK
         working-directory: mobile
         run: flutter build apk --debug
@@ -172,8 +170,10 @@ jobs:
         working-directory: mobile
         run: |
           # Clean and regenerate iOS project
-          rm -rf ios
-          flutter create --platforms=ios --org com.example .
+          rm -rf ios .flutter-plugins .flutter-plugins-dependencies
+          flutter create --platforms=ios --org=com.example --project-name=talkies_mobile .
+          # Run pub get to register plugins properly
+          flutter pub get
           # Restore custom Info.plist permissions
           cat > ios/Runner/Info.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -218,10 +218,6 @@ jobs:
           </dict>
           </plist>
           PLIST
-
-      - name: Get dependencies
-        working-directory: mobile
-        run: flutter pub get
 
       - name: Build iOS (no codesign)
         working-directory: mobile
