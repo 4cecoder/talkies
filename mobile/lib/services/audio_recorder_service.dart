@@ -63,12 +63,12 @@ class AudioRecorderService extends ChangeNotifier {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       _currentRecordingPath = '${tempDir.path}/recording_$timestamp.m4a';
 
-      // Start recording with v5.2.0 API using RecordConfig
+      // Start recording with v6.1.2 API using RecordConfig
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
           bitRate: 128000,
-          samplingRate: 44100,
+          sampleRate: 44100,
         ),
         path: _currentRecordingPath!,
       );
