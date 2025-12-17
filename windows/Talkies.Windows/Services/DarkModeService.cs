@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Security;
 using System.Windows;
 using Microsoft.Win32;
 
@@ -69,7 +70,7 @@ namespace Talkies.Windows.Services
         /// <param name="themeSetting">Actual theme name: "Dark" or "Light" (not "System").</param>
         public static void ApplyTheme(string? themeSetting)
         {
-            var app = Application.Current;
+            var app = System.Windows.Application.Current;
             if (app == null)
             {
                 Debug.WriteLine("DarkModeService: Application.Current is null, cannot apply theme.");
