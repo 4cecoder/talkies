@@ -8,7 +8,7 @@ import '../models/transcript_segment.dart';
 /// Audio recording service
 /// Combines functionality from AudioRecorder.swift (macOS) and AudioRecorder.cs (Windows)
 class AudioRecorderService extends ChangeNotifier {
-  final AudioRecorder _recorder = AudioRecorder();
+  final Record _recorder = Record();
   
   bool _isRecording = false;
   bool _isPaused = false;
@@ -65,12 +65,10 @@ class AudioRecorderService extends ChangeNotifier {
 
       // Start recording
       await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 128000,
-          sampleRate: 44100,
-        ),
         path: _currentRecordingPath!,
+        encoder: AudioEncoder.aacLc,
+        bitRate: 128000,
+        samplingRate: 44100,
       );
 
       _isRecording = true;
