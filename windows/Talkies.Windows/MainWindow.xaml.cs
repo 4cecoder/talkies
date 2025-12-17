@@ -1,6 +1,8 @@
 using System.Windows;
+using System.Windows.Controls;
 using Forms = System.Windows.Forms;
 using Talkies.Windows.ViewModels;
+using Talkies.Windows.Services;
 
 namespace Talkies.Windows
 {
@@ -16,6 +18,34 @@ namespace Talkies.Windows
             InitializeComponent();
             _vm = new MainViewModel();
             DataContext = _vm;
+
+            // Bind audio level to waveform visualizer
+            _vm.OnAudioLevelChanged += (level) =>
+            {
+                Dispatcher.InvokeAsync(() => WaveformVisualizer.AudioLevel = level);
+            };
+            _vm.OnResetWaveform += () =>
+            {
+                Dispatcher.InvokeAsync(() => WaveformVisualizer.Clear());
+            };
+
+            _vm.OnOverlayShow += msg => Dispatcher.Invoke(() => ShowOverlay(msg));
+            _vm.OnOverlayUpdate += msg => Dispatcher.Invoke(() => UpdateOverlay(msg));
+            _vm.OnOverlayHide += () => Dispatcher.Invoke(HideOverlay);
+
+            Loaded += (_, _) => _vm.StartHotkey();
+            Loaded += (_, _) => InitTrayIcon();
+            StateChanged += OnStateChanged;
+            Closed += (_, _) => DisposeTray();
+
+            // Add developer crash simulation menu if enabled
+            var settingsService = new SettingsService();
+            var settings = settingsService.Load();
+            if (settings.TalkiesTeamConfig.EnableSimulateCrashesModule)
+            {
+                AddDeveloperMenu();
+            }
+        }
 
             // Bind audio level to waveform visualizer
             _vm.OnAudioLevelChanged += (level) =>
@@ -118,6 +148,29 @@ namespace Talkies.Windows
         {
             _notifyIcon?.Dispose();
             _vm.Dispose();
+        }
+
+        private void AddDeveloperMenu()
+        {
+            var developerMenu = new MenuItem { Header = "Developer" };
+            var simulateCrashMenu = new MenuItem { Header = "Simulate Crash" };
+            simulateCrashMenu.Click += (s, e) => SimulateCrash();
+            developerMenu.Items.Add(simulateCrashMenu);
+
+            if (MainMenu.Items.Count > 0)
+            {
+                MainMenu.Items.Insert(MainMenu.Items.Count - 1, developerMenu);
+            }
+            else
+            {
+                MainMenu.Items.Add(developerMenu);
+            }
+        }
+
+        private void SimulateCrash()
+        {
+            // Simulate a crash by throwing an exception
+            throw new InvalidOperationException("Simulated crash for testing crash reporting.");
         }
     }
 }
