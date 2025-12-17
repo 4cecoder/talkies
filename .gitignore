@@ -17,6 +17,10 @@ DerivedData/
 **/obj/
 windows/models/
 
+# Rust build artifacts (linux/)
+linux/target/
+linux/.gitignore
+
 # Node.js (frontend/)
 node_modules/
 .next/
