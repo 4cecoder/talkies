@@ -11,6 +11,8 @@ on:
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile.yml'
+  # Allow manual workflow trigger
+  workflow_dispatch:
 
 jobs:
   # Analyze code for linting issues
