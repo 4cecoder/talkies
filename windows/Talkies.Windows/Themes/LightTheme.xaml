@@ -7,7 +7,8 @@
     <Color x:Key="TertiaryBackgroundColor">#EEEEEE</Color>
     <Color x:Key="BorderColor">#CCCCCC</Color>
     <Color x:Key="PrimaryTextColor">#1A1A1A</Color>
-    <Color x:Key="SecondaryTextColor">#666666</Color>
+    <!-- SecondaryTextColor: Changed from #666666 to #595959 for WCAG AA compliance (contrast ratio >= 4.5:1 on #F5F5F5 background) -->
+    <Color x:Key="SecondaryTextColor">#595959</Color>
     <Color x:Key="AccentColor">#0066CC</Color>
     <Color x:Key="ErrorBackgroundColor">#FFEBEE</Color>
     <Color x:Key="ErrorBorderColor">#EF5350</Color>
@@ -74,6 +75,7 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="8,6"/>
         <Setter Property="FontSize" Value="12"/>
+        <Setter Property="CaretBrush" Value="{StaticResource PrimaryTextBrush}"/>
     </Style>
 
     <!-- ComboBox Style -->
