@@ -30,6 +30,28 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "wayland", has_wayland);
     exe_mod.addImport("build_options", build_options.createModule());
 
+    // Add GTK/GObject bindings from Ghostty's pre-built artifact
+    // Pattern learned from Ghostty's src/build/SharedDeps.zig
+    const gobject_ = b.lazyDependency("gobject", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    if (gobject_) |gobject| {
+        // Map user-friendly import names to actual module names in the artifact
+        const gobject_imports = .{
+            .{ "gtk", "gtk4" },
+            .{ "gdk", "gdk4" },
+            .{ "glib", "glib2" },
+            .{ "gobject", "gobject2" },
+            .{ "gio", "gio2" },
+        };
+        inline for (gobject_imports) |import| {
+            const name, const module = import;
+            exe_mod.addImport(name, gobject.module(module));
+        }
+        std.debug.print("GTK bindings loaded from Ghostty artifact\n", .{});
+    }
+
     // Link system libraries
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");

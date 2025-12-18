@@ -89,6 +89,29 @@ We are grateful to Mitchell Hashimoto and the Ghostty contributors for releasing
 **Ghostty Website**: https://ghostty.org
 **Author**: Mitchell Hashimoto (@mitchellh)
 
+## zig-gobject (Pre-Built Bindings)
+
+**Source**: [ghostty-org/zig-gobject](https://github.com/ghostty-org/zig-gobject)
+**Distributed via**: https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst
+
+**Purpose**: Pre-generated GTK/GObject bindings for Zig, built by the Ghostty team from upstream ianprime0509/zig-gobject. Provides clean Zig APIs for GTK4, GLib, GObject, Gdk, and Gio.
+
+**Modules Used**:
+- gtk4 (imported as `@import("gtk")`)
+- gdk4 (imported as `@import("gdk")`)
+- glib2 (imported as `@import("glib")`)
+- gobject2 (imported as `@import("gobject")`)
+- gio2 (imported as `@import("gio")`)
+
+**License**: MIT License (same as Ghostty)
+
+**Attribution**:
+- Original zig-gobject tool: Ian Johnson (@ianprime0509)
+- Pre-built artifact generation: Mitchell Hashimoto and Ghostty contributors
+- Repository: https://github.com/ghostty-org/zig-gobject
+
+The pre-built bindings save us from code generation complexity and Zig version compatibility issues with the upstream tool.
+
 ---
 
-*Last Updated: 2024-12-18*
+*Last Updated: 2025-12-18*

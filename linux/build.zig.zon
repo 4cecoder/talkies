@@ -34,6 +34,14 @@
     .dependencies = .{
         // Note: whisper.cpp will be linked as a system library or built separately
         // See build.zig for C FFI integration
+
+        // Pre-built GTK/GObject bindings from Ghostty
+        // Uses internal module names: gtk4, glib2, gobject2, etc.
+        .gobject = .{
+            .url = "https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst",
+            .hash = "1220ef11f229566a21729a5780ebe0fc8e983891663c8b0a7d793e1a4f53f622f876",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",
