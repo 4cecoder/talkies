@@ -170,17 +170,24 @@ talkies config              # Show current configuration
 - **PulseAudio** - Audio recording (`libpulse-simple`, `libpulse`)
 - **whisper.cpp** - Speech recognition (`libwhisper`)
 - **X11** (X11 only) - Global hotkeys (`libX11`)
-- **wl-clipboard** (Wayland) - Clipboard access
-- **xdotool** (X11) - Text insertion
+- **wl-clipboard** (Wayland) - Clipboard access (install `wl-clipboard` package)
+
+**No xdotool needed!** - Uses native Linux uinput for keyboard simulation
 
 ### Gentoo/Funtoo
 
 ```bash
 # Install dependencies
-doas emerge -av media-sound/pulseaudio app-accessibility/whisper-cpp x11-libs/libX11 x11-misc/xdotool gui-apps/wl-clipboard
+doas emerge -av media-sound/pulseaudio app-accessibility/whisper-cpp x11-libs/libX11 gui-apps/wl-clipboard
 
 # Build
 ./run.sh build
+
+# Setup uinput permissions (for text pasting)
+doas modprobe uinput
+echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | doas tee /etc/udev/rules.d/99-uinput.rules
+doas udevadm control --reload-rules && doas udevadm trigger
+doas usermod -aG input $USER  # Logout and login for this to take effect
 
 # Install (optional)
 doas cp zig-out/bin/talkies /usr/local/bin/
@@ -190,20 +197,32 @@ doas cp zig-out/bin/talkies /usr/local/bin/
 
 ```bash
 # Install dependencies
-sudo pacman -S zig pulseaudio whisper-cpp libx11 xdotool wl-clipboard
+sudo pacman -S zig pulseaudio whisper-cpp libx11 wl-clipboard
 
 # Build
 ./run.sh build
+
+# Setup uinput permissions (for text pasting)
+sudo modprobe uinput
+echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo usermod -aG input $USER  # Logout and login for this to take effect
 ```
 
 ### Ubuntu/Debian
 
 ```bash
 # Install dependencies
-sudo apt install zig libpulse-dev libwhisper-dev libx11-dev xdotool wl-clipboard
+sudo apt install zig libpulse-dev libwhisper-dev libx11-dev wl-clipboard
 
 # Build
 ./run.sh build
+
+# Setup uinput permissions (for text pasting)
+sudo modprobe uinput
+echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo usermod -aG input $USER  # Logout and login for this to take effect
 ```
 
 ## Performance
@@ -231,6 +250,15 @@ ggml_vulkan: 0 = NVIDIA GeForce GTX 1070
 
 ## Troubleshooting
 
+### Text not pasting (Permission denied on /dev/uinput)
+1. Check uinput module loaded: `lsmod | grep uinput`
+2. Load if needed: `doas modprobe uinput`
+3. Check permissions: `ls -la /dev/uinput`
+4. Add udev rule (see installation instructions above)
+5. Add yourself to `input` group: `doas usermod -aG input $USER`
+6. **Important**: Logout and login for group changes to take effect
+7. Verify group membership: `groups | grep input`
+
 ### No audio recorded (0 bytes)
 1. Check device is correct: `talkies audio-list`
 2. Test recording: `talkies audio`
@@ -245,6 +273,7 @@ ggml_vulkan: 0 = NVIDIA GeForce GTX 1070
 1. Make sure daemon is running: `ps aux | grep talkies`
 2. Check Hyprland config syntax
 3. Use the toggle script workaround (see Configuration section)
+4. Reload Hyprland config: `hyprctl reload`
 
 ### Transcription fails
 1. Download model: `talkies models`
