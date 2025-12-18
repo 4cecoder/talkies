@@ -15,6 +15,14 @@ pub const HotkeyListener = struct {
     root_window: c.Window = 0,
     running: bool = false,
 
+    /// Check if there are pending X events (non-blocking)
+    pub fn hasPendingEvents(self: *HotkeyListener) bool {
+        if (self.display) |display| {
+            return c.XPending(display) > 0;
+        }
+        return false;
+    }
+
     pub fn init(allocator: std.mem.Allocator) HotkeyListener {
         return .{
             .allocator = allocator,

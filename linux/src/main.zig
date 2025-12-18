@@ -384,6 +384,25 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         };
 
                         std.debug.print("🔴 Recording started...\n", .{});
+
+                        // Start recording loop in background
+                        // We need to poll for audio chunks while also checking for key release
+                        while (is_recording) {
+                            // Record a chunk (100ms of audio)
+                            _ = recorder.recordChunk() catch |err| {
+                                std.debug.print("Error recording chunk: {}\n", .{err});
+                                is_recording = false;
+                                break;
+                            };
+
+                            // Small sleep to match chunk rate (100ms chunks at 16kHz = 4096 bytes)
+                            std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+
+                            // Check if there's a pending key release event
+                            if (listener.hasPendingEvents()) {
+                                break; // Exit recording loop to process event
+                            }
+                        }
                     }
                 },
                 .release => {
