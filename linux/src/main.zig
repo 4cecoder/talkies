@@ -62,33 +62,130 @@ fn parseCommand(arg: []const u8) ?Command {
 fn runQuick(allocator: std.mem.Allocator) !void {
     utils.log("Starting quick recording workflow...", .{});
 
-    // TODO: Implement full workflow
-    // 1. Start recording
-    // 2. Wait for Ctrl+C
-    // 3. Stop recording and save to WAV
-    // 4. Transcribe with whisper
-    // 5. Copy to clipboard
-    // 6. Auto-paste
-    // 7. Cleanup
+    // Initialize services
+    var recorder = audio.AudioRecorder.init(allocator);
+    defer recorder.deinit();
 
-    _ = allocator;
-    std.debug.print("Quick mode not yet implemented\n", .{});
+    var clip = clipboard.Clipboard.init(allocator);
+    defer clip.deinit();
+
+    // Create temp file for recording
+    const temp_path = "/tmp/talkies_recording.wav";
+
+    // Start recording
+    try recorder.startRecording(temp_path);
+    std.debug.print("Recording started... Press Ctrl+C to stop and transcribe\n", .{});
+
+    // Record until interrupted (basic implementation - just 10 seconds for now)
+    // TODO: Add proper signal handling for Ctrl+C
+    const duration_ms: u64 = 10000;
+    const chunk_ms: u64 = 100;
+    const iterations = duration_ms / chunk_ms;
+
+    var i: u64 = 0;
+    while (i < iterations) : (i += 1) {
+        _ = try recorder.recordChunk();
+
+        // Show audio level
+        const level = recorder.getAudioLevel();
+        const bar_length = @as(usize, @intFromFloat(level * 50.0));
+
+        std.debug.print("\rLevel: [", .{});
+        var j: usize = 0;
+        while (j < 50) : (j += 1) {
+            if (j < bar_length) {
+                std.debug.print("#", .{});
+            } else {
+                std.debug.print(" ", .{});
+            }
+        }
+        std.debug.print("] {d:.2}", .{level});
+
+        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+    }
+
+    std.debug.print("\n", .{});
+
+    // Stop recording
+    try recorder.stopRecording();
+    std.debug.print("Recording saved to: {s}\n", .{temp_path});
+
+    // TODO: Wire up whisper transcription once API issues are resolved
+    // For now, just demonstrate the workflow with placeholder text
+    const test_text = "This is a test transcription from Talkies Linux!";
+
+    // Handle output
+    std.debug.print("Copying to clipboard...\n", .{});
+    try clip.copy(test_text);
+    std.debug.print("Text copied to clipboard!\n", .{});
+    std.debug.print("You can paste it with Ctrl+V\n", .{});
+
+    std.debug.print("\n✅ Quick workflow complete!\n", .{});
+    std.debug.print("Recording: {s}\n", .{temp_path});
+    std.debug.print("Text: {s}\n", .{test_text});
+    std.debug.print("\nNOTE: Whisper transcription will be wired up after resolving Zig 0.16 API compatibility.\n", .{});
 }
 
 fn runRecord(allocator: std.mem.Allocator) !void {
     utils.log("Recording audio...", .{});
 
-    // TODO: Implement audio recording only
-    _ = allocator;
-    std.debug.print("Record mode not yet implemented\n", .{});
+    var recorder = audio.AudioRecorder.init(allocator);
+    defer recorder.deinit();
+
+    // Generate output filename
+    const output_path = "recording.wav";
+
+    // Start recording
+    try recorder.startRecording(output_path);
+    std.debug.print("Recording started to: {s}\n", .{output_path});
+    std.debug.print("Press Ctrl+C to stop...\n", .{});
+
+    // Record for 30 seconds (or until interrupted)
+    // TODO: Add proper signal handling for Ctrl+C
+    const duration_ms: u64 = 30000;
+    const chunk_ms: u64 = 100;
+    const iterations = duration_ms / chunk_ms;
+
+    var i: u64 = 0;
+    while (i < iterations) : (i += 1) {
+        _ = try recorder.recordChunk();
+
+        // Show audio level
+        const level = recorder.getAudioLevel();
+        const bar_length = @as(usize, @intFromFloat(level * 50.0));
+
+        std.debug.print("\rLevel: [", .{});
+        var j: usize = 0;
+        while (j < 50) : (j += 1) {
+            if (j < bar_length) {
+                std.debug.print("#", .{});
+            } else {
+                std.debug.print(" ", .{});
+            }
+        }
+        std.debug.print("] {d:.2}", .{level});
+
+        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+    }
+
+    std.debug.print("\n", .{});
+
+    // Stop recording
+    try recorder.stopRecording();
+
+    std.debug.print("Recording saved to: {s}\n", .{output_path});
+    std.debug.print("You can play it with: aplay {s}\n", .{output_path});
 }
 
 fn runModelsDownload(allocator: std.mem.Allocator) !void {
     utils.log("Downloading whisper models...", .{});
 
-    // TODO: Implement model download
+    // TODO: Wire up model download once whisper API issues are resolved
     _ = allocator;
-    std.debug.print("Model download not yet implemented\n", .{});
+    _ = whisper;
+
+    std.debug.print("Model download not yet wired up\n", .{});
+    std.debug.print("For now, models should be placed in ~/.local/share/talkies/models/\n", .{});
 }
 
 fn runConfigShow(allocator: std.mem.Allocator) !void {

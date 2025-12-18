@@ -126,20 +126,30 @@ pub const WhisperService = struct {
             return try self.allocator.dupe(u8, "");
         }
 
-        // Concatenate all segment texts
-        var text = std.ArrayList(u8).init(self.allocator);
-        defer text.deinit();
-
+        // Calculate total length first
+        var total_len: usize = 0;
         var i: c_int = 0;
         while (i < n_segments) : (i += 1) {
             const segment_text = c.whisper_full_get_segment_text(ctx, i);
             if (segment_text != null) {
-                const text_slice = std.mem.span(segment_text);
-                try text.appendSlice(text_slice);
+                total_len += std.mem.len(segment_text);
             }
         }
 
-        return try text.toOwnedSlice();
+        // Allocate buffer and concatenate
+        const text_result = try self.allocator.alloc(u8, total_len);
+        var pos: usize = 0;
+        i = 0;
+        while (i < n_segments) : (i += 1) {
+            const segment_text = c.whisper_full_get_segment_text(ctx, i);
+            if (segment_text != null) {
+                const text_slice = std.mem.span(segment_text);
+                @memcpy(text_result[pos..][0..text_slice.len], text_slice);
+                pos += text_slice.len;
+            }
+        }
+
+        return text_result;
     }
 
     /// Get transcription segments with timing information
@@ -202,8 +212,13 @@ pub const WhisperService = struct {
         const int16_data = try self.allocator.alloc(i16, n_samples);
         defer self.allocator.free(int16_data);
 
-        const bytes_read = try file.readAll(std.mem.sliceAsBytes(int16_data));
-        _ = bytes_read;
+        const buffer = std.mem.sliceAsBytes(int16_data);
+        var bytes_read: usize = 0;
+        while (bytes_read < buffer.len) {
+            const n = try file.read(buffer[bytes_read..]);
+            if (n == 0) return error.UnexpectedEndOfFile;
+            bytes_read += n;
+        }
 
         // Convert to float32
         const float_data = try self.allocator.alloc(f32, n_samples);
