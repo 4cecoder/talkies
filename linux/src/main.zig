@@ -163,11 +163,11 @@ fn runRecord(allocator: std.mem.Allocator) !void {
     // Start recording
     try recorder.startRecording(output_path);
     std.debug.print("Recording started to: {s}\n", .{output_path});
-    std.debug.print("Press Ctrl+C to stop...\n", .{});
+    std.debug.print("Recording for 10 seconds...\n", .{});
+    std.debug.print("(Press Ctrl+C to abort, but file won't be saved properly)\n", .{});
 
-    // Record for 30 seconds (or until interrupted)
-    // TODO: Add proper signal handling for Ctrl+C
-    const duration_ms: u64 = 30000;
+    // Record for 10 seconds (signal handling is complex in Zig 0.16)
+    const duration_ms: u64 = 10000;
     const chunk_ms: u64 = 100;
     const iterations = duration_ms / chunk_ms;
 
