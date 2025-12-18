@@ -44,6 +44,11 @@ pub fn build(b: *std.Build) void {
         .root_module = test_mod,
     });
 
+    // Link same libraries for tests
+    unit_tests.linkSystemLibrary("pulse-simple");
+    unit_tests.linkSystemLibrary("pulse");
+    unit_tests.linkLibC();
+
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "Run unit tests");

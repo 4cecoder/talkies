@@ -92,19 +92,65 @@ fn runModelsDownload(allocator: std.mem.Allocator) !void {
 }
 
 fn runConfigShow(allocator: std.mem.Allocator) !void {
-    utils.log("Configuration:", .{});
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
 
-    // TODO: Load and display config
-    _ = allocator;
-    std.debug.print("Config display not yet implemented\n", .{});
+    // Load config from disk (creates default if not exists)
+    try cfg.load();
+
+    // Validate loaded config
+    try cfg.validate();
+
+    // Print configuration
+    cfg.print();
 }
 
 fn runAudioTest(allocator: std.mem.Allocator) !void {
-    utils.log("Testing audio devices...", .{});
+    utils.log("Testing audio recording (5 seconds)...", .{});
 
-    // TODO: Implement audio device test
-    _ = allocator;
-    std.debug.print("Audio test not yet implemented\n", .{});
+    var recorder = audio.AudioRecorder.init(allocator);
+    defer recorder.deinit();
+
+    const output_path = "test_recording.wav";
+
+    // Start recording
+    try recorder.startRecording(output_path);
+    std.debug.print("Recording started... speak into your microphone\n", .{});
+
+    // Record for 5 seconds, showing audio level
+    const duration_ms: u64 = 5000;
+    const chunk_ms: u64 = 100;
+    const iterations = duration_ms / chunk_ms;
+
+    var i: u64 = 0;
+    while (i < iterations) : (i += 1) {
+        _ = try recorder.recordChunk();
+
+        // Show audio level as a simple bar
+        const level = recorder.getAudioLevel();
+        const bar_length = @as(usize, @intFromFloat(level * 50.0));
+
+        std.debug.print("\rLevel: [", .{});
+        var j: usize = 0;
+        while (j < 50) : (j += 1) {
+            if (j < bar_length) {
+                std.debug.print("#", .{});
+            } else {
+                std.debug.print(" ", .{});
+            }
+        }
+        std.debug.print("] {d:.2}", .{level});
+
+        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+    }
+
+    std.debug.print("\n", .{});
+
+    // Stop recording
+    try recorder.stopRecording();
+
+    std.debug.print("Recording saved to: {s}\n", .{output_path});
+    std.debug.print("You can play it with: aplay {s}\n", .{output_path});
 }
 
 fn printHelp() !void {
