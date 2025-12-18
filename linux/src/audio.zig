@@ -84,7 +84,8 @@ pub const AudioRecorder = struct {
     }
 
     /// Start recording audio to a WAV file
-    pub fn startRecording(self: *AudioRecorder, output_path: []const u8) !void {
+    /// device_name: PulseAudio device name (null or empty = use default)
+    pub fn startRecording(self: *AudioRecorder, output_path: []const u8, device_name: ?[]const u8) !void {
         if (self.recording) {
             return error.AlreadyRecording;
         }
@@ -115,12 +116,18 @@ pub const AudioRecorder = struct {
             .channels = self.channels,
         };
 
+        // Determine which device to use
+        const device_ptr = if (device_name) |name|
+            if (name.len > 0) name.ptr else null
+        else
+            null;
+
         var error_code: c_int = 0;
         self.pa_stream = c.pa_simple_new(
             null, // Use default server
             "Talkies", // Application name
             c.PA_STREAM_RECORD, // Record stream
-            null, // Use default device
+            device_ptr, // Device (null = default)
             "Voice Recording", // Stream description
             &sample_spec,
             null, // Use default channel map

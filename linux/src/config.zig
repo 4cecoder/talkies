@@ -5,6 +5,9 @@ const utils = @import("utils.zig");
 pub const Config = struct {
     allocator: std.mem.Allocator,
 
+    // Audio settings
+    audio_device: []const u8 = "", // Empty string means use default device
+
     // Transcription settings
     model: []const u8 = "base",
     language: []const u8 = "en",
@@ -15,6 +18,7 @@ pub const Config = struct {
     export_format: []const u8 = "txt",
 
     // Track if strings are owned (allocated)
+    audio_device_owned: bool = false,
     model_owned: bool = false,
     language_owned: bool = false,
     export_format_owned: bool = false,
@@ -26,6 +30,9 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config) void {
+        if (self.audio_device_owned) {
+            self.allocator.free(self.audio_device);
+        }
         if (self.model_owned) {
             self.allocator.free(self.model);
         }
@@ -63,6 +70,12 @@ pub const Config = struct {
         defer file.close();
 
         const default_content =
+            \\[audio]
+            \\# PulseAudio device name (empty = use default)
+            \\# Find devices with: pactl list sources short
+            \\# Example: alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback
+            \\device = ""
+            \\
             \\[transcription]
             \\model = "base"
             \\language = "en"
@@ -149,7 +162,16 @@ pub const Config = struct {
 
     /// Set a configuration value based on section and key
     fn setConfigValue(self: *Config, section: []const u8, key: []const u8, value_raw: []const u8) !void {
-        if (std.mem.eql(u8, section, "transcription")) {
+        if (std.mem.eql(u8, section, "audio")) {
+            if (std.mem.eql(u8, key, "device")) {
+                const value = try parseStringValue(value_raw);
+                if (self.audio_device_owned) {
+                    self.allocator.free(self.audio_device);
+                }
+                self.audio_device = try self.allocator.dupe(u8, value);
+                self.audio_device_owned = true;
+            }
+        } else if (std.mem.eql(u8, section, "transcription")) {
             if (std.mem.eql(u8, key, "model")) {
                 const value = try parseStringValue(value_raw);
                 if (self.model_owned) {
@@ -274,6 +296,7 @@ pub const Config = struct {
     /// Print current configuration
     pub fn print(self: *Config) void {
         std.debug.print("Configuration:\n", .{});
+        std.debug.print("  Audio device: {s}\n", .{if (self.audio_device.len > 0) self.audio_device else "(default)"});
         std.debug.print("  Model: {s}\n", .{self.model});
         std.debug.print("  Language: {s}\n", .{self.language});
         std.debug.print("  Threads: {d}\n", .{self.threads});

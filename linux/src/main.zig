@@ -84,7 +84,8 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     const temp_path = "/tmp/talkies_recording.wav";
 
     // Start recording
-    try recorder.startRecording(temp_path);
+    const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
+    try recorder.startRecording(temp_path, device);
     std.debug.print("Recording started... Press Ctrl+C to stop and transcribe\n", .{});
 
     // Record until interrupted (basic implementation - just 10 seconds for now)
@@ -154,6 +155,11 @@ fn runQuick(allocator: std.mem.Allocator) !void {
 fn runRecord(allocator: std.mem.Allocator) !void {
     utils.log("Recording audio...", .{});
 
+    // Load config for audio device
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
     var recorder = audio.AudioRecorder.init(allocator);
     defer recorder.deinit();
 
@@ -161,7 +167,8 @@ fn runRecord(allocator: std.mem.Allocator) !void {
     const output_path = "recording.wav";
 
     // Start recording
-    try recorder.startRecording(output_path);
+    const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
+    try recorder.startRecording(output_path, device);
     std.debug.print("Recording started to: {s}\n", .{output_path});
     std.debug.print("Recording for 10 seconds...\n", .{});
     std.debug.print("(Press Ctrl+C to abort, but file won't be saved properly)\n", .{});
@@ -237,13 +244,19 @@ fn runConfigShow(allocator: std.mem.Allocator) !void {
 fn runAudioTest(allocator: std.mem.Allocator) !void {
     utils.log("Testing audio recording (5 seconds)...", .{});
 
+    // Load config for audio device
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
     var recorder = audio.AudioRecorder.init(allocator);
     defer recorder.deinit();
 
     const output_path = "test_recording.wav";
 
     // Start recording
-    try recorder.startRecording(output_path);
+    const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
+    try recorder.startRecording(output_path, device);
     std.debug.print("Recording started... speak into your microphone\n", .{});
 
     // Record for 5 seconds, showing audio level
