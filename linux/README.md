@@ -76,8 +76,11 @@ chmod +x ~/.config/hypr/scripts/talkies-record.sh
 
 3. Add to hyprland.conf:
 ```bash
-# Toggle recording with Right Alt
-bind = , Alt_R, exec, ~/.config/hypr/scripts/talkies-record.sh
+# Toggle recording with Super+Alt+T (easier to use than Right Alt)
+bind = $mainMod ALT, T, exec, ~/.config/hypr/scripts/talkies-record.sh
+
+# Or try Right Alt with keycode (may conflict with other apps):
+# bind = , code:108, exec, ~/.config/hypr/scripts/talkies-record.sh
 ```
 
 **Better Hyprland Solution** (Recommended):
