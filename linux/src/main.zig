@@ -440,12 +440,12 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
     std.debug.print("Talkies daemon started\n", .{});
     if (is_wayland) {
-        std.debug.print("Running in Wayland mode\n", .{});
-        std.debug.print("Configure hotkey in your compositor (e.g., Hyprland)\n", .{});
-        std.debug.print("See README for Hyprland configuration example\n", .{});
+        std.debug.print("Running in Wayland mode (Hyprland detected)\n", .{});
+        std.debug.print("Hotkey: Super+Alt+T to toggle recording\n", .{});
+        std.debug.print("(Configure in ~/.config/hypr/hyprland.conf - see README)\n", .{});
     } else {
         std.debug.print("Running in X11 mode\n", .{});
-        std.debug.print("Press Right Alt to start/stop recording\n", .{});
+        std.debug.print("Hotkey: Right Alt to start/stop recording\n", .{});
     }
     std.debug.print("Press Ctrl+C to exit daemon\n\n", .{});
 
