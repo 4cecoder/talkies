@@ -429,13 +429,24 @@ fn runTranscribeTest(allocator: std.mem.Allocator) !void {
 fn runDaemon(allocator: std.mem.Allocator) !void {
     utils.log("Starting daemon mode...", .{});
 
+    // Detect if running under Wayland
+    const wayland_display = std.posix.getenv("WAYLAND_DISPLAY");
+    const is_wayland = wayland_display != null;
+
     // Load configuration
     var cfg = config.Config.init(allocator);
     defer cfg.deinit();
     try cfg.load();
 
     std.debug.print("Talkies daemon started\n", .{});
-    std.debug.print("Press Right Alt to start/stop recording\n", .{});
+    if (is_wayland) {
+        std.debug.print("Running in Wayland mode\n", .{});
+        std.debug.print("Configure hotkey in your compositor (e.g., Hyprland)\n", .{});
+        std.debug.print("See README for Hyprland configuration example\n", .{});
+    } else {
+        std.debug.print("Running in X11 mode\n", .{});
+        std.debug.print("Press Right Alt to start/stop recording\n", .{});
+    }
     std.debug.print("Press Ctrl+C to exit daemon\n\n", .{});
 
     // Initialize services
