@@ -6,10 +6,14 @@ const c = @cImport({
 });
 
 /// WAV file header structures
-const WavHeader = struct {
+/// IMPORTANT: extern struct for C-compatible memory layout (no padding)
+const WavHeader = extern struct {
+    // RIFF chunk descriptor
     riff_header: [4]u8 = "RIFF".*,
     wav_size: u32 = 0, // File size - 8
     wave_header: [4]u8 = "WAVE".*,
+
+    // fmt subchunk
     fmt_header: [4]u8 = "fmt ".*,
     fmt_chunk_size: u32 = 16,
     audio_format: u16 = 1, // PCM
@@ -18,6 +22,8 @@ const WavHeader = struct {
     byte_rate: u32,
     sample_alignment: u16,
     bit_depth: u16,
+
+    // data subchunk
     data_header: [4]u8 = "data".*,
     data_bytes: u32 = 0,
 
