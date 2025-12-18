@@ -20,6 +20,10 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("pulse");
     exe.linkLibC();
 
+    // Note: whisper.cpp C FFI will be implemented in whisper.zig
+    // For now, we use C bindings without linking the library
+    // Users can install whisper.cpp separately or we'll include it later
+
     b.installArtifact(exe);
 
     // Run command
