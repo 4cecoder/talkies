@@ -224,6 +224,9 @@ pub const Config = struct {
         // Serialize to TOML format
         const content = try std.fmt.allocPrint(
             self.allocator,
+            \\[audio]
+            \\device = "{s}"
+            \\
             \\[transcription]
             \\model = "{s}"
             \\language = "{s}"
@@ -235,6 +238,7 @@ pub const Config = struct {
             \\
         ,
             .{
+                self.audio_device,
                 self.model,
                 self.language,
                 self.threads,

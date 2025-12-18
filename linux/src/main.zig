@@ -13,6 +13,8 @@ const Command = enum {
     models_download,
     config_show,
     audio_test,
+    audio_list,
+    audio_set,
     transcribe_test,
     daemon,
     help,
@@ -43,6 +45,8 @@ pub fn main() !void {
         .models_download => try runModelsDownload(allocator),
         .config_show => try runConfigShow(allocator),
         .audio_test => try runAudioTest(allocator),
+        .audio_list => try runAudioList(allocator),
+        .audio_set => try runAudioSet(allocator, args),
         .transcribe_test => try runTranscribeTest(allocator),
         .daemon => try runDaemon(allocator),
         .help => try printHelp(),
@@ -56,6 +60,8 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "models", .models_download },
         .{ "config", .config_show },
         .{ "audio", .audio_test },
+        .{ "audio-list", .audio_list },
+        .{ "audio-set", .audio_set },
         .{ "transcribe", .transcribe_test },
         .{ "daemon", .daemon },
         .{ "help", .help },
@@ -304,6 +310,100 @@ fn runAudioTest(allocator: std.mem.Allocator) !void {
     std.debug.print("You can play it with: aplay {s}\n", .{output_path});
 }
 
+fn runAudioList(allocator: std.mem.Allocator) !void {
+    utils.log("Listing audio input devices...", .{});
+
+    // Run pactl list sources short to get all audio sources
+    const argv = &[_][]const u8{ "pactl", "list", "sources", "short" };
+    var child = std.process.Child.init(argv, allocator);
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+
+    try child.spawn();
+
+    const stdout = child.stdout orelse return error.NoStdout;
+
+    // Read output
+    var output_list = std.ArrayList(u8).empty;
+    defer output_list.deinit(allocator);
+
+    var buffer: [4096]u8 = undefined;
+    while (true) {
+        const n = try stdout.read(&buffer);
+        if (n == 0) break;
+        try output_list.appendSlice(allocator, buffer[0..n]);
+    }
+
+    const term = try child.wait();
+    if (term != .Exited or term.Exited != 0) {
+        std.debug.print("Error: Failed to list audio devices\n", .{});
+        return error.PactlFailed;
+    }
+
+    std.debug.print("\n=== Available Input Devices ===\n\n", .{});
+
+    // Parse output and show numbered list
+    var lines = std.mem.splitScalar(u8, output_list.items, '\n');
+    var index: usize = 1;
+
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+
+        // Parse line format: INDEX NAME DRIVER SAMPLE_SPEC STATE
+        var parts = std.mem.splitScalar(u8, line, '\t');
+
+        const idx = parts.next() orelse continue;
+        const name = parts.next() orelse continue;
+        const driver = parts.next() orelse continue;
+        _ = driver; // unused
+
+        // Check if it's an input device (monitor sources are for output recording)
+        if (std.mem.indexOf(u8, name, "monitor") != null) {
+            continue; // Skip monitor devices
+        }
+
+        // Show user-friendly output
+        std.debug.print("[{d}] {s}\n", .{ index, name });
+        std.debug.print("    Index: {s}\n\n", .{idx});
+
+        index += 1;
+    }
+
+    std.debug.print("To use a device, run:\n", .{});
+    std.debug.print("  talkies audio-set <device-name>\n\n", .{});
+}
+
+fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    if (args.len < 3) {
+        std.debug.print("Usage: talkies audio-set <device-name>\n", .{});
+        std.debug.print("Run 'talkies audio-list' to see available devices\n", .{});
+        return;
+    }
+
+    const device_name = args[2];
+
+    utils.log("Setting audio device to: {s}", .{device_name});
+
+    // Load config
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
+    // Update device
+    if (cfg.audio_device_owned) {
+        allocator.free(cfg.audio_device);
+    }
+    cfg.audio_device = try allocator.dupe(u8, device_name);
+    cfg.audio_device_owned = true;
+
+    // Save config
+    try cfg.save();
+
+    std.debug.print("✅ Audio device updated successfully!\n", .{});
+    std.debug.print("Device: {s}\n", .{device_name});
+    std.debug.print("\nYou can test it with: talkies audio\n", .{});
+}
+
 fn runTranscribeTest(allocator: std.mem.Allocator) !void {
     utils.log("Testing transcription with anime_16k.wav...", .{});
 
@@ -470,7 +570,7 @@ fn printHelp() !void {
         \\Talkies - Voice transcription and text insertion
         \\
         \\Usage:
-        \\  talkies <command>
+        \\  talkies <command> [args]
         \\
         \\Commands:
         \\  daemon             Run as background daemon (Right Alt to record)
@@ -478,16 +578,18 @@ fn printHelp() !void {
         \\  record             Record audio only
         \\  models             Download whisper models
         \\  config             Show current configuration
-        \\  audio              Test audio devices
+        \\  audio              Test audio recording (5 seconds)
+        \\  audio-list         List available input devices
+        \\  audio-set <device> Set audio input device
         \\  transcribe         Test transcription on anime_16k.wav
         \\  help               Show this help message
         \\
         \\Examples:
-        \\  talkies daemon     # Start daemon, press Right Alt to record
-        \\  talkies quick      # One-shot recording workflow
-        \\  talkies record     # Record audio to file
-        \\  talkies models     # Download model from config
-        \\  talkies transcribe # Test transcription
+        \\  talkies daemon                      # Start daemon, press Right Alt to record
+        \\  talkies audio-list                  # Show all input devices
+        \\  talkies audio-set alsa_input.usb... # Set input device
+        \\  talkies quick                       # One-shot recording workflow
+        \\  talkies models                      # Download model from config
         \\
     ;
 
