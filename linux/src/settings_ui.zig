@@ -2,10 +2,10 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const config = @import("config.zig");
 
-// GTK4 C bindings for settings window
-const c = @cImport({
-    @cInclude("gtk/gtk.h");
-});
+// GTK4 bindings from Ghostty's zig-gobject (clean Zig APIs, no @cImport!)
+const gtk = @import("gtk");
+const glib = @import("glib");
+const gobject = @import("gobject");
 
 /// Lightweight settings modal using native GTK4
 /// Zero framework overhead, direct C FFI
