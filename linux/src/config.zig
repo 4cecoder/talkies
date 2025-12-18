@@ -17,11 +17,15 @@ pub const Config = struct {
     auto_paste: bool = true,
     export_format: []const u8 = "txt",
 
+    // Platform settings
+    platform: []const u8 = "auto", // "auto", "x11", "wayland"
+
     // Track if strings are owned (allocated)
     audio_device_owned: bool = false,
     model_owned: bool = false,
     language_owned: bool = false,
     export_format_owned: bool = false,
+    platform_owned: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
@@ -41,6 +45,9 @@ pub const Config = struct {
         }
         if (self.export_format_owned) {
             self.allocator.free(self.export_format);
+        }
+        if (self.platform_owned) {
+            self.allocator.free(self.platform);
         }
     }
 
@@ -84,6 +91,10 @@ pub const Config = struct {
             \\[output]
             \\auto_paste = true
             \\export_format = "txt"
+            \\
+            \\[platform]
+            \\# Platform mode: "auto" (detect), "x11" (daemon with Right Alt), "wayland" (compositor hotkey)
+            \\mode = "auto"
             \\
         ;
 
@@ -200,6 +211,15 @@ pub const Config = struct {
                 self.export_format = try self.allocator.dupe(u8, value);
                 self.export_format_owned = true;
             }
+        } else if (std.mem.eql(u8, section, "platform")) {
+            if (std.mem.eql(u8, key, "mode")) {
+                const value = try parseStringValue(value_raw);
+                if (self.platform_owned) {
+                    self.allocator.free(self.platform);
+                }
+                self.platform = try self.allocator.dupe(u8, value);
+                self.platform_owned = true;
+            }
         }
     }
 
@@ -236,6 +256,9 @@ pub const Config = struct {
             \\auto_paste = {s}
             \\export_format = "{s}"
             \\
+            \\[platform]
+            \\mode = "{s}"
+            \\
         ,
             .{
                 self.audio_device,
@@ -244,6 +267,7 @@ pub const Config = struct {
                 self.threads,
                 if (self.auto_paste) "true" else "false",
                 self.export_format,
+                self.platform,
             },
         );
         defer self.allocator.free(content);
@@ -306,6 +330,23 @@ pub const Config = struct {
         std.debug.print("  Threads: {d}\n", .{self.threads});
         std.debug.print("  Auto-paste: {}\n", .{self.auto_paste});
         std.debug.print("  Export format: {s}\n", .{self.export_format});
+        std.debug.print("  Platform mode: {s}\n", .{self.platform});
+    }
+
+    /// Detect if running on Wayland
+    pub fn detectPlatform() []const u8 {
+        if (std.posix.getenv("WAYLAND_DISPLAY")) |_| {
+            return "wayland";
+        }
+        return "x11";
+    }
+
+    /// Get effective platform (resolve "auto")
+    pub fn getEffectivePlatform(self: *Config) []const u8 {
+        if (std.mem.eql(u8, self.platform, "auto")) {
+            return detectPlatform();
+        }
+        return self.platform;
     }
 };
 

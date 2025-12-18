@@ -432,22 +432,23 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 fn runDaemon(allocator: std.mem.Allocator) !void {
     utils.log("Starting daemon mode...", .{});
 
-    // Detect if running under Wayland
-    const wayland_display = std.posix.getenv("WAYLAND_DISPLAY");
-    const is_wayland = wayland_display != null;
-
     // Load configuration
     var cfg = config.Config.init(allocator);
     defer cfg.deinit();
     try cfg.load();
 
+    // Get effective platform (resolve "auto")
+    const platform = cfg.getEffectivePlatform();
+    const is_wayland = std.mem.eql(u8, platform, "wayland");
+
     std.debug.print("Talkies daemon started\n", .{});
+    std.debug.print("Platform: {s} (config: {s})\n", .{ platform, cfg.platform });
     if (is_wayland) {
-        std.debug.print("Running in Wayland mode (Hyprland detected)\n", .{});
+        std.debug.print("Mode: Compositor hotkey (toggle script)\n", .{});
         std.debug.print("Hotkey: Super+Alt+T to toggle recording\n", .{});
         std.debug.print("(Configure in ~/.config/hypr/hyprland.conf - see README)\n", .{});
     } else {
-        std.debug.print("Running in X11 mode\n", .{});
+        std.debug.print("Mode: Daemon with global hotkey\n", .{});
         std.debug.print("Hotkey: Right Alt to start/stop recording\n", .{});
     }
     std.debug.print("Press Ctrl+C to exit daemon\n\n", .{});
