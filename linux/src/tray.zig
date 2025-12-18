@@ -7,6 +7,18 @@ const c = @cImport({
     @cInclude("dbus/dbus.h");
 });
 
+// Define DBusError struct manually since cImport makes it opaque
+const DBusError = extern struct {
+    name: [*c]const u8,
+    message: [*c]const u8,
+    dummy1: c_uint,
+    dummy2: c_uint,
+    dummy3: c_uint,
+    dummy4: c_uint,
+    dummy5: c_uint,
+    padding1: ?*anyopaque,
+};
+
 /// System tray icon using StatusNotifierItem (freedesktop.org spec)
 /// Works on both X11 and Wayland with modern desktop environments
 /// (GNOME Shell, KDE Plasma, Waybar, etc.)
@@ -26,7 +38,7 @@ pub const SystemTray = struct {
     pub fn init(allocator: std.mem.Allocator) SystemTray {
         return .{
             .allocator = allocator,
-            .menu_items = std.ArrayList(MenuItem).init(allocator),
+            .menu_items = std.ArrayList(MenuItem).empty,
         };
     }
 
@@ -40,14 +52,14 @@ pub const SystemTray = struct {
 
     /// Initialize the system tray icon
     pub fn start(self: *SystemTray) !void {
-        var err: c.DBusError = undefined;
-        c.dbus_error_init(&err);
+        var err: DBusError = undefined;
+        c.dbus_error_init(@ptrCast(&err));
 
         // Connect to session bus
-        self.connection = c.dbus_bus_get(c.DBUS_BUS_SESSION, &err);
-        if (c.dbus_error_is_set(&err) != 0) {
+        self.connection = c.dbus_bus_get(c.DBUS_BUS_SESSION, @ptrCast(&err));
+        if (c.dbus_error_is_set(@ptrCast(&err)) != 0) {
             utils.logError("DBus connection error: {s}", .{err.message});
-            c.dbus_error_free(&err);
+            c.dbus_error_free(@ptrCast(&err));
             return error.DBusConnectionFailed;
         }
 
@@ -61,12 +73,12 @@ pub const SystemTray = struct {
             self.connection,
             bus_name,
             c.DBUS_NAME_FLAG_REPLACE_EXISTING,
-            &err,
+            @ptrCast(&err),
         );
 
-        if (c.dbus_error_is_set(&err) != 0) {
+        if (c.dbus_error_is_set(@ptrCast(&err)) != 0) {
             utils.logError("DBus name request error: {s}", .{err.message});
-            c.dbus_error_free(&err);
+            c.dbus_error_free(@ptrCast(&err));
             return error.DBusNameRequestFailed;
         }
 
@@ -126,19 +138,19 @@ pub const SystemTray = struct {
         }
 
         // Send the message
-        var err: c.DBusError = undefined;
-        c.dbus_error_init(&err);
+        var err: DBusError = undefined;
+        c.dbus_error_init(@ptrCast(&err));
 
         const reply = c.dbus_connection_send_with_reply_and_block(
             self.connection,
             msg,
             -1,
-            &err,
+            @ptrCast(&err),
         );
 
-        if (c.dbus_error_is_set(&err) != 0) {
+        if (c.dbus_error_is_set(@ptrCast(&err)) != 0) {
             utils.logError("Failed to register with watcher: {s}", .{err.message});
-            c.dbus_error_free(&err);
+            c.dbus_error_free(@ptrCast(&err));
             return error.WatcherRegistrationFailed;
         }
 
@@ -152,21 +164,21 @@ pub const SystemTray = struct {
     /// Setup the context menu items
     fn setupMenu(self: *SystemTray) !void {
         // Settings menu item
-        try self.menu_items.append(.{
+        try self.menu_items.append(self.allocator, .{
             .id = 1,
             .label = "Settings",
             .callback = self.settings_callback,
         });
 
         // Separator (id 0 = separator)
-        try self.menu_items.append(.{
+        try self.menu_items.append(self.allocator, .{
             .id = 0,
             .label = "",
             .callback = null,
         });
 
         // Quit menu item
-        try self.menu_items.append(.{
+        try self.menu_items.append(self.allocator, .{
             .id = 2,
             .label = "Quit",
             .callback = self.quit_callback,

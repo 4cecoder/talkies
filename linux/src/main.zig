@@ -6,6 +6,9 @@ const input = @import("input.zig");
 const config = @import("config.zig");
 const utils = @import("utils.zig");
 const hotkey = @import("hotkey.zig");
+// TODO: Re-enable after fixing GTK4 cImport issues
+// const tray = @import("tray.zig");
+// const settings_ui = @import("settings_ui.zig");
 
 const Command = enum {
     quick,
@@ -19,6 +22,19 @@ const Command = enum {
     daemon,
     help,
 };
+
+// Global state for daemon tray callbacks
+var daemon_should_quit = false;
+var daemon_show_settings = false;
+
+// Tray callbacks
+fn onQuitCallback() void {
+    daemon_should_quit = true;
+}
+
+fn onSettingsCallback() void {
+    daemon_show_settings = true;
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -437,6 +453,21 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer cfg.deinit();
     try cfg.load();
 
+    // TODO: Re-enable system tray and settings UI after fixing GTK4 cImport issues
+    // Initialize system tray
+    // var system_tray = tray.SystemTray.init(allocator);
+    // defer system_tray.deinit();
+
+    // system_tray.setQuitCallback(&onQuitCallback);
+    // system_tray.setSettingsCallback(&onSettingsCallback);
+
+    // try system_tray.start();
+    // utils.log("System tray initialized", .{});
+
+    // Initialize settings UI (but don't show yet)
+    // var ui = settings_ui.SettingsUI.init(allocator, &cfg);
+    // defer ui.deinit();
+
     // Get effective platform (resolve "auto")
     const platform = cfg.getEffectivePlatform();
     const is_wayland = std.mem.eql(u8, platform, "wayland");
@@ -473,10 +504,23 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         std.debug.print("Wayland mode: Daemon will keep model loaded for quick transcription\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
-        // Just sleep indefinitely - the model stays loaded in memory
-        while (true) {
-            std.posix.nanosleep(1, 0); // Sleep 1 second at a time
+        // Event loop for tray and settings UI (disabled for now)
+        while (!daemon_should_quit) {
+            // TODO: Process tray events when tray is re-enabled
+            // try system_tray.processEvents();
+
+            // Check if settings should be shown
+            // if (daemon_show_settings) {
+            //     daemon_show_settings = false;
+            //     try ui.show();
+            // }
+
+            // Small sleep to avoid busy-wait
+            std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
         }
+
+        utils.log("Daemon shutting down...", .{});
+        return;
     }
 
     // X11 mode: Setup hotkey listener
@@ -491,7 +535,16 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     const temp_path = "/tmp/talkies_daemon_recording.wav";
 
     // Main event loop
-    while (true) {
+    while (!daemon_should_quit) {
+        // TODO: Process tray events when tray is re-enabled
+        // try system_tray.processEvents();
+
+        // Check if settings should be shown
+        // if (daemon_show_settings) {
+        //     daemon_show_settings = false;
+        //     try ui.show();
+        // }
+
         const event = try listener.poll();
 
         if (event) |evt| {

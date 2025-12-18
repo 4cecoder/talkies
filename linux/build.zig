@@ -1,8 +1,17 @@
 const std = @import("std");
+const gtk_build = @import("src/build/gtk.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    // Detect GTK4 platform support (X11/Wayland)
+    const gtk_targets = gtk_build.targets(b);
+    const has_x11 = gtk_targets.x11;
+    const has_wayland = gtk_targets.wayland;
+
+    // Log platform support for debugging
+    std.debug.print("GTK4 platform support - X11: {}, Wayland: {}\n", .{ has_x11, has_wayland });
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -15,13 +24,24 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    // Add build options for runtime platform detection
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "x11", has_x11);
+    build_options.addOption(bool, "wayland", has_wayland);
+    exe_mod.addImport("build_options", build_options.createModule());
+
     // Link system libraries
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");
     exe.linkSystemLibrary("whisper");
-    exe.linkSystemLibrary("X11");
+
+    // Only link X11 if GTK was built with X11 support
+    if (has_x11) {
+        exe.linkSystemLibrary("X11");
+    }
+
     exe.linkSystemLibrary("dbus-1"); // For system tray
-    exe.linkSystemLibrary("gtk4"); // For settings UI
+    exe.linkSystemLibrary("gtk-4"); // For settings UI
     exe.linkLibC();
 
     // Add include path for whisper.h
@@ -47,6 +67,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add build options to test module
+    test_mod.addImport("build_options", build_options.createModule());
+
     const unit_tests = b.addTest(.{
         .root_module = test_mod,
     });
@@ -55,9 +78,14 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("pulse-simple");
     unit_tests.linkSystemLibrary("pulse");
     unit_tests.linkSystemLibrary("whisper");
-    unit_tests.linkSystemLibrary("X11");
+
+    // Only link X11 if GTK was built with X11 support
+    if (has_x11) {
+        unit_tests.linkSystemLibrary("X11");
+    }
+
     unit_tests.linkSystemLibrary("dbus-1");
-    unit_tests.linkSystemLibrary("gtk4");
+    unit_tests.linkSystemLibrary("gtk-4");
     unit_tests.linkLibC();
     unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include" });
 
