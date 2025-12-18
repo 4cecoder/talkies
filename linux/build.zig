@@ -18,11 +18,11 @@ pub fn build(b: *std.Build) void {
     // Link system libraries
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");
+    exe.linkSystemLibrary("whisper");
     exe.linkLibC();
 
-    // Note: whisper.cpp C FFI will be implemented in whisper.zig
-    // For now, we use C bindings without linking the library
-    // Users can install whisper.cpp separately or we'll include it later
+    // Add include path for whisper.h
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
 
     b.installArtifact(exe);
 
@@ -51,7 +51,9 @@ pub fn build(b: *std.Build) void {
     // Link same libraries for tests
     unit_tests.linkSystemLibrary("pulse-simple");
     unit_tests.linkSystemLibrary("pulse");
+    unit_tests.linkSystemLibrary("whisper");
     unit_tests.linkLibC();
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include" });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
