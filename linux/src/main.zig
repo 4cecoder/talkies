@@ -62,12 +62,23 @@ fn parseCommand(arg: []const u8) ?Command {
 fn runQuick(allocator: std.mem.Allocator) !void {
     utils.log("Starting quick recording workflow...", .{});
 
+    // Load configuration
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
     // Initialize services
     var recorder = audio.AudioRecorder.init(allocator);
     defer recorder.deinit();
 
+    var whisper_service = whisper.WhisperService.init(allocator);
+    defer whisper_service.deinit();
+
     var clip = clipboard.Clipboard.init(allocator);
     defer clip.deinit();
+
+    var inserter = input.TextInserter.init(allocator);
+    defer inserter.deinit();
 
     // Create temp file for recording
     const temp_path = "/tmp/talkies_recording.wav";
@@ -110,20 +121,34 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     try recorder.stopRecording();
     std.debug.print("Recording saved to: {s}\n", .{temp_path});
 
-    // TODO: Wire up whisper transcription once API issues are resolved
-    // For now, just demonstrate the workflow with placeholder text
-    const test_text = "This is a test transcription from Talkies Linux!";
+    // Load whisper model
+    std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+    try whisper_service.loadModel(cfg.model);
 
-    // Handle output
-    std.debug.print("Copying to clipboard...\n", .{});
-    try clip.copy(test_text);
-    std.debug.print("Text copied to clipboard!\n", .{});
-    std.debug.print("You can paste it with Ctrl+V\n", .{});
+    // Transcribe
+    std.debug.print("Transcribing audio...\n", .{});
+    const transcription = try whisper_service.transcribe(temp_path);
+    defer allocator.free(transcription);
+
+    std.debug.print("\nTranscription:\n{s}\n\n", .{transcription});
+
+    // Handle output based on config
+    if (cfg.auto_paste) {
+        std.debug.print("Inserting text at cursor...\n", .{});
+        try inserter.insertTextAtCursor(transcription);
+        std.debug.print("Text inserted successfully!\n", .{});
+    } else {
+        std.debug.print("Copying to clipboard...\n", .{});
+        try clip.copy(transcription);
+        std.debug.print("Text copied to clipboard!\n", .{});
+    }
+
+    // Cleanup temp file
+    std.fs.deleteFileAbsolute(temp_path) catch |err| {
+        std.debug.print("Warning: Failed to delete temp file: {}\n", .{err});
+    };
 
     std.debug.print("\n✅ Quick workflow complete!\n", .{});
-    std.debug.print("Recording: {s}\n", .{temp_path});
-    std.debug.print("Text: {s}\n", .{test_text});
-    std.debug.print("\nNOTE: Whisper transcription will be wired up after resolving Zig 0.16 API compatibility.\n", .{});
 }
 
 fn runRecord(allocator: std.mem.Allocator) !void {
@@ -180,12 +205,19 @@ fn runRecord(allocator: std.mem.Allocator) !void {
 fn runModelsDownload(allocator: std.mem.Allocator) !void {
     utils.log("Downloading whisper models...", .{});
 
-    // TODO: Wire up model download once whisper API issues are resolved
-    _ = allocator;
-    _ = whisper;
+    var whisper_service = whisper.WhisperService.init(allocator);
+    defer whisper_service.deinit();
 
-    std.debug.print("Model download not yet wired up\n", .{});
-    std.debug.print("For now, models should be placed in ~/.local/share/talkies/models/\n", .{});
+    // Default to base model
+    const model_name = "base";
+
+    std.debug.print("Downloading whisper model: {s}\n", .{model_name});
+    std.debug.print("This may take a few minutes...\n", .{});
+
+    try whisper_service.downloadModel(model_name);
+
+    std.debug.print("Model downloaded successfully!\n", .{});
+    std.debug.print("You can now use 'talkies quick' to start transcribing.\n", .{});
 }
 
 fn runConfigShow(allocator: std.mem.Allocator) !void {

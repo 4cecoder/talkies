@@ -164,8 +164,8 @@ pub const WhisperService = struct {
             return &[_]TranscriptSegment{};
         }
 
-        var segments = std.ArrayList(TranscriptSegment).init(self.allocator);
-        errdefer segments.deinit();
+        var segments = std.ArrayList(TranscriptSegment).empty;
+        errdefer segments.deinit(self.allocator);
 
         var i: c_int = 0;
         while (i < n_segments) : (i += 1) {
@@ -177,7 +177,7 @@ pub const WhisperService = struct {
                 const text_slice = std.mem.span(text_ptr);
                 const text_copy = try self.allocator.dupe(u8, text_slice);
 
-                try segments.append(.{
+                try segments.append(self.allocator, .{
                     .start = @as(f64, @floatFromInt(t0)) / 100.0, // Convert to seconds
                     .end = @as(f64, @floatFromInt(t1)) / 100.0,
                     .text = text_copy,
@@ -185,7 +185,7 @@ pub const WhisperService = struct {
             }
         }
 
-        return try segments.toOwnedSlice();
+        return try segments.toOwnedSlice(self.allocator);
     }
 
     /// Read audio file and convert to float PCM samples
@@ -263,42 +263,26 @@ pub const WhisperService = struct {
 
         utils.log("Downloading model {s} from {s}", .{ model_name, url });
 
-        // Download model using std.http.Client
-        var client = std.http.Client{ .allocator = self.allocator };
-        defer client.deinit();
+        // Download using curl (simpler than dealing with Zig 0.16 HTTP API changes)
+        const argv = &[_][]const u8{
+            "curl",
+            "-L", // Follow redirects
+            "-o",
+            model_filename,
+            "--progress-bar",
+            url,
+        };
 
-        const uri = try std.Uri.parse(url);
-        var req = try client.open(.GET, uri, .{ .server_header_buffer = try self.allocator.alloc(u8, 16384) });
-        defer {
-            req.deinit();
-            self.allocator.free(req.server_header_buffer.?);
+        var child = std.process.Child.init(argv, self.allocator);
+        child.stdout_behavior = .Inherit;
+        child.stderr_behavior = .Inherit;
+
+        const term = try child.spawnAndWait();
+        if (term != .Exited or term.Exited != 0) {
+            return error.DownloadFailed;
         }
 
-        try req.send();
-        try req.finish();
-        try req.wait();
-
-        // Create output file
-        const file = try std.fs.createFileAbsolute(model_filename, .{});
-        defer file.close();
-
-        // Read and write in chunks
-        var buffer: [8192]u8 = undefined;
-        var total_bytes: usize = 0;
-
-        while (true) {
-            const bytes_read = try req.readAll(&buffer);
-            if (bytes_read == 0) break;
-
-            try file.writeAll(buffer[0..bytes_read]);
-            total_bytes += bytes_read;
-
-            if (total_bytes % (1024 * 1024) == 0) {
-                utils.log("Downloaded {d} MB", .{total_bytes / (1024 * 1024)});
-            }
-        }
-
-        utils.log("Model {s} downloaded successfully ({d} bytes)", .{ model_name, total_bytes });
+        utils.log("Model {s} downloaded successfully", .{model_name});
     }
 
     /// Free segments allocated by getSegments

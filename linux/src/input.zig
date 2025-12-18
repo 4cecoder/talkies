@@ -38,13 +38,13 @@ pub const TextInserter = struct {
         try clipboard.copy(text);
 
         // Small delay to ensure clipboard is ready (50ms)
-        std.time.sleep(50 * std.time.ns_per_ms);
+        std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
 
         // Simulate Ctrl+V paste
         try self.paste();
 
         // Delay before restoring clipboard (200ms)
-        std.time.sleep(200 * std.time.ns_per_ms);
+        std.posix.nanosleep(0, 200 * std.time.ns_per_ms);
 
         // Restore previous clipboard contents
         if (previous_contents) |prev| {

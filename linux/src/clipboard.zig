@@ -89,17 +89,25 @@ pub const Clipboard = struct {
         try child.spawn();
 
         const stdout = child.stdout orelse return error.NoStdout;
-        const max_size = 10 * 1024 * 1024; // 10MB max
-        const output = try stdout.reader().readAllAlloc(self.allocator, max_size);
+
+        // Read from stdout in chunks
+        var output_list = std.ArrayList(u8).empty;
+        defer output_list.deinit(self.allocator);
+
+        var buffer: [4096]u8 = undefined;
+        while (true) {
+            const n = try stdout.read(&buffer);
+            if (n == 0) break;
+            try output_list.appendSlice(self.allocator, buffer[0..n]);
+        }
 
         const term = try child.wait();
         if (term != .Exited or term.Exited != 0) {
-            self.allocator.free(output);
             return error.WlPasteFailed;
         }
 
-        utils.logDebug("Read {d} bytes from Wayland clipboard", .{output.len});
-        return output;
+        utils.logDebug("Read {d} bytes from Wayland clipboard", .{output_list.items.len});
+        return try self.allocator.dupe(u8, output_list.items);
     }
 
     fn getX11(self: *Clipboard) ![]u8 {
@@ -112,17 +120,25 @@ pub const Clipboard = struct {
         try child.spawn();
 
         const stdout = child.stdout orelse return error.NoStdout;
-        const max_size = 10 * 1024 * 1024; // 10MB max
-        const output = try stdout.reader().readAllAlloc(self.allocator, max_size);
+
+        // Read from stdout in chunks
+        var output_list = std.ArrayList(u8).empty;
+        defer output_list.deinit(self.allocator);
+
+        var buffer: [4096]u8 = undefined;
+        while (true) {
+            const n = try stdout.read(&buffer);
+            if (n == 0) break;
+            try output_list.appendSlice(self.allocator, buffer[0..n]);
+        }
 
         const term = try child.wait();
         if (term != .Exited or term.Exited != 0) {
-            self.allocator.free(output);
             return error.XClipFailed;
         }
 
-        utils.logDebug("Read {d} bytes from X11 clipboard", .{output.len});
-        return output;
+        utils.logDebug("Read {d} bytes from X11 clipboard", .{output_list.items.len});
+        return try self.allocator.dupe(u8, output_list.items);
     }
 };
 
