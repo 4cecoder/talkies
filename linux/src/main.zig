@@ -47,7 +47,7 @@ pub fn main() !void {
         .audio_test => try runAudioTest(allocator),
         .audio_list => try runAudioList(allocator),
         .audio_set => try runAudioSet(allocator, args),
-        .transcribe_test => try runTranscribeTest(allocator),
+        .transcribe_test => try runTranscribeTest(allocator, args),
         .daemon => try runDaemon(allocator),
         .help => try printHelp(),
     }
@@ -404,8 +404,11 @@ fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("\nYou can test it with: talkies audio\n", .{});
 }
 
-fn runTranscribeTest(allocator: std.mem.Allocator) !void {
-    utils.log("Testing transcription with anime_16k.wav...", .{});
+fn runTranscribeTest(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    // Get audio file from args or use default
+    const audio_file = if (args.len > 2) args[2] else "anime_16k.wav";
+
+    utils.log("Testing transcription with {s}...", .{audio_file});
 
     // Load config to get model name
     var cfg = config.Config.init(allocator);
@@ -419,8 +422,8 @@ fn runTranscribeTest(allocator: std.mem.Allocator) !void {
 
     try whisper_service.loadModel(cfg.model);
 
-    std.debug.print("Transcribing anime_16k.wav...\n", .{});
-    const transcription = try whisper_service.transcribe("anime_16k.wav");
+    std.debug.print("Transcribing {s}...\n", .{audio_file});
+    const transcription = try whisper_service.transcribe(audio_file);
     defer allocator.free(transcription);
 
     std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
