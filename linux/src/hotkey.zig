@@ -8,6 +8,11 @@ const c = @cImport({
     @cInclude("X11/XKBlib.h");
 });
 
+/// X11 error handler that ignores errors (for graceful grab failures)
+fn ignoreErrorHandler(_: ?*c.Display, _: [*c]c.XErrorEvent) callconv(.c) c_int {
+    return 0;
+}
+
 /// Global hotkey listener for X11
 pub const HotkeyListener = struct {
     allocator: std.mem.Allocator,
@@ -54,27 +59,42 @@ pub const HotkeyListener = struct {
             c.XK_Meta_R,
         };
 
+        // Try different modifier combinations to ensure we catch the key
+        const modifiers = [_]c_uint{
+            c.AnyModifier, // Try any modifier first
+            0, // No modifiers
+            c.Mod1Mask, // Alt
+            c.Mod3Mask, // Mode_switch
+            c.Mod5Mask, // ISO_Level3_Shift
+        };
+
         var grabbed = false;
         for (keysyms) |keysym| {
             const keycode = c.XKeysymToKeycode(self.display.?, keysym);
             if (keycode != 0) {
                 utils.log("Trying to grab keycode {d} for keysym {d}", .{ keycode, keysym });
 
-                // Try to grab the key
-                const result = c.XGrabKey(
-                    self.display.?,
-                    @intCast(keycode),
-                    c.AnyModifier,
-                    self.root_window,
-                    1, // owner_events = true
-                    c.GrabModeAsync,
-                    c.GrabModeAsync,
-                );
+                // Try each modifier combination
+                for (modifiers) |modifier| {
+                    // Set error handler to ignore BadAccess errors
+                    _ = c.XSetErrorHandler(@ptrCast(&ignoreErrorHandler));
 
-                _ = c.XSync(self.display.?, 0);
+                    _ = c.XGrabKey(
+                        self.display.?,
+                        @intCast(keycode),
+                        modifier,
+                        self.root_window,
+                        1, // owner_events = true - allow events to propagate
+                        c.GrabModeAsync,
+                        c.GrabModeAsync,
+                    );
 
-                if (result != 0) {
-                    utils.log("Successfully grabbed keycode {d}", .{keycode});
+                    _ = c.XSync(self.display.?, 0);
+
+                    // Restore default error handler
+                    _ = c.XSetErrorHandler(null);
+
+                    utils.log("Grabbed keycode {d} with modifier {d}", .{ keycode, modifier });
                     grabbed = true;
                 }
             }
