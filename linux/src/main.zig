@@ -468,7 +468,18 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     try whisper_service.loadModel(cfg.model);
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
-    // Setup hotkey listener
+    // In Wayland mode, just keep model loaded and wait for toggle script
+    if (is_wayland) {
+        std.debug.print("Wayland mode: Daemon will keep model loaded for quick transcription\n", .{});
+        std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
+
+        // Just sleep indefinitely - the model stays loaded in memory
+        while (true) {
+            std.posix.nanosleep(1, 0); // Sleep 1 second at a time
+        }
+    }
+
+    // X11 mode: Setup hotkey listener
     var listener = hotkey.HotkeyListener.init(allocator);
     defer listener.deinit();
 
