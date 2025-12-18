@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""
+Talkies GTK4 Recording Overlay - Standalone
+Pill-shaped widget with animated waveform visualization
+Monitors /tmp/talkies-state and /tmp/talkies-waveform
+"""
+
+import gi
+import sys
+import os
+import time
+from pathlib import Path
+
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gtk, Gdk, GLib, Graphene
+
+STATE_FILE = "/tmp/talkies-state"
+WAVEFORM_FILE = "/tmp/talkies-waveform"
+WAVEFORM_BARS = 40
+UPDATE_INTERVAL_MS = 50  # 20 FPS
+
+class WaveformBar(Gtk.DrawingArea):
+    def __init__(self, index):
+        super().__init__()
+        self.index = index
+        self.level = 0.0
+        self.set_size_request(3, 40)
+        self.set_draw_func(self._draw_bar)
+
+    def set_level(self, level):
+        """Set bar height (0.0 to 1.0)"""
+        self.level = max(0.0, min(1.0, level))
+        self.queue_draw()
+
+    def _draw_bar(self, area, cr, width, height):
+        """Custom drawing function for waveform bar"""
+        # Calculate bar height
+        bar_height = max(4, self.level * height)
+        y_offset = (height - bar_height) / 2
+
+        # Draw bar with gradient
+        if self.level > 0.1:
+            # Active bar - green gradient
+            cr.set_source_rgb(0.65, 0.89, 0.63)  # #a6e3a1
+        else:
+            # Inactive bar - gray
+            cr.set_source_rgb(0.35, 0.36, 0.44)  # #585b70
+
+        # Rounded rectangle
+        radius = 2
+        cr.arc(radius, y_offset + radius, radius, 3.14, 4.71)
+        cr.arc(width - radius, y_offset + radius, radius, 4.71, 0)
+        cr.arc(width - radius, y_offset + bar_height - radius, radius, 0, 1.57)
+        cr.arc(radius, y_offset + bar_height - radius, radius, 1.57, 3.14)
+        cr.close_path()
+        cr.fill()
+
+
+class TalkiesOverlay(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app)
+
+        self.state = "idle"
+        self.recording_start = None
+
+        # Window configuration
+        self.set_title("Talkies Recording Overlay")
+        self.set_decorated(False)
+        self.set_resizable(False)
+
+        # Make window float on top
+        self.set_default_size(600, 70)
+
+        # Build UI
+        self._build_ui()
+
+        # Start state monitoring
+        GLib.timeout_add(UPDATE_INTERVAL_MS, self._update_state)
+
+        # Initially hidden
+        self.set_visible(False)
+
+    def _build_ui(self):
+        """Build the pill-shaped UI"""
+        # Main container with rounded corners and transparency
+        main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        main_box.set_margin_top(14)
+        main_box.set_margin_bottom(14)
+        main_box.set_margin_start(24)
+        main_box.set_margin_end(24)
+
+        # Apply CSS for styling
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(b"""
+            window {
+                background: rgba(30, 30, 46, 0.95);
+                border: 2px solid #cba6f7;
+                border-radius: 30px;
+            }
+            .status-label {
+                font-size: 14px;
+                font-weight: bold;
+                color: #cdd6f4;
+            }
+            .duration-label {
+                font-size: 12px;
+                color: #bac2de;
+            }
+        """)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        # Status icon (emoji)
+        self.status_icon = Gtk.Label(label="")
+        self.status_icon.set_visible(False)
+        main_box.append(self.status_icon)
+
+        # Duration timer
+        self.duration_label = Gtk.Label(label="")
+        self.duration_label.add_css_class("duration-label")
+        self.duration_label.set_visible(False)
+        main_box.append(self.duration_label)
+
+        # Waveform bars container
+        waveform_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.waveform_bars = []
+        for i in range(WAVEFORM_BARS):
+            bar = WaveformBar(i)
+            self.waveform_bars.append(bar)
+            waveform_box.append(bar)
+        main_box.append(waveform_box)
+
+        # Status text
+        self.status_label = Gtk.Label(label="")
+        self.status_label.add_css_class("status-label")
+        self.status_label.set_visible(False)
+        main_box.append(self.status_label)
+
+        self.set_child(main_box)
+
+    def _read_state(self):
+        """Read current state from file"""
+        try:
+            with open(STATE_FILE, 'r') as f:
+                return f.read().strip()
+        except:
+            return "idle"
+
+    def _read_waveform(self):
+        """Read waveform data from file"""
+        try:
+            with open(WAVEFORM_FILE, 'r') as f:
+                lines = f.readlines()
+                return [float(line.strip()) for line in lines[:WAVEFORM_BARS]]
+        except:
+            return [0.0] * WAVEFORM_BARS
+
+    def _update_state(self):
+        """Poll state file and update UI"""
+        new_state = self._read_state()
+
+        # State transition
+        if new_state != self.state:
+            self.state = new_state
+
+            if self.state == "recording":
+                self.recording_start = time.time()
+                self.set_visible(True)
+                self.status_icon.set_label("🔴")
+                self.status_icon.set_visible(True)
+                self.status_label.set_label("Recording")
+                self.status_label.set_visible(True)
+                self.duration_label.set_visible(True)
+
+            elif self.state == "processing":
+                self.status_icon.set_label("⚙️")
+                self.status_label.set_label("Processing")
+                self.duration_label.set_visible(False)
+
+            elif self.state == "idle":
+                self.set_visible(False)
+                self.recording_start = None
+
+        # Update waveform while recording
+        if self.state == "recording":
+            waveform = self._read_waveform()
+            for i, bar in enumerate(self.waveform_bars):
+                if i < len(waveform):
+                    bar.set_level(waveform[i])
+                else:
+                    bar.set_level(0.0)
+
+            # Update duration timer
+            if self.recording_start:
+                elapsed = int(time.time() - self.recording_start)
+                self.duration_label.set_label(f"{elapsed:02d}s")
+
+        # Clear waveform when not recording
+        if self.state != "recording":
+            for bar in self.waveform_bars:
+                bar.set_level(0.0)
+
+        return True  # Continue polling
+
+
+class TalkiesApp(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id='org.talkies.overlay')
+
+    def do_activate(self):
+        win = TalkiesOverlay(self)
+        win.present()
+
+
+def main():
+    # Check if daemon is running
+    if not Path(STATE_FILE).exists():
+        print("Warning: Talkies daemon not running. State file not found.")
+        print("Start daemon with: talkies daemon")
+
+    app = TalkiesApp()
+    return app.run(sys.argv)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
