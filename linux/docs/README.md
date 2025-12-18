@@ -12,7 +12,32 @@ Clean, minimal CLI application for voice transcription and text insertion on Lin
 
 ## Quick Start
 
-### Installation
+### Using the Helper Script
+
+The easiest way to build and run Talkies is using `run.sh`:
+
+```bash
+# Check dependencies
+./run.sh deps
+
+# Build and test
+./run.sh build
+./run.sh test
+
+# Run commands
+./run.sh audio          # Test microphone
+./run.sh help           # Show help
+
+# Install to ~/.local/bin
+./run.sh install
+
+# Development mode (auto-rebuild on changes)
+./run.sh dev
+```
+
+See `./run.sh help` for all available commands.
+
+### Manual Installation
 
 **Requirements:**
 - Zig 0.16.0+
