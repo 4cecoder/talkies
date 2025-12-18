@@ -58,12 +58,21 @@ class TextInserter {
         let operation = operationQueue.removeFirst()
         let pasteboard = NSPasteboard.general
 
+        print("📋 TextInserter: Copying to clipboard: \(operation.text)")
+
         // Copy text to clipboard
         pasteboard.clearContents()
-        pasteboard.setString(operation.text, forType: .string)
+        let success = pasteboard.setString(operation.text, forType: .string)
+        print("📋 TextInserter: Clipboard set success: \(success)")
+
+        // Verify clipboard content
+        if let clipboardContent = pasteboard.string(forType: .string) {
+            print("📋 TextInserter: Clipboard now contains: \(clipboardContent)")
+        }
 
         // Small delay to ensure clipboard is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
+            print("📋 TextInserter: Simulating paste...")
             // Simulate Cmd+V paste
             self.simulatePaste()
 
@@ -86,19 +95,28 @@ class TextInserter {
         }
     }
 
-    /// Simulate Cmd+V paste keystroke
+    /// Simulate Cmd+V paste keystroke using osascript (most reliable cross-app)
     private func simulatePaste() {
-        // Create key down event with Command modifier
-        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: false) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
 
-            // Set Command modifier flag
-            keyDown.flags = .maskCommand
-            keyUp.flags = .maskCommand
+        let pipe = Pipe()
+        task.standardError = pipe
 
-            // Post events
-            keyDown.post(tap: .cghidEventTap)
-            keyUp.post(tap: .cghidEventTap)
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            if task.terminationStatus != 0 {
+                let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+                let errorString = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+                print("📋 TextInserter: osascript error: \(errorString)")
+            } else {
+                print("📋 TextInserter: Paste command sent successfully")
+            }
+        } catch {
+            print("📋 TextInserter: Failed to run osascript: \(error)")
         }
     }
 

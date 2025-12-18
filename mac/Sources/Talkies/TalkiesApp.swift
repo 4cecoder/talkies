@@ -62,19 +62,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transcriptionService.onTranscriptionComplete = { [weak self] text in
             // Process through LLM if enabled
             Task {
-                let finalText: String
-                if let ollamaPlugin = PluginManager.shared.ollamaPlugin,
-                   ollamaPlugin.isEnabled {
-                    do {
-                        print("🧠 Processing text through Ollama...")
-                        finalText = try await ollamaPlugin.enhanceText(text)
-                        print("✅ Enhanced text: \(finalText)")
-                    } catch {
-                        print("⚠️ Ollama enhancement failed: \(error.localizedDescription)")
-                        finalText = text // Fallback to original
+                var finalText = text
+
+                // Check for LLM enhancement (Ollama or LM Studio - only one can be active)
+                let ollamaEnabled = PluginManager.shared.ollamaPlugin?.isEnabled ?? false
+                let lmStudioEnabled = PluginManager.shared.lmStudioPlugin?.isEnabled ?? false
+
+                if ollamaEnabled && !lmStudioEnabled {
+                    await MainActor.run {
+                        self?.transcriptionService.pipelineStage = .enhancingOllama
                     }
-                } else {
-                    finalText = text
+                    if let ollamaPlugin = PluginManager.shared.ollamaPlugin {
+                        do {
+                            print("🧠 Processing text through Ollama...")
+                            finalText = try await ollamaPlugin.enhanceText(text)
+                            print("✅ Enhanced text: \(finalText)")
+                        } catch {
+                            print("⚠️ Ollama enhancement failed: \(error.localizedDescription)")
+                        }
+                    }
+                } else if lmStudioEnabled && !ollamaEnabled {
+                    await MainActor.run {
+                        self?.transcriptionService.pipelineStage = .enhancingLMStudio
+                    }
+                    if let lmStudioPlugin = PluginManager.shared.lmStudioPlugin {
+                        do {
+                            print("🧠 Processing text through LM Studio...")
+                            finalText = try await lmStudioPlugin.enhanceText(text)
+                            print("✅ Enhanced text: \(finalText)")
+                        } catch {
+                            print("⚠️ LM Studio enhancement failed: \(error.localizedDescription)")
+                        }
+                    }
+                }
+
+                await MainActor.run {
+                    self?.transcriptionService.pipelineStage = .insertingText
                 }
 
                 await MainActor.run {
@@ -115,9 +138,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         TextInserter.shared.insertTextAtCursor(finalText)
                     }
 
-                    // Auto-hide window after short delay
+                    // Mark pipeline as complete
+                    self?.transcriptionService.pipelineStage = .complete
+
+                    // Auto-hide window and reset to idle after short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         self?.hideWindow()
+                        self?.transcriptionService.pipelineStage = .idle
                     }
                 }
             }
@@ -358,8 +385,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func startRecordingWithCallback() {
         print("   startRecordingWithCallback - setting up callback")
+
+        // Set pipeline stage to recording
+        transcriptionService.pipelineStage = .recording
+
         audioRecorder.onRecordingComplete = { [weak self] audioURL in
             print("   🎙️ Recording complete callback triggered")
+            self?.transcriptionService.pipelineStage = .transcribing
             self?.transcriptionService.setAudioFileURL(audioURL)
         }
         print("   startRecordingWithCallback - calling audioRecorder.startRecording()")
