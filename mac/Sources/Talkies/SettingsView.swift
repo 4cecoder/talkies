@@ -338,6 +338,18 @@ struct PluginCard: View {
                 get: { plugin.isEnabled },
                 set: { newValue in
                     withAnimation {
+                        // Handle LLM mutual exclusivity: only one of Ollama/LM Studio can be active
+                        if newValue {
+                            if plugin.id == "ollama" {
+                                // Disable LM Studio when enabling Ollama
+                                pluginManager.lmStudioPlugin?.isEnabled = false
+                            } else if plugin.id == "lmstudio" {
+                                // Disable Ollama when enabling LM Studio
+                                pluginManager.ollamaPlugin?.isEnabled = false
+                            }
+                        }
+
+                        // Set the plugin's enabled state
                         if let ollamaPlugin = plugin as? OllamaPlugin {
                             ollamaPlugin.isEnabled = newValue
                         } else if let lmStudioPlugin = plugin as? LMStudioPlugin {
@@ -349,6 +361,9 @@ struct PluginCard: View {
                         } else if let sentimentPlugin = plugin as? SentimentPlugin {
                             sentimentPlugin.isEnabled = newValue
                         }
+
+                        // Force PluginManager to notify observers for sidebar refresh
+                        pluginManager.objectWillChange.send()
                     }
                 }
             ))
