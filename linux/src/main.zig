@@ -12,6 +12,7 @@ const Command = enum {
     models_download,
     config_show,
     audio_test,
+    transcribe_test,
     help,
 };
 
@@ -40,6 +41,7 @@ pub fn main() !void {
         .models_download => try runModelsDownload(allocator),
         .config_show => try runConfigShow(allocator),
         .audio_test => try runAudioTest(allocator),
+        .transcribe_test => try runTranscribeTest(allocator),
         .help => try printHelp(),
     }
 }
@@ -51,6 +53,7 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "models", .models_download },
         .{ "config", .config_show },
         .{ "audio", .audio_test },
+        .{ "transcribe", .transcribe_test },
         .{ "help", .help },
         .{ "--help", .help },
         .{ "-h", .help },
@@ -212,16 +215,18 @@ fn runRecord(allocator: std.mem.Allocator) !void {
 fn runModelsDownload(allocator: std.mem.Allocator) !void {
     utils.log("Downloading whisper models...", .{});
 
+    // Load config to get model name
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
 
-    // Default to base model
-    const model_name = "base";
-
-    std.debug.print("Downloading whisper model: {s}\n", .{model_name});
+    std.debug.print("Downloading whisper model: {s}\n", .{cfg.model});
     std.debug.print("This may take a few minutes...\n", .{});
 
-    try whisper_service.downloadModel(model_name);
+    try whisper_service.downloadModel(cfg.model);
 
     std.debug.print("Model downloaded successfully!\n", .{});
     std.debug.print("You can now use 'talkies quick' to start transcribing.\n", .{});
@@ -295,6 +300,28 @@ fn runAudioTest(allocator: std.mem.Allocator) !void {
     std.debug.print("You can play it with: aplay {s}\n", .{output_path});
 }
 
+fn runTranscribeTest(allocator: std.mem.Allocator) !void {
+    utils.log("Testing transcription with anime_16k.wav...", .{});
+
+    // Load config to get model name
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
+    std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+
+    var whisper_service = whisper.WhisperService.init(allocator);
+    defer whisper_service.deinit();
+
+    try whisper_service.loadModel(cfg.model);
+
+    std.debug.print("Transcribing anime_16k.wav...\n", .{});
+    const transcription = try whisper_service.transcribe("anime_16k.wav");
+    defer allocator.free(transcription);
+
+    std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
+}
+
 fn printHelp() !void {
     const help_text =
         \\Talkies - Voice transcription and text insertion
@@ -308,12 +335,14 @@ fn printHelp() !void {
         \\  models             Download whisper models
         \\  config             Show current configuration
         \\  audio              Test audio devices
+        \\  transcribe         Test transcription on anime_16k.wav
         \\  help               Show this help message
         \\
         \\Examples:
         \\  talkies quick      # Start recording, press Ctrl+C to stop and transcribe
         \\  talkies record     # Record audio to file
-        \\  talkies models     # Download base whisper model
+        \\  talkies models     # Download model from config
+        \\  talkies transcribe # Test transcription
         \\
     ;
 
