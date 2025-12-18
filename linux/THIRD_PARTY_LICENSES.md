@@ -89,14 +89,18 @@ We are grateful to Mitchell Hashimoto and the Ghostty contributors for releasing
 **Ghostty Website**: https://ghostty.org
 **Author**: Mitchell Hashimoto (@mitchellh)
 
-## zig-gobject (Pre-Built Bindings)
+## zig-gobject (Pre-Built Bindings) - CURRENTLY DISABLED
 
 **Source**: [ghostty-org/zig-gobject](https://github.com/ghostty-org/zig-gobject)
 **Distributed via**: https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst
 
-**Purpose**: Pre-generated GTK/GObject bindings for Zig, built by the Ghostty team from upstream ianprime0509/zig-gobject. Provides clean Zig APIs for GTK4, GLib, GObject, Gdk, and Gio.
+**Status**: ⚠️ **BLOCKED - Zig 0.16.0 Incompatibility**
 
-**Modules Used**:
+The pre-built bindings are built for Zig 0.15.2 and use the `@Type` builtin which was removed in Zig 0.16.0. Talkies Linux currently runs on Zig 0.16.0-dev.1484, making these bindings incompatible.
+
+**Intended Purpose**: Pre-generated GTK/GObject bindings for Zig, providing clean Zig APIs for GTK4, GLib, GObject, Gdk, and Gio.
+
+**Intended Modules** (when compatibility is restored):
 - gtk4 (imported as `@import("gtk")`)
 - gdk4 (imported as `@import("gdk")`)
 - glib2 (imported as `@import("glib")`)
@@ -110,7 +114,9 @@ We are grateful to Mitchell Hashimoto and the Ghostty contributors for releasing
 - Pre-built artifact generation: Mitchell Hashimoto and Ghostty contributors
 - Repository: https://github.com/ghostty-org/zig-gobject
 
-The pre-built bindings save us from code generation complexity and Zig version compatibility issues with the upstream tool.
+**Resolution Status**: Awaiting Ghostty's Zig 0.16 migration. See `docs/ZIG_016_GTK_BLOCKER.md` for details and workarounds.
+
+**Impact**: GTK features (settings window, system tray, visual overlay) are temporarily disabled. All core CLI functionality remains fully operational.
 
 ---
 

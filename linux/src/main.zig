@@ -6,9 +6,9 @@ const input = @import("input.zig");
 const config = @import("config.zig");
 const utils = @import("utils.zig");
 const hotkey = @import("hotkey.zig");
-// TODO: Re-enable after fixing GTK4 cImport issues
-// const tray = @import("tray.zig");
+// TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
+// const tray = @import("tray.zig");
 
 const Command = enum {
     quick,
@@ -453,20 +453,19 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer cfg.deinit();
     try cfg.load();
 
-    // TODO: Re-enable system tray and settings UI after fixing GTK4 cImport issues
-    // Initialize system tray
-    // var system_tray = tray.SystemTray.init(allocator);
-    // defer system_tray.deinit();
-
-    // system_tray.setQuitCallback(&onQuitCallback);
-    // system_tray.setSettingsCallback(&onSettingsCallback);
-
-    // try system_tray.start();
-    // utils.log("System tray initialized", .{});
-
-    // Initialize settings UI (but don't show yet)
+    // TODO: Re-enable GTK settings UI after Ghostty bindings support Zig 0.16
+    // Currently blocked: Ghostty's gobject bindings require Zig 0.15.2
+    // We're on Zig 0.16.0, which removed @Type builtin
     // var ui = settings_ui.SettingsUI.init(allocator, &cfg);
     // defer ui.deinit();
+
+    // TODO: Re-enable system tray after implementing StatusNotifierItem
+    // var system_tray = tray.SystemTray.init(allocator);
+    // defer system_tray.deinit();
+    // system_tray.setQuitCallback(&onQuitCallback);
+    // system_tray.setSettingsCallback(&onSettingsCallback);
+    // try system_tray.start();
+    // utils.log("System tray initialized", .{});
 
     // Get effective platform (resolve "auto")
     const platform = cfg.getEffectivePlatform();
@@ -504,12 +503,12 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         std.debug.print("Wayland mode: Daemon will keep model loaded for quick transcription\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
-        // Event loop for tray and settings UI (disabled for now)
+        // Event loop (GTK disabled due to Zig version incompatibility)
         while (!daemon_should_quit) {
             // TODO: Process tray events when tray is re-enabled
             // try system_tray.processEvents();
 
-            // Check if settings should be shown
+            // TODO: Show settings UI when GTK bindings support Zig 0.16
             // if (daemon_show_settings) {
             //     daemon_show_settings = false;
             //     try ui.show();
@@ -539,7 +538,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         // TODO: Process tray events when tray is re-enabled
         // try system_tray.processEvents();
 
-        // Check if settings should be shown
+        // TODO: Show settings UI when GTK bindings support Zig 0.16
         // if (daemon_show_settings) {
         //     daemon_show_settings = false;
         //     try ui.show();
