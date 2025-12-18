@@ -5,6 +5,7 @@ const clipboard = @import("clipboard.zig");
 const input = @import("input.zig");
 const config = @import("config.zig");
 const utils = @import("utils.zig");
+const hotkey = @import("hotkey.zig");
 
 const Command = enum {
     quick,
@@ -13,6 +14,7 @@ const Command = enum {
     config_show,
     audio_test,
     transcribe_test,
+    daemon,
     help,
 };
 
@@ -42,6 +44,7 @@ pub fn main() !void {
         .config_show => try runConfigShow(allocator),
         .audio_test => try runAudioTest(allocator),
         .transcribe_test => try runTranscribeTest(allocator),
+        .daemon => try runDaemon(allocator),
         .help => try printHelp(),
     }
 }
@@ -54,6 +57,7 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "config", .config_show },
         .{ "audio", .audio_test },
         .{ "transcribe", .transcribe_test },
+        .{ "daemon", .daemon },
         .{ "help", .help },
         .{ "--help", .help },
         .{ "-h", .help },
@@ -322,6 +326,126 @@ fn runTranscribeTest(allocator: std.mem.Allocator) !void {
     std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
 }
 
+fn runDaemon(allocator: std.mem.Allocator) !void {
+    utils.log("Starting daemon mode...", .{});
+
+    // Load configuration
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
+    std.debug.print("Talkies daemon started\n", .{});
+    std.debug.print("Press Right Alt to start/stop recording\n", .{});
+    std.debug.print("Press Ctrl+C to exit daemon\n\n", .{});
+
+    // Initialize services
+    var recorder = audio.AudioRecorder.init(allocator);
+    defer recorder.deinit();
+
+    var whisper_service = whisper.WhisperService.init(allocator);
+    defer whisper_service.deinit();
+
+    var inserter = input.TextInserter.init(allocator);
+    defer inserter.deinit();
+
+    // Load whisper model once at startup
+    std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+    try whisper_service.loadModel(cfg.model);
+    std.debug.print("Model loaded. Ready!\n\n", .{});
+
+    // Setup hotkey listener
+    var listener = hotkey.HotkeyListener.init(allocator);
+    defer listener.deinit();
+
+    try listener.start();
+
+    // State tracking
+    var is_recording = false;
+    var key_press_time: std.time.Instant = undefined;
+    const temp_path = "/tmp/talkies_daemon_recording.wav";
+
+    // Main event loop
+    while (true) {
+        const event = try listener.poll();
+
+        if (event) |evt| {
+            switch (evt) {
+                .press => {
+                    if (!is_recording) {
+                        // Start recording
+                        is_recording = true;
+                        key_press_time = try std.time.Instant.now();
+
+                        const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
+                        recorder.startRecording(temp_path, device) catch |err| {
+                            std.debug.print("Error starting recording: {}\n", .{err});
+                            is_recording = false;
+                            continue;
+                        };
+
+                        std.debug.print("🔴 Recording started...\n", .{});
+                    }
+                },
+                .release => {
+                    if (is_recording) {
+                        // Calculate hold duration
+                        const now = try std.time.Instant.now();
+                        const hold_duration_ns = now.since(key_press_time);
+                        const hold_duration = hold_duration_ns / std.time.ns_per_ms;
+
+                        // Stop recording
+                        recorder.stopRecording() catch |err| {
+                            std.debug.print("Error stopping recording: {}\n", .{err});
+                            is_recording = false;
+                            continue;
+                        };
+
+                        is_recording = false;
+
+                        // Check if it was a tap (< 300ms) or hold
+                        if (hold_duration < 300) {
+                            std.debug.print("⏹️  Recording stopped (tap detected - quick mode)\n", .{});
+                        } else {
+                            std.debug.print("⏹️  Recording stopped ({d}ms hold)\n", .{hold_duration});
+                        }
+
+                        // Transcribe
+                        std.debug.print("⚙️  Transcribing...\n", .{});
+                        const transcription = whisper_service.transcribe(temp_path) catch |err| {
+                            std.debug.print("Error transcribing: {}\n", .{err});
+                            continue;
+                        };
+                        defer allocator.free(transcription);
+
+                        std.debug.print("📝 Transcription: {s}\n", .{transcription});
+
+                        // Handle output based on config
+                        if (cfg.auto_paste) {
+                            std.debug.print("✨ Inserting text at cursor...\n", .{});
+                            inserter.insertTextAtCursor(transcription) catch |err| {
+                                std.debug.print("Error inserting text: {}\n", .{err});
+                            };
+                        } else {
+                            var clip = clipboard.Clipboard.init(allocator);
+                            defer clip.deinit();
+
+                            std.debug.print("📋 Copying to clipboard...\n", .{});
+                            clip.copy(transcription) catch |err| {
+                                std.debug.print("Error copying to clipboard: {}\n", .{err});
+                            };
+                        }
+
+                        std.debug.print("✅ Done!\n\n", .{});
+
+                        // Cleanup temp file
+                        std.fs.deleteFileAbsolute(temp_path) catch {};
+                    }
+                },
+            }
+        }
+    }
+}
+
 fn printHelp() !void {
     const help_text =
         \\Talkies - Voice transcription and text insertion
@@ -330,6 +454,7 @@ fn printHelp() !void {
         \\  talkies <command>
         \\
         \\Commands:
+        \\  daemon             Run as background daemon (Right Alt to record)
         \\  quick              Record, transcribe, and paste in one step
         \\  record             Record audio only
         \\  models             Download whisper models
@@ -339,7 +464,8 @@ fn printHelp() !void {
         \\  help               Show this help message
         \\
         \\Examples:
-        \\  talkies quick      # Start recording, press Ctrl+C to stop and transcribe
+        \\  talkies daemon     # Start daemon, press Right Alt to record
+        \\  talkies quick      # One-shot recording workflow
         \\  talkies record     # Record audio to file
         \\  talkies models     # Download model from config
         \\  talkies transcribe # Test transcription

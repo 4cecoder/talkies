@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");
     exe.linkSystemLibrary("whisper");
+    exe.linkSystemLibrary("X11");
     exe.linkLibC();
 
     // Add include path for whisper.h
@@ -52,6 +53,7 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("pulse-simple");
     unit_tests.linkSystemLibrary("pulse");
     unit_tests.linkSystemLibrary("whisper");
+    unit_tests.linkSystemLibrary("X11");
     unit_tests.linkLibC();
     unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include" });
 
