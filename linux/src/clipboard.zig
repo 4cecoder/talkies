@@ -51,6 +51,7 @@ pub const Clipboard = struct {
         if (child.stdin) |stdin| {
             try stdin.writeAll(text);
             stdin.close();
+            child.stdin = null; // Prevent double-close in wait()
         }
 
         const term = try child.wait();
@@ -70,6 +71,7 @@ pub const Clipboard = struct {
         if (child.stdin) |stdin| {
             try stdin.writeAll(text);
             stdin.close();
+            child.stdin = null; // Prevent double-close in wait()
         }
 
         const term = try child.wait();

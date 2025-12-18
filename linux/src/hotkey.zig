@@ -39,25 +39,45 @@ pub const HotkeyListener = struct {
         self.root_window = c.XDefaultRootWindow(self.display.?);
 
         // Grab Right Alt key (Alt_R / ISO_Level3_Shift)
-        // Keycode 108 is typically Right Alt
-        const right_alt_keycode = c.XKeysymToKeycode(self.display.?, c.XK_Alt_R);
+        // Try multiple keysyms that might be Right Alt
+        const keysyms = [_]c_ulong{
+            c.XK_Alt_R,
+            c.XK_ISO_Level3_Shift,
+            c.XK_Meta_R,
+        };
 
-        // Grab the key with any modifiers
-        const result = c.XGrabKey(
-            self.display.?,
-            @intCast(right_alt_keycode),
-            c.AnyModifier,
-            self.root_window,
-            1, // owner_events = true
-            c.GrabModeAsync,
-            c.GrabModeAsync,
-        );
+        var grabbed = false;
+        for (keysyms) |keysym| {
+            const keycode = c.XKeysymToKeycode(self.display.?, keysym);
+            if (keycode != 0) {
+                utils.log("Trying to grab keycode {d} for keysym {d}", .{ keycode, keysym });
 
-        if (result == 0) {
+                // Try to grab the key
+                const result = c.XGrabKey(
+                    self.display.?,
+                    @intCast(keycode),
+                    c.AnyModifier,
+                    self.root_window,
+                    1, // owner_events = true
+                    c.GrabModeAsync,
+                    c.GrabModeAsync,
+                );
+
+                _ = c.XSync(self.display.?, 0);
+
+                if (result != 0) {
+                    utils.log("Successfully grabbed keycode {d}", .{keycode});
+                    grabbed = true;
+                }
+            }
+        }
+
+        if (!grabbed) {
             utils.log("Warning: Failed to grab Right Alt key", .{});
         }
 
         _ = c.XSelectInput(self.display.?, self.root_window, c.KeyPressMask | c.KeyReleaseMask);
+        _ = c.XSync(self.display.?, 0);
         self.running = true;
 
         utils.log("Hotkey listener started (Right Alt)", .{});
@@ -85,18 +105,35 @@ pub const HotkeyListener = struct {
         var event: c.XEvent = undefined;
         _ = c.XNextEvent(self.display.?, &event);
 
-        const right_alt_keycode = c.XKeysymToKeycode(self.display.?, c.XK_Alt_R);
+        // Check multiple keysyms for Right Alt
+        const keysyms = [_]c_ulong{
+            c.XK_Alt_R,
+            c.XK_ISO_Level3_Shift,
+            c.XK_Meta_R,
+        };
 
         switch (event.type) {
             c.KeyPress => {
-                if (event.xkey.keycode == right_alt_keycode) {
-                    return .press;
+                for (keysyms) |keysym| {
+                    const keycode = c.XKeysymToKeycode(self.display.?, keysym);
+                    if (keycode != 0 and event.xkey.keycode == keycode) {
+                        utils.log("Key press detected: keycode {d}", .{event.xkey.keycode});
+                        return .press;
+                    }
                 }
+                // Debug: show what key was pressed
+                utils.log("Unknown key press: keycode {d}", .{event.xkey.keycode});
             },
             c.KeyRelease => {
-                if (event.xkey.keycode == right_alt_keycode) {
-                    return .release;
+                for (keysyms) |keysym| {
+                    const keycode = c.XKeysymToKeycode(self.display.?, keysym);
+                    if (keycode != 0 and event.xkey.keycode == keycode) {
+                        utils.log("Key release detected: keycode {d}", .{event.xkey.keycode});
+                        return .release;
+                    }
                 }
+                // Debug: show what key was released
+                utils.log("Unknown key release: keycode {d}", .{event.xkey.keycode});
             },
             else => {},
         }
