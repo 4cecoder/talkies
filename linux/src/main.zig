@@ -498,24 +498,98 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     try whisper_service.loadModel(cfg.model);
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
-    // In Wayland mode, just keep model loaded and wait for toggle script
+    // In Wayland mode, watch for file-based IPC from toggle script
     if (is_wayland) {
         std.debug.print("Wayland mode: Daemon will keep model loaded for quick transcription\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
-        // Event loop (GTK disabled due to Zig version incompatibility)
-        while (!daemon_should_quit) {
-            // TODO: Process tray events when tray is re-enabled
-            // try system_tray.processEvents();
+        const state_file = "/tmp/talkies-state";
+        const recording_file = "/tmp/talkies-recording.wav";
 
-            // TODO: Show settings UI when GTK bindings support Zig 0.16
-            // if (daemon_show_settings) {
-            //     daemon_show_settings = false;
-            //     try ui.show();
-            // }
+        // Initialize state file
+        {
+            const file = std.fs.createFileAbsolute(state_file, .{}) catch |err| {
+                std.debug.print("Error creating state file: {}\n", .{err});
+                return err;
+            };
+            defer file.close();
+            _ = try file.write("idle");
+        }
+
+        var last_state: [16]u8 = undefined;
+        @memset(&last_state, 0);
+        @memcpy(last_state[0..4], "idle");
+
+        std.debug.print("Monitoring state file: {s}\n", .{state_file});
+        std.debug.print("Ready for recordings!\n\n", .{});
+
+        // Event loop - watch for state changes
+        while (!daemon_should_quit) {
+            // Read current state
+            const file = std.fs.openFileAbsolute(state_file, .{}) catch {
+                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                continue;
+            };
+            defer file.close();
+
+            var state_buf: [16]u8 = undefined;
+            const bytes_read = file.read(&state_buf) catch {
+                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                continue;
+            };
+
+            const current_state = std.mem.trim(u8, state_buf[0..bytes_read], &std.ascii.whitespace);
+
+            // Detect state change to "processing" (recording just stopped)
+            if (std.mem.eql(u8, current_state, "processing") and
+                !std.mem.eql(u8, current_state, std.mem.trim(u8, &last_state, &[_]u8{0})))
+            {
+                std.debug.print("🎤 Recording detected, processing...\n", .{});
+
+                // Transcribe the recording
+                const transcription = whisper_service.transcribe(recording_file) catch |err| {
+                    std.debug.print("Error transcribing: {}\n", .{err});
+                    // Reset state
+                    const reset_file = std.fs.createFileAbsolute(state_file, .{}) catch |reset_err| {
+                        std.debug.print("Error resetting state: {}\n", .{reset_err});
+                        continue;
+                    };
+                    defer reset_file.close();
+                    _ = try reset_file.write("idle");
+                    continue;
+                };
+                defer allocator.free(transcription);
+
+                std.debug.print("📝 Transcription: {s}\n", .{transcription});
+
+                // Handle output based on config
+                if (cfg.auto_paste) {
+                    std.debug.print("✨ Inserting text at cursor...\n", .{});
+                    inserter.insertTextAtCursor(transcription) catch |err| {
+                        std.debug.print("Error inserting text: {}\n", .{err});
+                    };
+                } else {
+                    var clip = clipboard.Clipboard.init(allocator);
+                    defer clip.deinit();
+
+                    std.debug.print("📋 Copying to clipboard...\n", .{});
+                    clip.copy(transcription) catch |err| {
+                        std.debug.print("Error copying to clipboard: {}\n", .{err});
+                    };
+                }
+
+                std.debug.print("✅ Done!\n\n", .{});
+
+                // Cleanup recording file
+                std.fs.deleteFileAbsolute(recording_file) catch {};
+            }
+
+            // Update last state
+            @memset(&last_state, 0);
+            @memcpy(last_state[0..current_state.len], current_state);
 
             // Small sleep to avoid busy-wait
-            std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
+            std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
         }
 
         utils.log("Daemon shutting down...", .{});
