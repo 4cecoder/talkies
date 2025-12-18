@@ -523,9 +523,6 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         std.debug.print("Monitoring state file: {s}\n", .{state_file});
         std.debug.print("Ready for recordings!\n\n", .{});
 
-        const waveform_file = "/tmp/talkies-waveform";
-        var recording_start_time: ?std.time.Instant = null;
-
         // Event loop - watch for state changes
         while (!daemon_should_quit) {
             // Read current state
@@ -543,63 +540,11 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
             const current_state = std.mem.trim(u8, state_buf[0..bytes_read], &std.ascii.whitespace);
 
-            // Display live waveform while recording
-            if (std.mem.eql(u8, current_state, "recording")) {
-                if (recording_start_time == null) {
-                    recording_start_time = std.time.Instant.now() catch null;
-                    std.debug.print("\r\x1B[2K🔴 Recording started\n", .{});
-                }
-
-                // Read waveform data
-                const waveform = std.fs.openFileAbsolute(waveform_file, .{}) catch {
-                    std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
-                    continue;
-                };
-                defer waveform.close();
-
-                var buf: [1024]u8 = undefined;
-                const n = waveform.read(&buf) catch 0;
-                if (n > 0) {
-                    // Parse waveform levels (one float per line)
-                    var lines = std.mem.splitScalar(u8, buf[0..n], '\n');
-                    var bars: [40]u8 = undefined;
-                    var i: usize = 0;
-
-                    while (lines.next()) |line| : (i += 1) {
-                        if (i >= 40) break;
-                        const trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
-                        if (trimmed.len == 0) continue;
-
-                        const level = std.fmt.parseFloat(f32, trimmed) catch 0.0;
-                        const bar_height = @as(usize, @intFromFloat(@min(level * 8.0, 7.0)));
-
-                        // Simple ASCII bars (Unicode requires string handling)
-                        const chars = " .:;!|#@";
-                        bars[i] = chars[@min(bar_height, chars.len - 1)];
-                    }
-
-                    // Fill remaining bars with empty
-                    while (i < 40) : (i += 1) {
-                        bars[i] = ' ';
-                    }
-
-                    // Calculate duration
-                    const duration = if (recording_start_time) |start|
-                        (std.time.Instant.now() catch start).since(start) / std.time.ns_per_s
-                    else
-                        0;
-
-                    // Print waveform with status
-                    std.debug.print("\r\x1B[2K🔴 Recording [{d:0>2}s] │{s}│", .{ duration, bars });
-                }
-            }
-
             // Detect state change to "processing" (recording just stopped)
             if (std.mem.eql(u8, current_state, "processing") and
                 !std.mem.eql(u8, current_state, std.mem.trim(u8, &last_state, &[_]u8{0})))
             {
-                recording_start_time = null;
-                std.debug.print("\n⚙️  Processing transcription...\n", .{});
+                std.debug.print("⚙️  Processing transcription...\n", .{});
 
                 // Transcribe the recording
                 const transcription = whisper_service.transcribe(recording_file) catch |err| {
