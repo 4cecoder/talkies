@@ -28,6 +28,13 @@ void yap_window_gtk_init(void) {
     }
 }
 
+void yap_window_gtk_process_events(void) {
+    // Process all pending GTK events without blocking
+    while (g_main_context_pending(NULL)) {
+        g_main_context_iteration(NULL, FALSE);
+    }
+}
+
 YapWindowGtk* yap_window_gtk_new(void) {
     // Ensure GTK is initialized
     yap_window_gtk_init();

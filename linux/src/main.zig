@@ -768,6 +768,9 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                     // Step 7: Interactive refinement loop
                     yap_interactive: while (true) {
+                        // Process GTK events to keep window responsive and visible
+                        yap_window.YapWindow.processEvents();
+
                         // Wait for user command
                         std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
 

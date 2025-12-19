@@ -99,6 +99,11 @@ pub const YapWindow = struct {
         self.allocator.destroy(self);
     }
 
+    /// Process GTK events - call in tight loop to keep window responsive
+    pub fn processEvents() void {
+        c.yap_window_gtk_process_events();
+    }
+
     // Signal handlers
     fn onAcceptClicked(user_data: ?*anyopaque) callconv(.c) void {
         const self: *YapWindow = @ptrCast(@alignCast(user_data));
