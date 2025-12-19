@@ -582,6 +582,14 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 // Cleanup recording file
                 std.fs.deleteFileAbsolute(recording_file) catch {};
+
+                // Reset state to idle
+                const reset_file = std.fs.createFileAbsolute(state_file, .{}) catch |reset_err| {
+                    std.debug.print("Error resetting state: {}\n", .{reset_err});
+                    continue;
+                };
+                defer reset_file.close();
+                _ = try reset_file.write("idle");
             }
 
             // Update last state
