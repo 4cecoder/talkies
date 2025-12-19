@@ -83,6 +83,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    // GTK overlay runner
+    const overlay_cmd = b.addSystemCommand(&[_][]const u8{
+        "python3",
+        b.pathJoin(&[_][]const u8{ b.pathFromRoot(""), "talkies-overlay-gtk" }),
+    });
+    const overlay_step = b.step("overlay", "Run the GTK overlay");
+    overlay_step.dependOn(&overlay_cmd.step);
+
     // Tests
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
