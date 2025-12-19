@@ -652,22 +652,52 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
 
+                // YAP mode: Refine transcription with LLM before pasting
+                var final_text: []const u8 = transcription;
+                var yap_refined: ?[]u8 = null;
+                defer if (yap_refined) |text| allocator.free(text);
+
+                yap_block: {
+                    if (!cfg.yap_mode_enabled or transcription.len == 0) break :yap_block;
+
+                    std.debug.print("\n💬 YAP MODE: Refining your message with {s}...\n", .{cfg.yap_llm_model});
+
+                    const ollama = @import("ollama.zig");
+                    var client = ollama.Client.init(allocator, cfg.yap_ollama_url);
+                    defer client.deinit();
+
+                    const refined = client.generate(
+                        cfg.yap_llm_model,
+                        transcription,
+                        cfg.yap_system_prompt,
+                    ) catch |err| {
+                        std.debug.print("⚠️  YAP refinement failed: {}, using original\n", .{err});
+                        break :yap_block;
+                    };
+
+                    if (refined.len > 0) {
+                        yap_refined = refined;
+                        final_text = refined;
+                        std.debug.print("✨ Refined ({d} chars): {s}\n\n", .{ refined.len, refined });
+                    }
+                }
+
                 // Handle output based on config
                 if (cfg.auto_paste) {
-                    if (transcription.len > 0) {
+                    if (final_text.len > 0) {
                         std.debug.print("✨ Inserting text at cursor...\n", .{});
-                        inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
+                        inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch |err| {
                             std.debug.print("Error inserting text: {}\n", .{err});
                         };
                     } else {
-                        std.debug.print("⚠️  Skipping paste - transcription is empty\n", .{});
+                        std.debug.print("⚠️  Skipping paste - text is empty\n", .{});
                     }
                 } else {
                     var clip = clipboard.Clipboard.init(allocator);
                     defer clip.deinit();
 
                     std.debug.print("📋 Copying to clipboard...\n", .{});
-                    clip.copy(transcription) catch |err| {
+                    clip.copy(final_text) catch |err| {
                         std.debug.print("Error copying to clipboard: {}\n", .{err});
                     };
                 }

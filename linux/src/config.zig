@@ -21,6 +21,12 @@ pub const Config = struct {
     // Platform settings
     platform: []const u8 = "auto", // "auto", "x11", "wayland"
 
+    // YAP mode settings (conversational LLM refinement)
+    yap_mode_enabled: bool = true, // Enabled by default for testing
+    yap_llm_model: []const u8 = "granite", // Ollama model to use
+    yap_ollama_url: []const u8 = "http://localhost:11434",
+    yap_system_prompt: []const u8 = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct.",
+
     // Track if strings are owned (allocated)
     audio_device_owned: bool = false,
     model_owned: bool = false,
@@ -28,6 +34,9 @@ pub const Config = struct {
     export_format_owned: bool = false,
     paste_keybind_owned: bool = false,
     platform_owned: bool = false,
+    yap_llm_model_owned: bool = false,
+    yap_ollama_url_owned: bool = false,
+    yap_system_prompt_owned: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
@@ -53,6 +62,15 @@ pub const Config = struct {
         }
         if (self.platform_owned) {
             self.allocator.free(self.platform);
+        }
+        if (self.yap_llm_model_owned) {
+            self.allocator.free(self.yap_llm_model);
+        }
+        if (self.yap_ollama_url_owned) {
+            self.allocator.free(self.yap_ollama_url);
+        }
+        if (self.yap_system_prompt_owned) {
+            self.allocator.free(self.yap_system_prompt);
         }
     }
 
@@ -106,6 +124,14 @@ pub const Config = struct {
             \\[platform]
             \\# Platform mode: "auto" (detect), "x11" (daemon with Right Alt), "wayland" (compositor hotkey)
             \\mode = "auto"
+            \\
+            \\[yap]
+            \\# YAP mode: Conversational LLM refinement before pasting
+            \\# Helps yappers refine verbose speech into concise messages
+            \\enabled = true
+            \\llm_model = "granite"
+            \\ollama_url = "http://localhost:11434"
+            \\system_prompt = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct."
             \\
         ;
 
@@ -237,6 +263,31 @@ pub const Config = struct {
                 }
                 self.platform = try self.allocator.dupe(u8, value);
                 self.platform_owned = true;
+            }
+        } else if (std.mem.eql(u8, section, "yap")) {
+            if (std.mem.eql(u8, key, "enabled")) {
+                self.yap_mode_enabled = try parseBoolValue(value_raw);
+            } else if (std.mem.eql(u8, key, "llm_model")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_llm_model_owned) {
+                    self.allocator.free(self.yap_llm_model);
+                }
+                self.yap_llm_model = try self.allocator.dupe(u8, value);
+                self.yap_llm_model_owned = true;
+            } else if (std.mem.eql(u8, key, "ollama_url")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_ollama_url_owned) {
+                    self.allocator.free(self.yap_ollama_url);
+                }
+                self.yap_ollama_url = try self.allocator.dupe(u8, value);
+                self.yap_ollama_url_owned = true;
+            } else if (std.mem.eql(u8, key, "system_prompt")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_system_prompt_owned) {
+                    self.allocator.free(self.yap_system_prompt);
+                }
+                self.yap_system_prompt = try self.allocator.dupe(u8, value);
+                self.yap_system_prompt_owned = true;
             }
         }
     }
