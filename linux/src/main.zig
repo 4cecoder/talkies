@@ -463,6 +463,12 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer io_threaded.deinit();
     const io = io_threaded.io();
 
+    // Initialize GTK for YAP mode GUI (if enabled)
+    if (cfg.yap_mode_enabled) {
+        // GTK init is handled in C layer when YapWindow.create() is called
+        utils.log("YAP mode enabled - GTK will be initialized when window is created", .{});
+    }
+
     // TODO: Re-enable GTK settings UI after Ghostty bindings support Zig 0.16
     // Currently blocked: Ghostty's gobject bindings require Zig 0.15.2
     // We're on Zig 0.16.0, which removed @Type builtin

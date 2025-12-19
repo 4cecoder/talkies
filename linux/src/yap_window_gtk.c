@@ -19,7 +19,19 @@ struct YapWindowGtk {
     void *user_data; // Points to Zig YapWindow struct
 };
 
+static int gtk_initialized = 0;
+
+void yap_window_gtk_init(void) {
+    if (!gtk_initialized) {
+        gtk_init();
+        gtk_initialized = 1;
+    }
+}
+
 YapWindowGtk* yap_window_gtk_new(void) {
+    // Ensure GTK is initialized
+    yap_window_gtk_init();
+
     YapWindowGtk *win = g_malloc0(sizeof(YapWindowGtk));
 
     // Create window

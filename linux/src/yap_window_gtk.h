@@ -7,6 +7,9 @@
 // Opaque pointer - implementation details hidden in .c file
 typedef struct YapWindowGtk YapWindowGtk;
 
+// GTK initialization (call once at startup)
+void yap_window_gtk_init(void);
+
 // Window lifecycle
 YapWindowGtk* yap_window_gtk_new(void);
 void yap_window_gtk_destroy(YapWindowGtk *win);
