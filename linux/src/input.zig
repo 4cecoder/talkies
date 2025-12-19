@@ -43,8 +43,9 @@ pub const TextInserter = struct {
         // Copy new text to clipboard
         try clipboard.copy(text);
 
-        // Small delay to ensure clipboard is ready (100ms for Wayland)
-        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+        // Longer delay to ensure clipboard is fully updated (300ms for Wayland)
+        // This prevents pasting old clipboard content on subsequent recordings
+        std.posix.nanosleep(0, 300 * std.time.ns_per_ms);
 
         // Simulate paste using native uinput with configured keybind
         try self.pasteNative(keybind);
