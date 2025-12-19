@@ -60,7 +60,7 @@ namespace Talkies.Windows.Services
                 {
                     if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
                     {
-                        Logger.Info("HotkeyManager: Right Alt DOWN");
+                        Logger.Debug("HotkeyManager: Right Alt DOWN");
                         if (!_isPressed)
                         {
                             _isPressed = true;
@@ -76,7 +76,7 @@ namespace Talkies.Windows.Services
                                     if (!token.IsCancellationRequested && _isPressed)
                                     {
                                         _holdFired = true;
-                                        Logger.Info("HotkeyManager: HoldStart fired");
+                                        Logger.Debug("HotkeyManager: HoldStart fired");
                                         HoldStart?.Invoke();
                                     }
                                 }
@@ -91,18 +91,18 @@ namespace Talkies.Windows.Services
                         {
                             if (_holdFired)
                             {
-                                Logger.Info("HotkeyManager: HoldEnd fired");
+                                Logger.Debug("HotkeyManager: HoldEnd fired");
                                 HoldEnd?.Invoke();
                             }
                             else
                             {
-                                Logger.Info("HotkeyManager: Tap fired");
+                                Logger.Debug("HotkeyManager: Tap fired");
                                 Tap?.Invoke();
                             }
                         }
                         else
                         {
-                            Logger.Info("HotkeyManager: Right Alt UP with no pressed flag");
+                            Logger.Debug("HotkeyManager: Right Alt UP with no pressed flag");
                         }
                         _isPressed = false;
                         _holdFired = false;

@@ -52,7 +52,7 @@ namespace Talkies.Windows.Plugins
 
         public LmStudioProvider()
         {
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
         }
 
         public async Task<bool> IsAvailableAsync()
