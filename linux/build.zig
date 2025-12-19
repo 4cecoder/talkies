@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");
     exe.linkSystemLibrary("whisper");
+    exe.linkSystemLibrary("sqlite3"); // For YAP session management
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
@@ -117,6 +118,7 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("pulse-simple");
     unit_tests.linkSystemLibrary("pulse");
     unit_tests.linkSystemLibrary("whisper");
+    unit_tests.linkSystemLibrary("sqlite3");
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
