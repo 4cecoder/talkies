@@ -38,6 +38,8 @@ namespace Talkies.Windows.Models
         public bool CrashReportingEnabled { get; set; } = false;
         public string CrashReportingEndpoint { get; set; } = string.Empty;
         public bool CrashReportingPrivacyAccepted { get; set; } = false;
+        public bool LmStudioAvailabilityChecked { get; set; } = false;
+        public bool OllamaAvailabilityChecked { get; set; } = false;
 
         // Developer team config
         public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
