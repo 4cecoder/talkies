@@ -68,7 +68,7 @@ namespace Talkies.Windows.Plugins
             }
         }
 
-        public async Task<bool> FetchModelsAsync()
+        public async Task<bool> FetchModelsAsync(bool silent = false)
         {
             try
             {
@@ -94,7 +94,10 @@ namespace Talkies.Windows.Plugins
                         })
                         .ToList();
 
-                    Services.Logger.Success($"LM Studio: Found {_availableModels.Count} models");
+                    if (!silent)
+                    {
+                        Services.Logger.Success($"LM Studio: Found {_availableModels.Count} models");
+                    }
 
                     // Auto-select first model if none selected
                     if (string.IsNullOrEmpty(_selectedModel) && _availableModels.Count > 0)
@@ -109,7 +112,10 @@ namespace Talkies.Windows.Plugins
             }
             catch (Exception ex)
             {
-                Services.Logger.Error($"LM Studio: Error fetching models - {ex.Message}");
+                if (!silent)
+                {
+                    Services.Logger.Error($"LM Studio: Error fetching models - {ex.Message}");
+                }
                 return false;
             }
         }

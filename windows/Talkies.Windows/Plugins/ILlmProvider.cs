@@ -43,7 +43,7 @@ namespace Talkies.Windows.Plugins
         /// <summary>
         /// Fetches available models from the provider endpoint
         /// </summary>
-        Task<bool> FetchModelsAsync();
+        Task<bool> FetchModelsAsync(bool silent = false);
 
         /// <summary>
         /// Checks if the provider is available (endpoint is reachable)

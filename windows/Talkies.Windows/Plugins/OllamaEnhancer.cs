@@ -173,14 +173,17 @@ namespace Talkies.Windows.Plugins
         /// <summary>
         /// Fetches available models from Ollama.
         /// </summary>
-        public async System.Threading.Tasks.Task<bool> FetchModelsAsync()
+        public async System.Threading.Tasks.Task<bool> FetchModelsAsync(bool silent = false)
         {
             try
             {
                 var response = await _http.GetAsync($"{_endpoint}/api/tags");
                 if (!response.IsSuccessStatusCode)
                 {
-                    Services.Logger.Warn($"Ollama: Failed to fetch models - {response.StatusCode}");
+                    if (!silent)
+                    {
+                        Services.Logger.Warn($"Ollama: Failed to fetch models - {response.StatusCode}");
+                    }
                     return false;
                 }
 
@@ -199,7 +202,10 @@ namespace Talkies.Windows.Plugins
                         })
                         .ToList();
 
-                    Services.Logger.Success($"Ollama: Found {_availableModels.Count} models");
+                    if (!silent)
+                    {
+                        Services.Logger.Success($"Ollama: Found {_availableModels.Count} models");
+                    }
 
                     // Auto-select first model if none selected
                     if (string.IsNullOrEmpty(_model) && _availableModels.Count > 0)
@@ -214,7 +220,10 @@ namespace Talkies.Windows.Plugins
             }
             catch (System.Exception ex)
             {
-                Services.Logger.Error($"Ollama: Error fetching models - {ex.Message}");
+                if (!silent)
+                {
+                    Services.Logger.Error($"Ollama: Error fetching models - {ex.Message}");
+                }
                 return false;
             }
         }
