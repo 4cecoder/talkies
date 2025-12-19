@@ -7,11 +7,15 @@ pub const MessageType = enum {
     start_recording,
     stop_recording,
     get_state,
+    yap_accept,     // Accept current refinement and paste
+    yap_refine,     // Request another refinement (with optional new context)
+    yap_cancel,     // Cancel YAP mode, paste original
 
     // Events (server → client)
     state_changed,
     audio_level,
     transcription_complete,
+    yap_refined,    // New refinement ready
     @"error",
 };
 
@@ -20,12 +24,14 @@ pub const State = enum {
     idle,
     recording,
     processing,
+    yap_refining, // Interactive refinement mode
 
     pub fn toString(self: State) []const u8 {
         return switch (self) {
             .idle => "idle",
             .recording => "recording",
             .processing => "processing",
+            .yap_refining => "yap_refining",
         };
     }
 };
