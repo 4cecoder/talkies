@@ -486,9 +486,6 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     std.debug.print("Press Ctrl+C to exit daemon\n\n", .{});
 
     // Initialize services
-    var recorder = audio.AudioRecorder.init(allocator);
-    defer recorder.deinit();
-
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
 
@@ -501,6 +498,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
     // In Wayland mode, use WebSocket for real-time communication
+    // External script (arecord) handles recording, daemon only processes
     if (is_wayland) {
         std.debug.print("Wayland mode: Starting WebSocket daemon on ws://localhost:6789\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
@@ -544,44 +542,12 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         while (!daemon_should_quit) {
             const current_state = daemon_state.getState();
 
-            // Detect state change to recording (start recording)
-            if (current_state == .recording and last_state != .recording) {
-                std.debug.print("🎤 Starting native audio recording...\n", .{});
-
-                const device_name = if (cfg.audio_device.len > 0) cfg.audio_device else null;
-                recorder.startRecording(recording_file, device_name) catch |err| {
-                    std.debug.print("Error starting recording: {}\n", .{err});
-                    daemon_state.setState(.idle) catch {};
-                    last_state = .idle;
-                    continue;
-                };
-            }
-
-            // While recording, continuously read audio chunks
-            if (current_state == .recording and recorder.recording) {
-                _ = recorder.recordChunk() catch {
-                    std.debug.print("Error reading audio chunk\n", .{});
-                };
-                // Very small sleep to keep recording loop tight
-                std.posix.nanosleep(0, 1 * std.time.ns_per_ms);
-            } else {
-                // When not recording, sleep to reduce CPU usage
-                std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
-            }
-
-            // Detect state change to processing (recording just stopped)
+            // Detect state change to processing (external script finished recording)
             if (current_state == .processing and last_state != .processing) {
-                std.debug.print("⚙️  Stopping recording and processing transcription...\n", .{});
+                std.debug.print("⚙️  Processing transcription...\n", .{});
 
-                // Stop recording and finalize file
-                recorder.stopRecording() catch |err| {
-                    std.debug.print("Error stopping recording: {}\n", .{err});
-                    daemon_state.setState(.idle) catch {};
-                    last_state = daemon_state.getState();
-                    continue;
-                };
-
-                std.debug.print("Recorded {} bytes\n", .{recorder.bytes_recorded});
+                // Small delay for external arecord to finish writing file
+                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
 
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
@@ -635,13 +601,19 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
             // Update last state
             last_state = current_state;
+
+            // Sleep to avoid busy-wait
+            std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
         }
 
         utils.log("Daemon shutting down...", .{});
         return;
     }
 
-    // X11 mode: Setup hotkey listener
+    // X11 mode: Setup hotkey listener and audio recorder
+    var recorder = audio.AudioRecorder.init(allocator);
+    defer recorder.deinit();
+
     var listener = hotkey.HotkeyListener.init(allocator);
     defer listener.deinit();
 

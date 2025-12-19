@@ -1,0 +1,12 @@
+[project]
+name = "talkies-overlay"
+version = "0.1.0"
+description = "Talkies GTK4 Recording Overlay with WebSocket support"
+requires-python = ">=3.10"
+dependencies = [
+    "websocket-client>=1.7.0",
+    "PyGObject>=3.44.0",
+]
+
+[dependency-groups]
+dev = []
