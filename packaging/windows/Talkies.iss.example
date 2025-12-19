@@ -1,0 +1,192 @@
+; Talkies Inno Setup Installer Script
+; This is an EXAMPLE template - copy to windows/Talkies.iss and customize
+; See: https://jrsoftware.org/ishelp/ for full documentation
+
+#define MyAppName "Talkies"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "Talkies Team"
+#define MyAppURL "https://talkies.app"
+#define MyAppExeName "Talkies.Windows.exe"
+
+; You can override these from environment variables set by build-installer.ps1
+#ifdef GetEnv("TALKIES_VERSION")
+  #define MyAppVersion GetEnv("TALKIES_VERSION")
+#endif
+
+#ifdef GetEnv("TALKIES_ARCH")
+  #define MyAppArch GetEnv("TALKIES_ARCH")
+#else
+  #define MyAppArch "x64"
+#endif
+
+[Setup]
+; NOTE: Generate a new GUID for AppId using: https://www.guidgenerator.com/
+; IMPORTANT: Keep this GUID consistent across versions for proper upgrades!
+AppId={{12345678-1234-1234-1234-123456789ABC}
+
+; Application identity
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}
+AppUpdatesURL={#MyAppURL}
+
+; Installation paths
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=yes
+
+; Output settings
+OutputDir=packaging\windows\output
+OutputBaseFilename=Talkies-Setup-{#MyAppVersion}-win-{#MyAppArch}
+Compression=lzma2/max
+SolidCompression=yes
+
+; Windows version requirements (Windows 10 1809 / build 17763)
+MinVersion=10.0.17763
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
+
+; Visual settings
+WizardStyle=modern
+SetupIconFile=branding\icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
+DisableWelcomePage=no
+
+; Privileges
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+
+; License (optional - create LICENSE.txt in root directory)
+; LicenseFile=LICENSE.txt
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "launchAtStartup"; Description: "Launch {#MyAppName} at Windows startup"; GroupDescription: "Additional options:"
+
+[Files]
+; Main application files (from self-contained publish output)
+Source: "windows\Talkies.Windows\bin\Release\net8.0-windows\win-{#MyAppArch}\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Additional files (if needed)
+; Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+; Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+; Start Menu shortcut
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+
+; Desktop shortcut (optional task)
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Run]
+; Option to launch application after installation
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+
+[Registry]
+; Launch at startup (optional task)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: launchAtStartup
+
+; Application settings key (for clean uninstall detection)
+Root: HKCU; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
+
+[UninstallDelete]
+; Clean up user data on uninstall (optional - be careful with user data!)
+; Type: filesandordirs; Name: "{%USERPROFILE}\.talkies"
+
+[Code]
+// Check if .NET 8 Runtime is installed
+function IsDotNetInstalled: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // For self-contained builds, we don't need to check .NET
+  // Uncomment below for framework-dependent builds:
+  //
+  // Result := Exec('dotnet', '--list-runtimes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+
+  Result := True;  // Self-contained build includes runtime
+end;
+
+function InitializeSetup: Boolean;
+begin
+  // Check .NET installation (only for framework-dependent builds)
+  if not IsDotNetInstalled then
+  begin
+    MsgBox('This application requires .NET 8 Desktop Runtime.' + #13#10 +
+           'Please install it from:' + #13#10 +
+           'https://dotnet.microsoft.com/download/dotnet/8.0', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  Result := True;
+end;
+
+// Custom page for configuration (optional)
+var
+  ConfigPage: TInputQueryWizardPage;
+
+procedure InitializeWizard;
+begin
+  // Uncomment to add custom configuration page
+  //
+  // ConfigPage := CreateInputQueryPage(wpWelcome,
+  //   'Configuration Options', 'Configure {#MyAppName}',
+  //   'Please specify any additional configuration options:');
+  // ConfigPage.Add('Ollama Server URL (optional):', False);
+  // ConfigPage.Values[0] := 'http://localhost:11434';
+end;
+
+// Save custom configuration (optional)
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ConfigFile: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Example: Save custom configuration to config file
+    //
+    // ConfigFile := ExpandConstant('{app}\config.json');
+    // SaveStringToFile(ConfigFile, '{"ollamaUrl":"' + ConfigPage.Values[0] + '"}', False);
+  end;
+end;
+
+// Check for running instance before uninstall
+function InitializeUninstall: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Check if application is running
+  if CheckForMutexes('{#MyAppName}') then
+  begin
+    MsgBox('{#MyAppName} is currently running.' + #13#10 +
+           'Please close the application before uninstalling.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  Result := True;
+end;
+
+// Custom uninstall confirmation (optional)
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    // Ask if user wants to remove settings
+    if MsgBox('Do you want to remove all {#MyAppName} settings and data?' + #13#10 +
+              'This will delete your user configuration, transcriptions, and preferences.',
+              mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      // Delete user data directory
+      DelTree(ExpandConstant('{%USERPROFILE}\.talkies'), True, True, True);
+    end;
+  end;
+end;

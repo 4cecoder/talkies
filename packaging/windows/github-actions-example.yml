@@ -1,0 +1,199 @@
+# GitHub Actions Workflow for Windows Release Build
+# Copy this to .github/workflows/windows-release.yml
+
+name: Windows Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.0.0)
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: false
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        architecture: [x64, arm64]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for versioning
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Dependencies
+        run: |
+          # Install Inno Setup
+          choco install innosetup -y
+
+          # Install Windows SDK (for signtool.exe)
+          choco install windows-sdk-10.1 -y
+
+      - name: Extract Version from Tag
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+            $version = "${{ github.event.inputs.version }}"
+          } elseif ("${{ github.ref }}" -match "refs/tags/v(.+)") {
+            $version = $matches[1]
+          } else {
+            $version = "0.0.0-dev"
+          }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "Building version: $version"
+
+      - name: Restore NuGet Packages
+        run: dotnet restore windows/Talkies.Windows/Talkies.Windows.csproj
+
+      - name: Build and Package (Unsigned)
+        shell: pwsh
+        run: |
+          .\packaging\windows\build-installer.ps1 `
+            -Architecture ${{ matrix.architecture }} `
+            -Version ${{ steps.version.outputs.VERSION }} `
+            -SkipSigning
+
+      # Optional: Sign with Azure Trusted Signing
+      # Uncomment and configure secrets if you have Azure Trusted Signing
+      #
+      # - name: Azure Login
+      #   uses: azure/login@v1
+      #   with:
+      #     creds: ${{ secrets.AZURE_CREDENTIALS }}
+      #
+      # - name: Install Azure Trusted Signing Tools
+      #   shell: pwsh
+      #   run: |
+      #     winget install Microsoft.DotNet.Runtime.8 --silent
+      #     winget install Microsoft.Azure.TrustedSigningClientTools --silent
+      #
+      # - name: Create Metadata File
+      #   shell: pwsh
+      #   run: |
+      #     @{
+      #       Endpoint = "${{ secrets.AZURE_SIGNING_ENDPOINT }}"
+      #       CodeSigningAccountName = "${{ secrets.AZURE_SIGNING_ACCOUNT }}"
+      #       CertificateProfileName = "${{ secrets.AZURE_SIGNING_PROFILE }}"
+      #     } | ConvertTo-Json | Out-File -FilePath metadata.json
+      #
+      # - name: Sign Application
+      #   shell: pwsh
+      #   run: |
+      #     $exePath = "packaging\windows\output\v${{ steps.version.outputs.VERSION }}\Talkies-${{ steps.version.outputs.VERSION }}-win-${{ matrix.architecture }}.exe"
+      #     $installerPath = "packaging\windows\output\v${{ steps.version.outputs.VERSION }}\Talkies-Setup-${{ steps.version.outputs.VERSION }}-win-${{ matrix.architecture }}.exe"
+      #
+      #     # Sign both executable and installer
+      #     .\packaging\windows\build-installer.ps1 `
+      #       -UseAzureTrustedSigning `
+      #       -AzureMetadataFile "metadata.json" `
+      #       -SkipBuild
+
+      - name: Generate Release Notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          $notes = @"
+          ## Windows Build - ${{ matrix.architecture }}
+
+          ### Installation
+          Download and run \`Talkies-Setup-${{ steps.version.outputs.VERSION }}-win-${{ matrix.architecture }}.exe\`
+
+          ### Standalone Executable
+          For portable use without installation: \`Talkies-${{ steps.version.outputs.VERSION }}-win-${{ matrix.architecture }}.exe\`
+
+          ### System Requirements
+          - Windows 10 (build 17763) or later
+          - ${{ matrix.architecture }} processor
+
+          ### Features
+          - On-device voice transcription
+          - No internet connection required
+          - Privacy-first design
+
+          ### Checksums
+          See \`checksums.txt\` for SHA256 verification.
+          "@
+
+          # Save to file for upload
+          $notes | Out-File -FilePath release-notes-${{ matrix.architecture }}.md
+          echo "NOTES_FILE=release-notes-${{ matrix.architecture }}.md" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.architecture }}-v${{ steps.version.outputs.VERSION }}
+          path: |
+            packaging/windows/output/v${{ steps.version.outputs.VERSION }}/*.exe
+            packaging/windows/output/v${{ steps.version.outputs.VERSION }}/checksums.txt
+          retention-days: 90
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            packaging/windows/output/v${{ steps.version.outputs.VERSION }}/*.exe
+            packaging/windows/output/v${{ steps.version.outputs.VERSION }}/checksums.txt
+          body_path: ${{ steps.release_notes.outputs.NOTES_FILE }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify on Completion
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Send Success Notification
+        if: needs.build-windows.result == 'success'
+        run: |
+          echo "Windows build completed successfully!"
+          # Add Discord/Slack webhook notification here if desired
+
+      - name: Send Failure Notification
+        if: needs.build-windows.result == 'failure'
+        run: |
+          echo "Windows build failed!"
+          # Add Discord/Slack webhook notification here if desired
+
+# Required GitHub Secrets (if using Azure Trusted Signing):
+#
+# AZURE_CREDENTIALS - Azure service principal credentials in JSON format:
+#   {
+#     "clientId": "...",
+#     "clientSecret": "...",
+#     "subscriptionId": "...",
+#     "tenantId": "..."
+#   }
+#
+# AZURE_SIGNING_ENDPOINT - Your Azure Trusted Signing endpoint
+#   Example: https://your-account.codesigning.azure.net/
+#
+# AZURE_SIGNING_ACCOUNT - Your code signing account name
+#
+# AZURE_SIGNING_PROFILE - Your certificate profile name
+#
+# Setup Instructions:
+# 1. Go to: https://github.com/YOUR-USERNAME/talkies/settings/secrets/actions
+# 2. Add each secret with "New repository secret"
+# 3. For AZURE_CREDENTIALS, use output from:
+#    az ad sp create-for-rbac --name "talkies-github-actions" \
+#      --role contributor \
+#      --scopes /subscriptions/{subscription-id}/resourceGroups/{resource-group} \
+#      --sdk-auth
