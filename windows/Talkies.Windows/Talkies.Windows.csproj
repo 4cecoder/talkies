@@ -15,4 +15,7 @@
     <PackageReference Include="Microsoft.Windows.Compatibility" Version="8.0.7" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
+   <ItemGroup>
+     <EmbeddedResource Include="Resources\Prompts\*.txt" />
+   </ItemGroup>
 </Project>

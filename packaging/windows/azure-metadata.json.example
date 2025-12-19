@@ -1,0 +1,8 @@
+{
+  "$schema": "https://aka.ms/CodeSigningMetadataSchema",
+  "Endpoint": "https://your-account-name.codesigning.azure.net/",
+  "CodeSigningAccountName": "your-account-name",
+  "CertificateProfileName": "your-certificate-profile-name",
+  "Description": "Talkies - Voice Transcription Application",
+  "DescriptionUrl": "https://talkies.app"
+}

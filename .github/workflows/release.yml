@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    name: Build macOS Release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: '6.0'
+
+      - name: Build macOS release binary
+        working-directory: mac
+        run: swift build -c release
+
+      - name: Package macOS binary
+        working-directory: mac
+        run: |
+          mkdir -p dist
+          cp .build/release/Talkies dist/
+          cd dist
+          tar -czf Talkies-macOS-${{ github.ref_name }}.tar.gz Talkies
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-release
+          path: mac/dist/Talkies-macOS-${{ github.ref_name }}.tar.gz
+          retention-days: 1
+
+  build-windows:
+    name: Build Windows Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        working-directory: windows/Talkies.Windows
+        run: dotnet restore
+
+      - name: Build Windows release binary
+        working-directory: windows/Talkies.Windows
+        run: dotnet publish -c Release -r win-x64 --self-contained true -o dist
+
+      - name: Package Windows binary
+        working-directory: windows/Talkies.Windows
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ github.ref_name }}.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-release
+          path: windows/Talkies.Windows/Talkies-Windows-${{ github.ref_name }}.zip
+          retention-days: 1
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: macos-release
+          path: artifacts
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: windows-release
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
+            artifacts/Talkies-Windows-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

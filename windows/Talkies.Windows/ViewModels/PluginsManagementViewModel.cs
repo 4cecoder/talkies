@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Windows;
 using System.Windows.Input;
 using Talkies.Windows.Models;
 using Talkies.Windows.Plugins;
@@ -11,7 +13,7 @@ namespace Talkies.Windows.ViewModels
     public class PluginInfoViewModel : ViewModelBase
     {
         private readonly IPlugin _plugin;
-        private readonly SettingsService _settingsService = new();
+        private readonly SettingsService _settingsService;
         private string _status = "Ready";
         private bool _hasSettings;
         private string _selectedVoice = string.Empty;
@@ -108,20 +110,19 @@ namespace Talkies.Windows.ViewModels
 
         public ICommand ConfigureCommand { get; }
 
-        public PluginInfoViewModel(IPlugin plugin)
+        public PluginInfoViewModel(IPlugin plugin, SettingsService settingsService)
         {
             _plugin = plugin;
+            _settingsService = settingsService;
             ConfigureCommand = new RelayCommand(_ => Configure());
 
-            // Set defaults based on plugin type
+            // Set icon based on plugin type (Description is set by LoadPlugins via GetPluginDescription)
             if (plugin is ITtsSynthesizer)
             {
-                Description = "Text-to-speech synthesis plugin";
                 Icon = "TTS";
 
                 if (plugin is AdvancedTtsPlugin)
                 {
-                    Description = "Advanced Text-to-Speech with voice selection and audio controls";
                     Icon = "TTS+";
 
                     // Initialize advanced controls
@@ -141,17 +142,14 @@ namespace Talkies.Windows.ViewModels
             {
                 if (enhancer is OllamaEnhancer)
                 {
-                    Description = "LLM-powered text enhancement with multiple modes";
                     Icon = "LLM";
                 }
                 else if (enhancer is SentimentAnalyzerPlugin)
                 {
-                    Description = "Analyzes emotional tone (requires LM Studio sentiment model)";
                     Icon = "SENT";
                 }
                 else
                 {
-                    Description = $"Text enhancement: {enhancer.GetType().Name}";
                     Icon = "TXT";
                 }
             }
@@ -212,14 +210,16 @@ namespace Talkies.Windows.ViewModels
 
     public class PluginsManagementViewModel : ViewModelBase
     {
+        private readonly SettingsService _settingsService;
         private readonly Action _closeAction;
 
         public ObservableCollection<PluginInfoViewModel> Plugins { get; } = new();
 
         public ICommand CloseCommand { get; }
 
-        public PluginsManagementViewModel(Action closeAction)
+        public PluginsManagementViewModel(Action closeAction, SettingsService settingsService)
         {
+            _settingsService = settingsService;
             _closeAction = closeAction;
             CloseCommand = new RelayCommand(_ => Close());
 
@@ -232,7 +232,8 @@ namespace Talkies.Windows.ViewModels
 
             foreach (var plugin in plugins)
             {
-                var pluginInfo = new PluginInfoViewModel(plugin)
+                // Inject shared SettingsService to prevent state inconsistency
+                var pluginInfo = new PluginInfoViewModel(plugin, _settingsService)
                 {
                     Description = GetPluginDescription(plugin),
                     HasSettings = HasConfigurationOptions(plugin)

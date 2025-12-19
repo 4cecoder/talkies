@@ -1,6 +1,8 @@
 using System.Windows;
+using System.Windows.Controls;
 using Forms = System.Windows.Forms;
 using Talkies.Windows.ViewModels;
+using Talkies.Windows.Services;
 
 namespace Talkies.Windows
 {
@@ -35,6 +37,15 @@ namespace Talkies.Windows
             Loaded += (_, _) => InitTrayIcon();
             StateChanged += OnStateChanged;
             Closed += (_, _) => DisposeTray();
+
+            // Add developer crash simulation button if enabled
+            var settingsService = new SettingsService();
+            var settings = settingsService.Load();
+            if (settings.TalkiesTeamConfig.EnableSimulateCrashesModule)
+            {
+                SimulateCrashButton.Visibility = Visibility.Visible;
+                SimulateCrashButton.Click += (s, e) => SimulateCrash();
+            }
         }
 
         private void ShowOverlay(string message)
@@ -116,8 +127,17 @@ namespace Talkies.Windows
 
         private void DisposeTray()
         {
-            _notifyIcon?.Dispose();
-            _vm.Dispose();
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+            }
+        }
+
+        private void SimulateCrash()
+        {
+            // Simulate a crash by throwing an exception
+            throw new InvalidOperationException("Simulated crash for testing crash reporting.");
         }
     }
 }

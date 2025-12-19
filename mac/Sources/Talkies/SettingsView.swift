@@ -28,6 +28,9 @@ class PluginManager: ObservableObject {
         let ollamaPlugin = OllamaPlugin()
         plugins.append(ollamaPlugin)
 
+        let lmStudioPlugin = LMStudioPlugin()
+        plugins.append(lmStudioPlugin)
+
         let sentimentPlugin = SentimentPlugin()
         plugins.append(sentimentPlugin)
 
@@ -43,6 +46,11 @@ class PluginManager: ObservableObject {
     // Get Ollama plugin if enabled
     var ollamaPlugin: OllamaPlugin? {
         plugins.first { $0.id == "ollama" } as? OllamaPlugin
+    }
+
+    // Get LM Studio plugin if enabled
+    var lmStudioPlugin: LMStudioPlugin? {
+        plugins.first { $0.id == "lmstudio" } as? LMStudioPlugin
     }
 
     // Get Image Generation plugin if enabled
@@ -161,19 +169,44 @@ struct SettingsView: View {
 
 // MARK: - General Settings
 struct GeneralSettingsView: View {
-    @AppStorage("pushToTalkThreshold") private var threshold: Double = 0.15
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
-    @AppStorage("voiceAssistantMode") private var voiceAssistantMode = false
-    @AppStorage("insertTextInAssistantMode") private var insertTextInAssistantMode = false
+    @ObservedObject private var settingsService = SettingsService.shared
+
+    private var threshold: Binding<Double> {
+        Binding(
+            get: { settingsService.settings.pushToTalkThreshold },
+            set: { settingsService.settings.pushToTalkThreshold = $0 }
+        )
+    }
+
+    private var launchAtLogin: Binding<Bool> {
+        Binding(
+            get: { settingsService.settings.launchAtLogin },
+            set: { settingsService.settings.launchAtLogin = $0 }
+        )
+    }
+
+    private var voiceAssistantMode: Binding<Bool> {
+        Binding(
+            get: { settingsService.settings.voiceAssistantMode },
+            set: { settingsService.settings.voiceAssistantMode = $0 }
+        )
+    }
+
+    private var insertTextInAssistantMode: Binding<Bool> {
+        Binding(
+            get: { settingsService.settings.insertTextInAssistantMode },
+            set: { settingsService.settings.insertTextInAssistantMode = $0 }
+        )
+    }
 
     var body: some View {
         Form {
             Section(header: Text("Voice Assistant Mode")) {
-                Toggle("Enable Voice Assistant", isOn: $voiceAssistantMode)
+                Toggle("Enable Voice Assistant", isOn: voiceAssistantMode)
                     .help("Speak responses back using TTS instead of inserting text")
 
-                if voiceAssistantMode {
-                    Toggle("Also Insert Text", isOn: $insertTextInAssistantMode)
+                if settingsService.settings.voiceAssistantMode {
+                    Toggle("Also Insert Text", isOn: insertTextInAssistantMode)
                         .help("Insert text at cursor in addition to speaking it")
 
                     Text("When enabled, Talkies will speak LLM responses instead of just inserting them as text. Perfect for hands-free conversations!")
@@ -184,9 +217,9 @@ struct GeneralSettingsView: View {
 
             Section(header: Text("Startup")) {
                 Toggle("Launch at Login", isOn: Binding(
-                    get: { launchAtLogin },
+                    get: { settingsService.settings.launchAtLogin },
                     set: { newValue in
-                        launchAtLogin = newValue
+                        settingsService.settings.launchAtLogin = newValue
                         setLaunchAtLogin(enabled: newValue)
                     }
                 ))
@@ -195,10 +228,10 @@ struct GeneralSettingsView: View {
 
             Section(header: Text("Intelligent Detection")) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Push-to-Talk Threshold: \(Int(threshold * 1000))ms")
+                    Text("Push-to-Talk Threshold: \(Int(settingsService.settings.pushToTalkThreshold * 1000))ms")
                         .font(.headline)
 
-                    Slider(value: $threshold, in: 0.05...0.5, step: 0.05) {
+                    Slider(value: threshold, in: 0.05...0.5, step: 0.05) {
                         Text("Threshold")
                     }
 
@@ -307,6 +340,8 @@ struct PluginCard: View {
                     withAnimation {
                         if let ollamaPlugin = plugin as? OllamaPlugin {
                             ollamaPlugin.isEnabled = newValue
+                        } else if let lmStudioPlugin = plugin as? LMStudioPlugin {
+                            lmStudioPlugin.isEnabled = newValue
                         } else if let imageGenPlugin = plugin as? MLXImageGenPlugin {
                             imageGenPlugin.isEnabled = newValue
                         } else if let ttsPlugin = plugin as? MLXTTSPlugin {
@@ -327,13 +362,43 @@ struct PluginCard: View {
 
 // MARK: - Advanced Settings
 struct AdvancedSettingsView: View {
-    @AppStorage("debugMode") private var debugMode = false
+    @ObservedObject private var settingsService = SettingsService.shared
+
+    private var debugMode: Binding<Bool> {
+        Binding(
+            get: { settingsService.settings.debugMode },
+            set: { settingsService.settings.debugMode = $0 }
+        )
+    }
 
     var body: some View {
         Form {
             Section(header: Text("Debug")) {
-                Toggle("Enable Debug Logging", isOn: $debugMode)
+                Toggle("Enable Debug Logging", isOn: debugMode)
                     .help("Show detailed logs in console")
+            }
+
+            Section(header: Text("Configuration")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Config File:")
+                        Spacer()
+                        Text("~/.talkies/config.json")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Button("Open Config Directory") {
+                        let configDir = FileManager.default.homeDirectoryForCurrentUser
+                            .appendingPathComponent(".talkies")
+                        NSWorkspace.shared.open(configDir)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Text("Settings are automatically saved to a JSON file for easy debugging and portability")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Section(header: Text("Performance")) {
