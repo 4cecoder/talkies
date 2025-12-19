@@ -19,6 +19,18 @@ namespace Talkies.Windows
             _settingsService = new SettingsService();
             var settings = _settingsService.Load();
 
+            var args = Environment.GetCommandLineArgs();
+            if (args.Length > 2 && args[1] == "monitor")
+            {
+                if (int.TryParse(args[2], out var pid))
+                {
+                    // Run as monitor process - no UI
+                    _ = CrashReporter.RunMonitorAsync(pid, settings);
+                    Shutdown();
+                    return;
+                }
+            }
+
             // One-time privacy consent on first launch
             if (!settings.CrashReportingPrivacyAccepted)
             {
@@ -36,7 +48,7 @@ namespace Talkies.Windows
                     Debug.WriteLine($"Failed to load privacy policy: {ex.Message}");
                 }
 
-                var result = MessageBox.Show(
+                var result = System.Windows.MessageBox.Show(
                     $"{privacyPolicy}\n\nDo you consent to submit crash reports and analytics to help improve the application?",
                     "Privacy Consent",
                     MessageBoxButton.YesNo,
