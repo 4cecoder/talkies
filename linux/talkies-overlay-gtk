@@ -2,23 +2,30 @@
 """
 Talkies GTK4 Recording Overlay - Standalone
 Pill-shaped widget with animated waveform visualization
-Monitors /tmp/talkies-state and /tmp/talkies-waveform
+Connects to WebSocket daemon at ws://localhost:6789
 """
 
 import gi
 import sys
-import os
+import json
 import time
+import threading
 from pathlib import Path
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
-from gi.repository import Gtk, Gdk, GLib, Graphene
+from gi.repository import Gtk, Gdk, GLib
 
-STATE_FILE = "/tmp/talkies-state"
-WAVEFORM_FILE = "/tmp/talkies-waveform"
+try:
+    import websocket
+except ImportError:
+    print("Error: websocket-client not installed")
+    print("Install with: pip install websocket-client")
+    sys.exit(1)
+
+WS_URL = "ws://localhost:6789"
 WAVEFORM_BARS = 40
-UPDATE_INTERVAL_MS = 50  # 20 FPS
+UPDATE_INTERVAL_MS = 50  # 20 FPS for UI updates
 
 class WaveformBar(Gtk.DrawingArea):
     def __init__(self, index):
@@ -63,11 +70,19 @@ class TalkiesOverlay(Gtk.ApplicationWindow):
 
         self.state = "idle"
         self.recording_start = None
+        self.waveform_data = [0.0] * WAVEFORM_BARS
+        self.ws = None
+        self.ws_connected = False
 
         # Window configuration
         self.set_title("Talkies Recording Overlay")
         self.set_decorated(False)
         self.set_resizable(False)
+
+        # Set application ID for Hyprland window rules
+        # In hyprland.conf, add: windowrulev2 = float, class:(talkies-overlay)
+        # windowrulev2 = noborder, class:(talkies-overlay)
+        # windowrulev2 = noanim, class:(talkies-overlay)
 
         # Make window float on top
         self.set_default_size(600, 70)
@@ -75,8 +90,12 @@ class TalkiesOverlay(Gtk.ApplicationWindow):
         # Build UI
         self._build_ui()
 
-        # Start state monitoring
-        GLib.timeout_add(UPDATE_INTERVAL_MS, self._update_state)
+        # Start WebSocket connection in background thread
+        ws_thread = threading.Thread(target=self._ws_connect, daemon=True)
+        ws_thread.start()
+
+        # Start UI update timer
+        GLib.timeout_add(UPDATE_INTERVAL_MS, self._update_ui)
 
         # Initially hidden
         self.set_visible(False)
@@ -142,62 +161,116 @@ class TalkiesOverlay(Gtk.ApplicationWindow):
 
         self.set_child(main_box)
 
-    def _read_state(self):
-        """Read current state from file"""
+    def _ws_connect(self):
+        """Connect to WebSocket server (runs in background thread)"""
+        while True:
+            try:
+                print(f"Connecting to Talkies daemon at {WS_URL}...")
+                self.ws = websocket.WebSocketApp(
+                    WS_URL,
+                    on_message=self._on_ws_message,
+                    on_error=self._on_ws_error,
+                    on_close=self._on_ws_close,
+                    on_open=self._on_ws_open
+                )
+                self.ws.run_forever()
+            except Exception as e:
+                print(f"WebSocket connection error: {e}")
+                time.sleep(2)  # Retry after 2 seconds
+
+    def _on_ws_open(self, ws):
+        """WebSocket connection opened"""
+        print("Connected to Talkies WebSocket daemon")
+        self.ws_connected = True
+        # Request initial state
+        ws.send(json.dumps({"type": "get_state"}))
+
+    def _on_ws_close(self, ws, close_status_code, close_msg):
+        """WebSocket connection closed"""
+        print("Disconnected from Talkies daemon")
+        self.ws_connected = False
+
+    def _on_ws_error(self, ws, error):
+        """WebSocket error"""
+        print(f"WebSocket error: {error}")
+        self.ws_connected = False
+
+    def _on_ws_message(self, ws, message):
+        """Handle incoming WebSocket message (runs in background thread)"""
         try:
-            with open(STATE_FILE, 'r') as f:
-                return f.read().strip()
-        except:
-            return "idle"
+            msg = json.loads(message)
+            msg_type = msg.get("type")
+            data = msg.get("data", {})
 
-    def _read_waveform(self):
-        """Read waveform data from file"""
-        try:
-            with open(WAVEFORM_FILE, 'r') as f:
-                lines = f.readlines()
-                return [float(line.strip()) for line in lines[:WAVEFORM_BARS]]
-        except:
-            return [0.0] * WAVEFORM_BARS
+            if msg_type == "state_changed":
+                new_state = data.get("state")
+                if new_state:
+                    GLib.idle_add(self._handle_state_change, new_state)
 
-    def _update_state(self):
-        """Poll state file and update UI"""
-        new_state = self._read_state()
+            elif msg_type == "audio_level":
+                level = data.get("level", 0.0)
+                # Duplicate level for simple waveform effect
+                GLib.idle_add(self._update_waveform, [level] * WAVEFORM_BARS)
 
-        # State transition
-        if new_state != self.state:
-            self.state = new_state
+            elif msg_type == "waveform_update":
+                levels = data.get("levels", [])
+                GLib.idle_add(self._update_waveform, levels)
 
-            if self.state == "recording":
-                self.recording_start = time.time()
-                self.set_visible(True)
-                self.status_icon.set_label("🔴")
-                self.status_icon.set_visible(True)
-                self.status_label.set_label("Recording")
-                self.status_label.set_visible(True)
-                self.duration_label.set_visible(True)
+            elif msg_type == "transcription_complete":
+                text = data.get("text", "")
+                print(f"Transcription complete: {text}")
 
-            elif self.state == "processing":
-                self.status_icon.set_label("⚙️")
-                self.status_label.set_label("Processing")
-                self.duration_label.set_visible(False)
+            elif msg_type == "error":
+                error_msg = data.get("message", "Unknown error")
+                print(f"Talkies error: {error_msg}")
 
-            elif self.state == "idle":
-                self.set_visible(False)
-                self.recording_start = None
+        except Exception as e:
+            print(f"Error handling WebSocket message: {e}")
 
-        # Update waveform while recording
+    def _handle_state_change(self, new_state):
+        """Handle state change (runs in main GTK thread)"""
+        if new_state == self.state:
+            return
+
+        self.state = new_state
+
         if self.state == "recording":
-            waveform = self._read_waveform()
-            for i, bar in enumerate(self.waveform_bars):
-                if i < len(waveform):
-                    bar.set_level(waveform[i])
-                else:
-                    bar.set_level(0.0)
+            self.recording_start = time.time()
+            self.set_visible(True)
+            self.status_icon.set_label("🔴")
+            self.status_icon.set_visible(True)
+            self.status_label.set_label("Recording")
+            self.status_label.set_visible(True)
+            self.duration_label.set_visible(True)
 
-            # Update duration timer
-            if self.recording_start:
-                elapsed = int(time.time() - self.recording_start)
-                self.duration_label.set_label(f"{elapsed:02d}s")
+        elif self.state == "processing":
+            self.status_icon.set_label("⚙️")
+            self.status_label.set_label("Processing")
+            self.duration_label.set_visible(False)
+
+        elif self.state == "idle":
+            self.set_visible(False)
+            self.recording_start = None
+
+    def _update_waveform(self, levels):
+        """Update waveform data (runs in main GTK thread)"""
+        self.waveform_data = levels[:WAVEFORM_BARS]
+        while len(self.waveform_data) < WAVEFORM_BARS:
+            self.waveform_data.append(0.0)
+
+    def _update_ui(self):
+        """Update UI elements periodically"""
+        # Update waveform bars
+        for i, bar in enumerate(self.waveform_bars):
+            if i < len(self.waveform_data):
+                bar.set_level(self.waveform_data[i])
+            else:
+                bar.set_level(0.0)
+
+        # Update duration timer while recording
+        if self.state == "recording" and self.recording_start:
+            elapsed = int(time.time() - self.recording_start)
+            self.duration_label.set_label(f"{elapsed:02d}s")
 
         # Clear waveform when not recording
         if self.state != "recording":
@@ -217,10 +290,8 @@ class TalkiesApp(Gtk.Application):
 
 
 def main():
-    # Check if daemon is running
-    if not Path(STATE_FILE).exists():
-        print("Warning: Talkies daemon not running. State file not found.")
-        print("Start daemon with: talkies daemon")
+    print("Talkies GTK Overlay - WebSocket Mode")
+    print(f"Connecting to daemon at {WS_URL}")
 
     app = TalkiesApp()
     return app.run(sys.argv)

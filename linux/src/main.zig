@@ -6,6 +6,8 @@ const input = @import("input.zig");
 const config = @import("config.zig");
 const utils = @import("utils.zig");
 const hotkey = @import("hotkey.zig");
+const websocket = @import("websocket.zig");
+const daemon_ws = @import("daemon_ws.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -498,76 +500,89 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     try whisper_service.loadModel(cfg.model);
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
-    // In Wayland mode, watch for file-based IPC from toggle script
+    // In Wayland mode, use WebSocket for real-time communication
     if (is_wayland) {
-        std.debug.print("Wayland mode: Daemon will keep model loaded for quick transcription\n", .{});
+        std.debug.print("Wayland mode: Starting WebSocket daemon on ws://localhost:6789\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
-        const state_file = "/tmp/talkies-state";
         const recording_file = "/tmp/talkies-recording.wav";
 
-        // Initialize state file
-        {
-            const file = std.fs.createFileAbsolute(state_file, .{}) catch |err| {
-                std.debug.print("Error creating state file: {}\n", .{err});
-                return err;
-            };
-            defer file.close();
-            _ = try file.write("idle");
-        }
+        // Initialize WebSocket server
+        var ws_server = try websocket.Server.init(allocator, 6789);
+        defer ws_server.deinit();
 
-        var last_state: [16]u8 = undefined;
-        @memset(&last_state, 0);
-        @memcpy(last_state[0..4], "idle");
+        var daemon_state = daemon_ws.DaemonState.init(allocator, &ws_server);
 
-        std.debug.print("Monitoring state file: {s}\n", .{state_file});
-        std.debug.print("Ready for recordings!\n\n", .{});
+        // Start WebSocket server in separate thread
+        const WsContext = struct {
+            server: *websocket.Server,
+            state: *daemon_ws.DaemonState,
+        };
+        var ws_context = WsContext{
+            .server = &ws_server,
+            .state = &daemon_state,
+        };
 
-        // Event loop - watch for state changes
+        const ws_thread = try std.Thread.spawn(.{}, struct {
+            fn run(ctx: *WsContext) !void {
+                try ctx.server.start(struct {
+                    fn onMessage(alloc: std.mem.Allocator, msg: []const u8, state: *daemon_ws.DaemonState) !void {
+                        try daemon_ws.handleMessage(alloc, msg, state);
+                    }
+                }.onMessage, ctx.state);
+            }
+        }.run, .{&ws_context});
+        defer ws_thread.join();
+
+        // Set initial state to idle
+        try daemon_state.setState(.idle);
+        std.debug.print("WebSocket server ready!\n\n", .{});
+
+        var last_state = daemon_ws.State.idle;
+
+        // Event loop - handle recording/transcription based on state changes
         while (!daemon_should_quit) {
-            // Read current state
-            const file = std.fs.openFileAbsolute(state_file, .{}) catch {
-                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
-                continue;
-            };
-            defer file.close();
+            const current_state = daemon_state.getState();
 
-            var state_buf: [16]u8 = undefined;
-            const bytes_read = file.read(&state_buf) catch {
-                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
-                continue;
-            };
-
-            const current_state = std.mem.trim(u8, state_buf[0..bytes_read], &std.ascii.whitespace);
-
-            // Detect state change to "processing" (recording just stopped)
-            if (std.mem.eql(u8, current_state, "processing") and
-                !std.mem.eql(u8, current_state, std.mem.trim(u8, &last_state, &[_]u8{0})))
-            {
+            // Detect state change to processing (recording just stopped)
+            if (current_state == .processing and last_state != .processing) {
                 std.debug.print("⚙️  Processing transcription...\n", .{});
+
+                // Wait for parecord/arecord to finish writing the file
+                std.debug.print("[DEBUG] Waiting for recording file to be written...\n", .{});
+                std.posix.nanosleep(0, 500 * std.time.ns_per_ms); // 500ms delay
+
+                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
 
                 // Transcribe the recording
                 const transcription = whisper_service.transcribe(recording_file) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
-                    // Reset state
-                    const reset_file = std.fs.createFileAbsolute(state_file, .{}) catch |reset_err| {
-                        std.debug.print("Error resetting state: {}\n", .{reset_err});
-                        continue;
-                    };
-                    defer reset_file.close();
-                    _ = try reset_file.write("idle");
+                    daemon_state.broadcastError("Transcription failed", "TRANSCRIPTION_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
                     continue;
                 };
                 defer allocator.free(transcription);
 
-                std.debug.print("📝 Transcription: {s}\n", .{transcription});
+                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const end_time = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                const duration_ms = end_time - start_time;
+
+                std.debug.print("📝 Transcription ({d} chars): {s}\n", .{ transcription.len, transcription });
+
+                // Broadcast transcription result
+                try daemon_state.broadcastTranscription(transcription, duration_ms);
 
                 // Handle output based on config
                 if (cfg.auto_paste) {
-                    std.debug.print("✨ Inserting text at cursor...\n", .{});
-                    inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
-                        std.debug.print("Error inserting text: {}\n", .{err});
-                    };
+                    if (transcription.len > 0) {
+                        std.debug.print("✨ Inserting text at cursor...\n", .{});
+                        inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
+                            std.debug.print("Error inserting text: {}\n", .{err});
+                        };
+                    } else {
+                        std.debug.print("⚠️  Skipping paste - transcription is empty\n", .{});
+                    }
                 } else {
                     var clip = clipboard.Clipboard.init(allocator);
                     defer clip.deinit();
@@ -584,20 +599,14 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 std.fs.deleteFileAbsolute(recording_file) catch {};
 
                 // Reset state to idle
-                const reset_file = std.fs.createFileAbsolute(state_file, .{}) catch |reset_err| {
-                    std.debug.print("Error resetting state: {}\n", .{reset_err});
-                    continue;
-                };
-                defer reset_file.close();
-                _ = try reset_file.write("idle");
+                try daemon_state.setState(.idle);
             }
 
             // Update last state
-            @memset(&last_state, 0);
-            @memcpy(last_state[0..current_state.len], current_state);
+            last_state = current_state;
 
-            // Small sleep to avoid busy-wait
-            std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+            // Short sleep to avoid busy-wait
+            std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
         }
 
         utils.log("Daemon shutting down...", .{});
