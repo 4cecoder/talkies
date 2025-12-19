@@ -32,18 +32,10 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
-        // Note: whisper.cpp will be linked as a system library or built separately
-        // See build.zig for C FFI integration
-
-        // GTK/GObject bindings - DISABLED due to Zig version incompatibility
-        // Ghostty's bindings require Zig 0.15.2, we're on 0.16.0
-        // Zig 0.16.0 removed @Type builtin which breaks the pre-built bindings
-        // Re-enable when Ghostty updates for Zig 0.16 compatibility
-        // .gobject = .{
-        //     .url = "https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst",
-        //     .hash = "1220ef11f229566a21729a5780ebe0fc8e983891663c8b0a7d793e1a4f53f622f876",
-        //     .lazy = true,
-        // },
+        .websocket = .{
+            .url = "https://github.com/karlseguin/websocket.zig/archive/refs/heads/master.tar.gz",
+            .hash = "websocket-0.1.0-ZPISdRNzAwAGszh62EpRtoQxu8wb1MSMVI6Ow0o2dmyJ",
+        },
     },
     .paths = .{
         "build.zig",
