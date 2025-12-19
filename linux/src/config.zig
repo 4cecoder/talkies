@@ -23,7 +23,7 @@ pub const Config = struct {
 
     // YAP mode settings (conversational LLM refinement)
     yap_mode_enabled: bool = true, // Enabled by default for testing
-    yap_llm_model: []const u8 = "granite", // Ollama model to use
+    yap_llm_model: []const u8 = "granite3.3:2b", // Ollama model to use
     yap_ollama_url: []const u8 = "http://localhost:11434",
     yap_system_prompt: []const u8 = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct.",
 
