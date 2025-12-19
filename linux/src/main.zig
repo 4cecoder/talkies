@@ -498,12 +498,22 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
     // In Wayland mode, use WebSocket for real-time communication
-    // External script (arecord) handles recording, daemon only processes
+    // Daemon handles recording internally (no external script needed)
     if (is_wayland) {
         std.debug.print("Wayland mode: Starting WebSocket daemon on ws://localhost:6789\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
         const recording_file = "/tmp/talkies-recording.wav";
+
+        // Initialize audio recorder
+        var recorder = audio.AudioRecorder.init(allocator);
+        defer recorder.deinit();
+
+        // Pre-initialize PulseAudio stream for INSTANT recording start (eliminates 28ms delay!)
+        const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
+        std.debug.print("Pre-initializing audio stream...\n", .{});
+        try recorder.prepare(device);
+        std.debug.print("✅ Audio ready - recording will start INSTANTLY!\n", .{});
 
         // Initialize WebSocket server
         var ws_server = try websocket.Server.init(allocator, 6789);
@@ -534,6 +544,10 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
         // Set initial state to idle
         try daemon_state.setState(.idle);
+
+        // Clean up state file from previous run
+        std.fs.deleteFileAbsolute("/tmp/talkies-state") catch {};
+
         std.debug.print("WebSocket server ready!\n\n", .{});
 
         var last_state = daemon_ws.State.idle;
@@ -542,12 +556,80 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         while (!daemon_should_quit) {
             const current_state = daemon_state.getState();
 
-            // Detect state change to processing (external script finished recording)
-            if (current_state == .processing and last_state != .processing) {
-                std.debug.print("⚙️  Processing transcription...\n", .{});
+            // Handle state: recording -> start recording
+            if (current_state == .recording and last_state != .recording) {
+                std.debug.print("🔴 STATE CHANGED TO RECORDING - Starting audio capture NOW\n", .{});
 
-                // Small delay for external arecord to finish writing file
-                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const start_ms = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+
+                recorder.startRecording(recording_file, device) catch |err| {
+                    std.debug.print("Error starting recording: {}\n", .{err});
+                    daemon_state.broadcastError("Failed to start recording", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                    last_state = current_state;
+                    continue;
+                };
+
+                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const end_ms = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                std.debug.print("✅ RECORDING ACTIVE - took {d}ms to initialize PulseAudio\n", .{end_ms - start_ms});
+
+                // Play activation sound (2x speed for faster feedback)
+                const sound_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const sound_ms = @as(i64, sound_ts.sec) * 1000 + @divTrunc(sound_ts.nsec, std.time.ns_per_ms);
+                utils.playSound("assets/start-fast.wav");
+                std.debug.print("🔊 Sound triggered at +{d}ms from state change\n", .{sound_ms - start_ms});
+
+                std.debug.print("🎤 Recording started...\n", .{});
+            }
+
+            // Handle state: recording -> record audio chunks
+            if (current_state == .recording) {
+                _ = recorder.recordChunk() catch |err| {
+                    std.debug.print("Error recording chunk: {}\n", .{err});
+                    recorder.stopRecording() catch {};
+                    daemon_state.broadcastError("Recording failed", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                };
+            }
+
+            // Handle state: processing -> stop recording and transcribe
+            if (current_state == .processing and last_state == .recording) {
+                const stop_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const stop_start_ms = @as(i64, stop_start.sec) * 1000 + @divTrunc(stop_start.nsec, std.time.ns_per_ms);
+
+                std.debug.print("🔴 STOP COMMAND RECEIVED - Recording 350ms more to capture trailing words\n", .{});
+
+                // Keep recording for 350ms more to catch trailing speech
+                const extra_ms: i64 = 350;
+                const deadline = stop_start_ms + extra_ms;
+                while (true) {
+                    const now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const now_ms = @as(i64, now.sec) * 1000 + @divTrunc(now.nsec, std.time.ns_per_ms);
+                    if (now_ms >= deadline) break;
+
+                    // Continue recording chunks
+                    _ = recorder.recordChunk() catch break;
+                }
+
+                std.debug.print("✅ Extra buffer captured - now stopping\n", .{});
+                recorder.stopRecording() catch |err| {
+                    std.debug.print("Error stopping recording: {}\n", .{err});
+                    daemon_state.broadcastError("Failed to stop recording", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                    last_state = current_state;
+                    continue;
+                };
+
+                const stop_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const stop_end_ms = @as(i64, stop_end.sec) * 1000 + @divTrunc(stop_end.nsec, std.time.ns_per_ms);
+                std.debug.print("✅ STOPPED - took {d}ms to finalize recording\n", .{stop_end_ms - stop_start_ms});
+
+                // Play deactivation sound
+                utils.playSound("assets/stop.wav");
+
+                std.debug.print("⚙️  Processing transcription...\n", .{});
 
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
@@ -602,8 +684,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
             // Update last state
             last_state = current_state;
 
-            // Sleep to avoid busy-wait
-            std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
+            // Sleep to avoid busy-wait (0.5ms for ultra-fast response)
+            std.posix.nanosleep(0, 500 * std.time.ns_per_us);
         }
 
         utils.log("Daemon shutting down...", .{});

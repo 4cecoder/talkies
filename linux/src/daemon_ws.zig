@@ -165,7 +165,9 @@ pub fn handleMessage(
         const after_type = message[type_start + 6 ..]; // Skip "type"
 
         if (std.mem.indexOf(u8, after_type, "\"start_recording\"")) |_| {
-            std.debug.print("WebSocket: Received start_recording command\n", .{});
+            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+            std.debug.print("[{d}ms] WebSocket: Received start_recording command\n", .{ts_ms});
             try daemon_state.setState(.recording);
 
         } else if (std.mem.indexOf(u8, after_type, "\"stop_recording\"")) |_| {

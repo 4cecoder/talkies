@@ -50,6 +50,23 @@ pub fn ensureDir(path: []const u8) !void {
     };
 }
 
+/// Play a sound effect asynchronously (non-blocking)
+/// Uses aplay for WAV playback (part of alsa-utils, should already be installed)
+pub fn playSound(sound_file: []const u8) void {
+    // Spawn process in background - don't wait for it to complete
+    var child = std.process.Child.init(&[_][]const u8{ "aplay", "-q", sound_file }, std.heap.page_allocator);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+
+    // Spawn and detach - fire and forget
+    _ = child.spawn() catch {
+        // Silently fail if aplay not installed or sound file missing
+        return;
+    };
+    // Don't wait - let it play in background
+}
+
 test "XDG directory resolution" {
     const allocator = std.testing.allocator;
 
