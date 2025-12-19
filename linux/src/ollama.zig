@@ -31,19 +31,24 @@ pub const Client = struct {
         prompt: []const u8,
         system_prompt: ?[]const u8,
     ) ![]u8 {
+        // Escape JSON strings
+        const escaped_prompt = try escapeJson(self.allocator, prompt);
+        defer self.allocator.free(escaped_prompt);
+
         // Build JSON request body
-        const request_body = if (system_prompt) |sys|
-            try std.fmt.allocPrint(
+        const request_body = if (system_prompt) |sys| blk: {
+            const escaped_system = try escapeJson(self.allocator, sys);
+            defer self.allocator.free(escaped_system);
+            break :blk try std.fmt.allocPrint(
                 self.allocator,
                 "{{\"model\":\"{s}\",\"prompt\":\"{s}\",\"system\":\"{s}\",\"stream\":false}}",
-                .{ model, prompt, sys },
-            )
-        else
-            try std.fmt.allocPrint(
-                self.allocator,
-                "{{\"model\":\"{s}\",\"prompt\":\"{s}\",\"stream\":false}}",
-                .{ model, prompt },
+                .{ model, escaped_prompt, escaped_system },
             );
+        } else try std.fmt.allocPrint(
+            self.allocator,
+            "{{\"model\":\"{s}\",\"prompt\":\"{s}\",\"stream\":false}}",
+            .{ model, escaped_prompt },
+        );
         defer self.allocator.free(request_body);
 
         // Build URL
@@ -110,6 +115,40 @@ fn parseOllamaResponse(allocator: std.mem.Allocator, json: []const u8) ![]u8 {
     }
 
     return error.InvalidJsonResponse;
+}
+
+/// Escape JSON string (handle ", \, newlines, etc.)
+fn escapeJson(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
+
+    for (s) |ch| {
+        switch (ch) {
+            '"' => {
+                try result.append(allocator, '\\');
+                try result.append(allocator, '"');
+            },
+            '\\' => {
+                try result.append(allocator, '\\');
+                try result.append(allocator, '\\');
+            },
+            '\n' => {
+                try result.append(allocator, '\\');
+                try result.append(allocator, 'n');
+            },
+            '\r' => {
+                try result.append(allocator, '\\');
+                try result.append(allocator, 'r');
+            },
+            '\t' => {
+                try result.append(allocator, '\\');
+                try result.append(allocator, 't');
+            },
+            else => try result.append(allocator, ch),
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
 }
 
 /// Unescape JSON string (handle \n, \t, \", \\, etc.)
