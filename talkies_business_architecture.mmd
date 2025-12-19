@@ -14,7 +14,7 @@ graph TD
     FREE["🆓 TALKIES FREE<br/>• Unlimited basic tx<br/>• TXT export<br/>• Core UI<br/>FREE"]
     PRO["⭐ TALKIES PRO<br/>• Unlimited advanced<br/>• All models<br/>• 100+ languages<br/>.99/mo"]
     LIFETIME["💎 LIFETIME<br/>• All features<br/>• Future updates<br/>• One-time payment<br/>99"]
-    DASHBOARD["🌐 WEB DASHBOARD<br/>• Account management<br/>• Billing & settings<br/>• Plugin marketplace"]
+    DASHBOARD["🌐 WEB DASHBOARD<br/>• Account management<br/>• Billing & settings<br/>• Plugin marketplace<br/>• Static mockup"]
     
     %% Plugin Marketplace
     AI["🤖 AI ENHANCEMENT<br/>• Grammar<br/>• Summaries<br/>• Sentiment<br/>-5/mo"]
@@ -23,14 +23,14 @@ graph TD
     WORKFLOWS["⚙️ CUSTOM WORKFLOWS<br/>• Automation<br/>• Templates<br/>• Branding<br/>-15/mo"]
     
     %% Technical Stack
-    FRONTEND["🎨 FRONTEND<br/>• Next.js<br/>• React<br/>• Tailwind<br/>• Checkout"]
-    BACKEND["⚙️ BACKEND<br/>• Next.js API<br/>• Authentication<br/>• Webhooks"]
-    DATABASE["🗄️ DATABASE<br/>• Supabase<br/>• Postgres<br/>• User data<br/>• Analytics"]
-    PAYMENT["💳 PAYMENT<br/>• Stripe<br/>• Subscriptions<br/>• Revenue"]
+    FRONTEND["🎨 FRONTEND<br/>• Next.js<br/>• React<br/>• Tailwind<br/>• Checkout<br/>• Convex client"]
+    BACKEND["⚙️ BACKEND<br/>• Next.js API<br/>• Authentication<br/>• Stripe webhooks<br/>• TODO: Convex integration"]
+    DATABASE["🗄️ DATABASE<br/>• ConvexDB (planned)<br/>• User subscriptions<br/>• Transcription data<br/>• Plugin marketplace<br/>• Not implemented yet"]
+    PAYMENT["💳 PAYMENT<br/>• Stripe<br/>• Subscriptions<br/>• Revenue<br/>• Webhook handlers"]
     
     %% Platform Ecosystem
     DESKTOP["💻 DESKTOP APPS<br/>• macOS (Swift)<br/>• Windows (.NET)<br/>• Linux (Rust)"]
-    MOBILE["📱 MOBILE APPS<br/>• iOS & Android<br/>• Flutter framework"]
+    MOBILE["📱 MOBILE APPS<br/>• iOS & Android<br/>• Flutter framework<br/>• Planned"]
     
     %% Revenue Model
     REVENUE["💰 REVENUE MODEL<br/>PRIMARY:<br/>• .99/mo × 1K = 19K/yr<br/>• 9.99/yr × 3K = 40K/yr<br/>• 99 × 2K = 98K<br/><br/>SECONDARY:<br/>• Plugin commissions<br/>• Enterprise tier<br/><br/>TOTAL: 50K+ ARR Y1<br/>M+ ARR Y2"]
@@ -76,6 +76,7 @@ graph TD
     classDef products fill:#1e293b,stroke:#06b6d4,stroke-width:2px,color:#ffffff
     classDef plugins fill:#1e293b,stroke:#ec4899,stroke-width:2px,color:#ffffff
     classDef tech fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#ffffff
+    classDef database fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#ffffff
     classDef revenue fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#ffffff
     classDef growth fill:#1e293b,stroke:#ef4444,stroke-width:2px,color:#ffffff
     
@@ -83,6 +84,7 @@ graph TD
     class UA,PD,RS,GE userJourney
     class FREE,PRO,LIFETIME,DASHBOARD products
     class AI,TTS,INTEGRATIONS,WORKFLOWS plugins
-    class FRONTEND,BACKEND,DATABASE,PAYMENT,DESKTOP,MOBILE tech
+    class FRONTEND,BACKEND,PAYMENT,DESKTOP,MOBILE tech
+    class DATABASE database
     class REVENUE revenue
     class PHASE1,PHASE2,PHASE3 growth

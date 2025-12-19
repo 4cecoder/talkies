@@ -10,6 +10,7 @@ const websocket = @import("websocket.zig");
 const daemon_ws = @import("daemon_ws.zig");
 const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
+const yap_window = @import("yap_window.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -738,24 +739,89 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                     utils.log("YAP session saved to database: {d} revision(s)", .{sandbox.?.getRevisionCount()});
 
-                    // Use refined text for now
-                    // TODO: In future task, enter yap_refining state here and wait for user input
-                    final_text = refined;
+                    // Step 6: Create and show YAP window for interactive refinement
+                    try daemon_state.setState(.yap_refining);
 
-                    // TODO: Step 6 - Enter yap_refining state (don't paste yet!)
-                    // try daemon_state.setState(.yap_refining);
-                    // The daemon should now wait for WebSocket commands:
-                    //   - yap_accept: Complete session, paste final_text
-                    //   - yap_refine: Request another refinement with additional context
-                    //   - yap_cancel: Abandon session, paste original transcription
-
-                    // TODO: Step 7 - Handle user interaction in separate event loop
-                    // For now, we auto-accept the first refinement and complete the session
-
-                    // Mark session as completed (for now, until interactive mode is implemented)
-                    session_manager.?.completeSession(session_id.?, final_text) catch |err| {
-                        utils.logError("Failed to complete session: {}", .{err});
+                    const yap_win = yap_window.YapWindow.create(
+                        allocator,
+                        &sandbox.?,
+                        daemon_state,
+                    ) catch |err| {
+                        utils.logError("Failed to create YAP window: {}", .{err});
+                        std.debug.print("⚠️  YAP window creation failed: {}, auto-accepting\n", .{err});
+                        final_text = refined;
+                        if (session_id) |sid| {
+                            session_manager.?.completeSession(sid, final_text) catch {};
+                        }
+                        break :yap_block;
                     };
+
+                    yap_win.show();
+
+                    std.debug.print("💬 YAP window displayed. Waiting for user interaction...\n", .{});
+
+                    // Step 7: Interactive refinement loop
+                    yap_interactive: while (true) {
+                        // Wait for user command
+                        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+
+                        const cmd = daemon_state.getYapCommand() orelse continue;
+                        daemon_state.clearYapCommand();
+
+                        switch (cmd) {
+                            .accept => {
+                                final_text = sandbox.?.getCurrentRefinement();
+                                if (session_id) |sid| {
+                                    session_manager.?.completeSession(sid, final_text) catch {};
+                                }
+                                std.debug.print("✅ YAP: Accepted refinement\n", .{});
+                                break :yap_interactive;
+                            },
+
+                            .refine => {
+                                const ctx = daemon_state.getYapRefineContext();
+                                defer if (ctx) |c| allocator.free(c);
+
+                                std.debug.print("🔄 YAP: Requesting another refinement...\n", .{});
+
+                                const new_refined = sandbox.?.refineAgain(
+                                    cfg.yap_llm_model,
+                                    ctx orelse "Refine further, making it more concise and clear.",
+                                ) catch |err| {
+                                    utils.logError("Refinement failed: {}", .{err});
+                                    std.debug.print("⚠️  Refinement failed: {}\n", .{err});
+                                    continue;
+                                };
+
+                                std.debug.print("✨ New refinement: {s}\n", .{new_refined});
+
+                                // Save updated sandbox
+                                session_manager.?.saveSandbox(session_id.?, &sandbox.?) catch {};
+
+                                // Update window display
+                                yap_win.updateDisplay() catch {};
+
+                                // Broadcast new refinement
+                                daemon_state.broadcastYapRefined(
+                                    new_refined,
+                                    @intCast(sandbox.?.getRevisionCount()),
+                                    sandbox.?.yapping.len,
+                                ) catch {};
+                            },
+
+                            .cancel => {
+                                final_text = sandbox.?.yapping;
+                                if (session_id) |sid| {
+                                    session_manager.?.abandonSession(sid) catch {};
+                                }
+                                std.debug.print("❌ YAP: Cancelled, using original\n", .{});
+                                break :yap_interactive;
+                            },
+                        }
+                    }
+
+                    yap_win.destroy();
+                    try daemon_state.setState(.idle);
                 }
 
                 // Handle output based on config
