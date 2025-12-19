@@ -37,6 +37,7 @@ namespace Talkies.Windows.Models
         // Crash reporting settings
         public bool CrashReportingEnabled { get; set; } = false;
         public string CrashReportingEndpoint { get; set; } = string.Empty;
+        public bool CrashReportingPrivacyAccepted { get; set; } = false;
     }
 
     public class AdvancedTtsSettings
