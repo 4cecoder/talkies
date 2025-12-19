@@ -1,0 +1,64 @@
+<!--
+    Talkies Brand Color Palette
+    XAML Resource Dictionary for WPF/Windows
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Brand Colors -->
+    <SolidColorBrush x:Key="BrandPurple" Color="#a855f7"/>
+    <SolidColorBrush x:Key="BrandPink" Color="#ec4899"/>
+
+    <!-- Supporting Colors -->
+    <SolidColorBrush x:Key="BrandBlue" Color="#3b82f6"/>
+    <SolidColorBrush x:Key="BrandCyan" Color="#06b6d4"/>
+    <SolidColorBrush x:Key="BrandOrange" Color="#f97316"/>
+
+    <!-- Background Colors -->
+    <SolidColorBrush x:Key="BgPrimary" Color="#0a0a0f"/>
+    <SolidColorBrush x:Key="BgCard" Color="#0cffffff"/>
+    <SolidColorBrush x:Key="BgCardHover" Color="#14ffffff"/>
+    <SolidColorBrush x:Key="BgInput" Color="#0cffffff"/>
+
+    <!-- Text Colors -->
+    <SolidColorBrush x:Key="TextPrimary" Color="#ffffff"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#b3ffffff"/>
+    <SolidColorBrush x:Key="TextTertiary" Color="#80ffffff"/>
+    <SolidColorBrush x:Key="TextMuted" Color="#66ffffff"/>
+
+    <!-- Border Colors -->
+    <SolidColorBrush x:Key="BorderDefault" Color="#1affffff"/>
+    <SolidColorBrush x:Key="BorderHover" Color="#33ffffff"/>
+    <SolidColorBrush x:Key="BorderFocus" Color="#80a855f7"/>
+
+    <!-- Gradients -->
+    <LinearGradientBrush x:Key="GradientPrimary" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#a855f7" Offset="0"/>
+        <GradientStop Color="#ec4899" Offset="1"/>
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="GradientGlow" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#4da855f7" Offset="0"/>
+        <GradientStop Color="#4dec4899" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- Shadow Effects -->
+    <DropShadowEffect x:Key="GlowEffect"
+                      Color="#a855f7"
+                      BlurRadius="40"
+                      ShadowDepth="0"
+                      Opacity="0.3"/>
+
+    <DropShadowEffect x:Key="GlowSmallEffect"
+                      Color="#a855f7"
+                      BlurRadius="20"
+                      ShadowDepth="0"
+                      Opacity="0.2"/>
+
+    <DropShadowEffect x:Key="CardShadow"
+                      Color="Black"
+                      BlurRadius="32"
+                      ShadowDepth="8"
+                      Opacity="0.12"/>
+
+</ResourceDictionary>

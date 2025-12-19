@@ -1,0 +1,109 @@
+{
+  "brand": {
+    "purple": {
+      "hex": "#a855f7",
+      "rgb": "168, 85, 247",
+      "hsl": "277, 91%, 65%",
+      "usage": "Primary brand color, CTAs, highlights"
+    },
+    "pink": {
+      "hex": "#ec4899",
+      "rgb": "236, 72, 153",
+      "hsl": "330, 81%, 60%",
+      "usage": "Secondary brand color, gradients, hover states"
+    }
+  },
+  "supporting": {
+    "blue": {
+      "hex": "#3b82f6",
+      "rgb": "59, 130, 246",
+      "usage": "Information, links, active states"
+    },
+    "cyan": {
+      "hex": "#06b6d4",
+      "rgb": "6, 182, 212",
+      "usage": "Success states, data visualization"
+    },
+    "orange": {
+      "hex": "#f97316",
+      "rgb": "249, 115, 22",
+      "usage": "Warnings, notifications"
+    }
+  },
+  "neutrals": {
+    "background": {
+      "primary": {
+        "hex": "#0a0a0f",
+        "rgb": "10, 10, 15",
+        "usage": "Main background"
+      },
+      "card": {
+        "rgba": "rgba(255, 255, 255, 0.05)",
+        "usage": "Card backgrounds"
+      },
+      "cardHover": {
+        "rgba": "rgba(255, 255, 255, 0.08)",
+        "usage": "Card hover states"
+      }
+    },
+    "text": {
+      "primary": {
+        "hex": "#ffffff",
+        "rgba": "rgba(255, 255, 255, 1.0)",
+        "usage": "Primary text"
+      },
+      "secondary": {
+        "rgba": "rgba(255, 255, 255, 0.7)",
+        "usage": "Secondary text"
+      },
+      "tertiary": {
+        "rgba": "rgba(255, 255, 255, 0.5)",
+        "usage": "Tertiary text"
+      },
+      "muted": {
+        "rgba": "rgba(255, 255, 255, 0.4)",
+        "usage": "Muted text, placeholders"
+      }
+    },
+    "border": {
+      "default": {
+        "rgba": "rgba(255, 255, 255, 0.1)",
+        "usage": "Default borders"
+      },
+      "hover": {
+        "rgba": "rgba(255, 255, 255, 0.2)",
+        "usage": "Hover borders"
+      },
+      "focus": {
+        "rgba": "rgba(168, 85, 247, 0.5)",
+        "usage": "Focus rings"
+      }
+    }
+  },
+  "gradients": {
+    "primary": {
+      "css": "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
+      "swift": "LinearGradient(colors: [Color(hex: \"a855f7\"), Color(hex: \"ec4899\")], startPoint: .topLeading, endPoint: .bottomTrailing)",
+      "xaml": "<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#a855f7\" Offset=\"0\"/><GradientStop Color=\"#ec4899\" Offset=\"1\"/></LinearGradientBrush>",
+      "usage": "Primary gradient for buttons, highlights"
+    },
+    "glow": {
+      "css": "linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(236, 72, 153, 0.3) 100%)",
+      "usage": "Glow effects, subtle backgrounds"
+    }
+  },
+  "platform_specific": {
+    "macOS": {
+      "accentColor": "#a855f7",
+      "tintColor": "#ec4899"
+    },
+    "windows": {
+      "accentColor": "#a855f7",
+      "secondaryColor": "#ec4899"
+    },
+    "web": {
+      "primaryColor": "#a855f7",
+      "secondaryColor": "#ec4899"
+    }
+  }
+}
