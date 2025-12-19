@@ -32,18 +32,11 @@ pub const TextInserter = struct {
 
     /// Insert text at cursor position using clipboard + paste (preferred method)
     /// This is more reliable than character-by-character typing
-    /// Saves and restores original clipboard content
+    /// Leaves transcription in clipboard for easy manual pasting
     /// keybind: paste keybind in xdotool format (e.g. "ctrl+v", "ctrl+shift+v")
     pub fn insertTextAtCursor(self: *TextInserter, text: []const u8, keybind: []const u8) !void {
         var clipboard = Clipboard.init(self.allocator);
         defer clipboard.deinit();
-
-        // Save current clipboard contents
-        const previous_contents = clipboard.get() catch |err| blk: {
-            utils.logDebug("Could not read clipboard (may be empty): {}", .{err});
-            break :blk null;
-        };
-        defer if (previous_contents) |prev| self.allocator.free(prev);
 
         // Copy new text to clipboard
         try clipboard.copy(text);
@@ -54,16 +47,7 @@ pub const TextInserter = struct {
         // Simulate paste using native uinput with configured keybind
         try self.pasteNative(keybind);
 
-        // Delay before restoring clipboard (300ms)
-        std.posix.nanosleep(0, 300 * std.time.ns_per_ms);
-
-        // Restore previous clipboard contents
-        if (previous_contents) |prev| {
-            clipboard.copy(prev) catch |err| {
-                utils.logError("Failed to restore clipboard: {}", .{err});
-            };
-        }
-
+        // Leave transcription in clipboard for easy re-pasting
         utils.log("Inserted text at cursor", .{});
     }
 
