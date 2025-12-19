@@ -1,0 +1,5 @@
+# Ignore non-frontend directories
+mac/
+windows/
+*.md
+!frontend/**

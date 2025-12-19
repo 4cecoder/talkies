@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "cd frontend && npm run build",
+  "installCommand": "cd frontend && npm install",
+  "outputDirectory": "frontend/.next",
+  "ignoreCommand": "bash -c \"cd frontend && npx turbo-ignore || git diff HEAD^ HEAD --quiet -- ./frontend\"",
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "master": true
+    }
+  }
+}
