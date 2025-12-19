@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Text;
@@ -19,7 +20,7 @@ namespace Talkies.Windows.Services
         private readonly string _crashLogPath;
         private readonly string _analyticsLogPath;
         private readonly string _crashDataPath;
-        private HttpClient _httpClient;
+        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         private readonly AppSettings _settings;
         private const long MaxLogSize = 10 * 1024 * 1024; // 10MB
 
@@ -37,8 +38,6 @@ namespace Talkies.Windows.Services
             _crashLogPath = Path.Combine(talkiesDir, "crash.log");
             _analyticsLogPath = Path.Combine(talkiesDir, "analytics.log");
             _crashDataPath = Path.Combine(talkiesDir, "crash_data.json");
-
-            _httpClient = new HttpClient();
 
             StartMonitor();
 
@@ -171,7 +170,6 @@ namespace Talkies.Windows.Services
                 {
                     File.Delete(_crashDataPath);
                 }
-                _httpClient?.Dispose();
             }
             catch
             {
@@ -292,11 +290,30 @@ namespace Talkies.Windows.Services
                 var fileInfo = new FileInfo(filePath);
                 if (fileInfo.Exists && fileInfo.Length > MaxLogSize)
                 {
-                    // Rotate log: keep last half
-                    var existingContent = File.ReadAllText(filePath);
-                    var halfLength = existingContent.Length / 2;
-                    var truncated = existingContent.Substring(halfLength);
-                    File.WriteAllText(filePath, truncated);
+                    // Rotate log: archive old log and start fresh to avoid memory issues
+                    var archivePath = $"{filePath}.{DateTime.UtcNow:yyyyMMddHHmmss}.old";
+                    File.Move(filePath, archivePath);
+
+                    // Optional: clean up old archives (keep only last 3)
+                    try
+                    {
+                        var directory = Path.GetDirectoryName(filePath);
+                        if (directory != null)
+                        {
+                            var archives = Directory.GetFiles(directory, $"{Path.GetFileName(filePath)}.*.old")
+                                .OrderByDescending(f => f)
+                                .Skip(3)
+                                .ToArray();
+                            foreach (var archive in archives)
+                            {
+                                File.Delete(archive);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore archive cleanup errors
+                    }
                 }
                 File.AppendAllText(filePath, content);
             }
@@ -308,10 +325,31 @@ namespace Talkies.Windows.Services
 
         private bool IsValidEndpoint(string url)
         {
-            return !string.IsNullOrWhiteSpace(url) &&
-                   Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-                   (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) &&
-                   uri.Host != "localhost" && uri.Host != "127.0.0.1"; // Require external for security
+            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return false;
+
+            // Require HTTPS only for security
+            if (uri.Scheme != Uri.UriSchemeHttps)
+                return false;
+
+            // Block localhost and loopback
+            if (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "::1" || uri.Host == "0.0.0.0")
+                return false;
+
+            // Block private IP ranges (RFC 1918)
+            if (uri.Host.StartsWith("10.") ||
+                uri.Host.StartsWith("192.168.") ||
+                uri.Host.StartsWith("172.16.") || uri.Host.StartsWith("172.17.") ||
+                uri.Host.StartsWith("172.18.") || uri.Host.StartsWith("172.19.") ||
+                uri.Host.StartsWith("172.20.") || uri.Host.StartsWith("172.21.") ||
+                uri.Host.StartsWith("172.22.") || uri.Host.StartsWith("172.23.") ||
+                uri.Host.StartsWith("172.24.") || uri.Host.StartsWith("172.25.") ||
+                uri.Host.StartsWith("172.26.") || uri.Host.StartsWith("172.27.") ||
+                uri.Host.StartsWith("172.28.") || uri.Host.StartsWith("172.29.") ||
+                uri.Host.StartsWith("172.30.") || uri.Host.StartsWith("172.31."))
+                return false;
+
+            return true;
         }
 
         public static async Task RunMonitorAsync(int pid, AppSettings settings)
