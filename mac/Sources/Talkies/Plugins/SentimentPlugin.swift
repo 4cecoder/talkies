@@ -8,18 +8,21 @@ class SentimentPlugin: TalkiesPlugin, ObservableObject {
     let description = "Analyze the emotional tone of text using Apple's Natural Language framework"
     let icon = "face.smiling"
 
-    @Published var isEnabled = false {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "sentiment.isEnabled") }
+    private let settingsService = SettingsService.shared
+
+    var isEnabled: Bool {
+        get { settingsService.settings.sentiment.isEnabled }
+        set { settingsService.settings.sentiment.isEnabled = newValue; objectWillChange.send() }
     }
-    
+
     @Published var text: String = ""
     @Published var sentimentScore: Double = 0.0
     @Published var sentimentLabel: String = "Neutral"
     @Published var sentimentEmoji: String = "😐"
     @Published var isAnalyzing = false
-    
+
     init() {
-        isEnabled = UserDefaults.standard.bool(forKey: "sentiment.isEnabled")
+        // Settings loaded from SettingsService
     }
     
     func analyzeSentiment(text: String) {

@@ -11,24 +11,33 @@ class MLXTTSPlugin: TalkiesPlugin, ObservableObject {
     let description = "Convert text to speech using Native macOS TTS"
     let icon = "speaker.wave.3"
 
+    private let settingsService = SettingsService.shared
+
     enum TTSEngine: String, CaseIterable {
         case native = "Native macOS"
         // case kokoro = "Kokoro TTS" // DISABLED: MisakiSwift has Swift 6.2 bug
     }
 
-    @Published var isEnabled = false {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: "mlx-tts.isEnabled") }
+    var isEnabled: Bool {
+        get { settingsService.settings.mlxTTS.isEnabled }
+        set { settingsService.settings.mlxTTS.isEnabled = newValue; objectWillChange.send() }
     }
-    @Published var selectedEngine: TTSEngine = .native {
-        didSet {
-            UserDefaults.standard.set(selectedEngine.rawValue, forKey: "mlx-tts.selectedEngine")
+
+    var selectedEngine: TTSEngine {
+        get { TTSEngine(rawValue: settingsService.settings.mlxTTS.selectedEngine) ?? .native }
+        set {
+            settingsService.settings.mlxTTS.selectedEngine = newValue.rawValue
+            objectWillChange.send()
             Task { await checkStatus() }
         }
     }
+
     @Published var pluginStatus: MLXTTSStatus = .notInstalled
     @Published var availableVoices: [String] = []
-    @Published var selectedVoice = "default" {
-        didSet { UserDefaults.standard.set(selectedVoice, forKey: "mlx-tts.selectedVoice") }
+
+    var selectedVoice: String {
+        get { settingsService.settings.mlxTTS.selectedVoice }
+        set { settingsService.settings.mlxTTS.selectedVoice = newValue; objectWillChange.send() }
     }
 
     // TTS parameters
@@ -52,13 +61,6 @@ class MLXTTSPlugin: TalkiesPlugin, ObservableObject {
     }
 
     init() {
-        // Load saved settings
-        isEnabled = UserDefaults.standard.bool(forKey: "mlx-tts.isEnabled")
-        if let savedEngine = UserDefaults.standard.string(forKey: "mlx-tts.selectedEngine"),
-           let engine = TTSEngine(rawValue: savedEngine) {
-            selectedEngine = engine
-        }
-
         Task {
             await checkStatus()
         }
@@ -81,12 +83,12 @@ class MLXTTSPlugin: TalkiesPlugin, ObservableObject {
             return attributes[.name] as? String ?? voice.rawValue
         }
 
-        let savedVoice = UserDefaults.standard.string(forKey: "mlx-tts.selectedVoice")
+        let currentVoice = await MainActor.run { self.selectedVoice }
 
         await MainActor.run {
             self.availableVoices = voices
-            if let savedVoice, voices.contains(savedVoice) {
-                self.selectedVoice = savedVoice
+            if voices.contains(currentVoice) {
+                // Already set correctly
             } else if !voices.isEmpty {
                 self.selectedVoice = voices[0]
             }
