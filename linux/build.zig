@@ -91,6 +91,14 @@ pub fn build(b: *std.Build) void {
     const overlay_step = b.step("overlay", "Run the GTK overlay");
     overlay_step.dependOn(&overlay_cmd.step);
 
+    // Cleanup command to kill stuck processes and free ports
+    const cleanup_cmd = b.addSystemCommand(&[_][]const u8{
+        "bash",
+        b.pathJoin(&[_][]const u8{ b.pathFromRoot(""), "scripts/cleanup.sh" }),
+    });
+    const cleanup_step = b.step("cleanup", "Kill stuck talkies processes and free ports");
+    cleanup_step.dependOn(&cleanup_cmd.step);
+
     // Tests
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),

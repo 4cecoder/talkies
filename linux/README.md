@@ -26,7 +26,7 @@ zig-out/bin/talkies audio-set alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-
 # Download whisper model
 zig-out/bin/talkies models
 
-# Start daemon
+# Start daemon (if port is already in use, run: zig build cleanup)
 zig-out/bin/talkies daemon
 ```
 
@@ -249,6 +249,19 @@ ggml_vulkan: 0 = NVIDIA GeForce GTX 1070
 ```
 
 ## Troubleshooting
+
+### Port already in use (AddressInUse error)
+If you see `error: AddressInUse` when starting the daemon:
+
+```bash
+# Clean up stuck processes and free ports
+zig build cleanup
+
+# Or manually:
+./scripts/cleanup.sh
+```
+
+This kills any zombie `arecord` processes and frees port 6789 (WebSocket daemon).
 
 ### Text not pasting (Permission denied on /dev/uinput)
 1. Check uinput module loaded: `lsmod | grep uinput`
