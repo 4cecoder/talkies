@@ -89,11 +89,57 @@ pub const AudioRecorder = struct {
         }
     }
 
+    /// Pre-initialize PulseAudio stream for instant recording start
+    /// Call this once at daemon startup to avoid 28ms delay on first recording
+    pub fn prepare(self: *AudioRecorder, device_name: ?[]const u8) !void {
+        if (self.pa_stream != null) {
+            return; // Already prepared
+        }
+
+        // Initialize PulseAudio stream
+        var sample_spec = c.pa_sample_spec{
+            .format = c.PA_SAMPLE_S16LE,
+            .rate = self.sample_rate,
+            .channels = self.channels,
+        };
+
+        const device_ptr = if (device_name) |name|
+            if (name.len > 0) name.ptr else null
+        else
+            null;
+
+        var error_code: c_int = 0;
+        self.pa_stream = c.pa_simple_new(
+            null,
+            "Talkies",
+            c.PA_STREAM_RECORD,
+            device_ptr,
+            "Voice Recording",
+            &sample_spec,
+            null,
+            null,
+            &error_code,
+        );
+
+        if (self.pa_stream == null) {
+            const err_str = c.pa_strerror(error_code);
+            utils.log("PulseAudio error: {s}", .{err_str});
+            return error.PulseAudioInitFailed;
+        }
+
+        utils.log("PulseAudio stream pre-initialized (ready for instant recording)", .{});
+    }
+
     /// Start recording audio to a WAV file
     /// device_name: PulseAudio device name (null or empty = use default)
     pub fn startRecording(self: *AudioRecorder, output_path: []const u8, device_name: ?[]const u8) !void {
         if (self.recording) {
             return error.AlreadyRecording;
+        }
+
+        // If stream not prepared, prepare it now (slower path)
+        if (self.pa_stream == null) {
+            try self.prepare(device_name);
         }
 
         // Store output path
@@ -115,38 +161,7 @@ pub const AudioRecorder = struct {
         const header_bytes = std.mem.asBytes(&header);
         try self.output_file.?.writeAll(header_bytes);
 
-        // Initialize PulseAudio
-        var sample_spec = c.pa_sample_spec{
-            .format = c.PA_SAMPLE_S16LE, // 16-bit signed little-endian
-            .rate = self.sample_rate,
-            .channels = self.channels,
-        };
-
-        // Determine which device to use
-        const device_ptr = if (device_name) |name|
-            if (name.len > 0) name.ptr else null
-        else
-            null;
-
-        var error_code: c_int = 0;
-        self.pa_stream = c.pa_simple_new(
-            null, // Use default server
-            "Talkies", // Application name
-            c.PA_STREAM_RECORD, // Record stream
-            device_ptr, // Device (null = default)
-            "Voice Recording", // Stream description
-            &sample_spec,
-            null, // Use default channel map
-            null, // Use default buffering attributes
-            &error_code,
-        );
-
-        if (self.pa_stream == null) {
-            const err_str = c.pa_strerror(error_code);
-            utils.log("PulseAudio error: {s}", .{err_str});
-            return error.PulseAudioInitFailed;
-        }
-
+        // Stream is already open - just start recording!
         self.recording = true;
         self.bytes_recorded = 0;
         self.level_buffer_size = 0;
@@ -160,7 +175,9 @@ pub const AudioRecorder = struct {
             return false;
         }
 
-        const buffer_size: usize = 4096;
+        // Smaller buffer = faster response to stop command
+        // 128 bytes = 4ms at 16kHz mono (64 samples)
+        const buffer_size: usize = 128;
         var buffer: [buffer_size]u8 = undefined;
 
         var error_code: c_int = 0;
@@ -191,6 +208,7 @@ pub const AudioRecorder = struct {
     }
 
     /// Stop recording and finalize the WAV file
+    /// Note: Keeps PulseAudio stream open for next recording (instant start!)
     pub fn stopRecording(self: *AudioRecorder) !void {
         if (!self.recording) {
             return;
@@ -198,12 +216,11 @@ pub const AudioRecorder = struct {
 
         self.recording = false;
 
-        // Drain PulseAudio buffer
+        // Drain PulseAudio buffer but KEEP stream open for instant next recording
         if (self.pa_stream) |stream| {
             var error_code: c_int = 0;
             _ = c.pa_simple_drain(stream, &error_code);
-            c.pa_simple_free(stream);
-            self.pa_stream = null;
+            // Don't free the stream! Keep it ready for next recording
         }
 
         // Update WAV header with actual sizes
