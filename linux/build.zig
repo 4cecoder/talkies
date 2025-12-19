@@ -29,6 +29,10 @@ pub fn build(b: *std.Build) void {
         .file = b.path("src/yap_window_gtk.c"),
         .flags = &.{"-std=c11"},
     });
+    exe.addCSourceFile(.{
+        .file = b.path("src/daemon_status_gtk.c"),
+        .flags = &.{"-std=c11"},
+    });
 
     // Add build options for runtime platform detection
     const build_options = b.addOptions();
