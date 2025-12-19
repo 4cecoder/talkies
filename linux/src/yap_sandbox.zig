@@ -50,6 +50,7 @@ pub const Sandbox = struct {
         context: ?[]const u8,
         ollama_url: []const u8,
         system_prompt: []const u8,
+        io: std.Io,
     ) !Sandbox {
         const revisions: std.ArrayListUnmanaged(Revision) = .{};
         var conversation: std.ArrayListUnmanaged(Message) = .{};
@@ -66,7 +67,7 @@ pub const Sandbox = struct {
 
         return .{
             .allocator = allocator,
-            .ollama_client = ollama.Client.init(allocator, ollama_url),
+            .ollama_client = ollama.Client.init(allocator, ollama_url, io),
             .initial_context = context_copy,
             .yapping = yapping_copy,
             .revisions = revisions,

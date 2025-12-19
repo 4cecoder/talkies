@@ -6,24 +6,21 @@ pub const Client = struct {
     allocator: std.mem.Allocator,
     base_url: []const u8,
     http_client: std.http.Client,
-    io_threaded: std.Io.Threaded,
 
-    pub fn init(allocator: std.mem.Allocator, base_url: []const u8) Client {
-        var io_threaded = std.Io.Threaded.init(allocator);
+    /// Initialize client with shared Io instance
+    pub fn init(allocator: std.mem.Allocator, base_url: []const u8, io: std.Io) Client {
         return .{
             .allocator = allocator,
             .base_url = base_url,
-            .io_threaded = io_threaded,
             .http_client = .{
                 .allocator = allocator,
-                .io = io_threaded.io(),
+                .io = io,
             },
         };
     }
 
     pub fn deinit(self: *Client) void {
         self.http_client.deinit();
-        self.io_threaded.deinit();
     }
 
     /// Generate a completion from Ollama
@@ -59,29 +56,35 @@ pub const Client = struct {
 
         utils.log("Ollama request to: {s}", .{url});
 
-        // Allocate buffer for response (1MB max)
-        const response_buffer = try self.allocator.alloc(u8, 1024 * 1024);
-        defer self.allocator.free(response_buffer);
+        // Parse URI
+        const uri = try std.Uri.parse(url);
 
-        // Create a fixed buffer writer
-        var writer = std.Io.Writer.fixed(response_buffer);
-
-        const result = try self.http_client.fetch(.{
-            .location = .{ .url = url },
-            .method = .POST,
-            .payload = request_body,
-            .response_writer = &writer,
+        // Make request
+        var req = try self.http_client.request(.POST, uri, .{
             .extra_headers = &.{
                 .{ .name = "Content-Type", .value = "application/json" },
             },
         });
+        defer req.deinit();
 
-        if (result.status != .ok) {
-            utils.logError("Ollama returned status: {}", .{result.status});
+        req.transfer_encoding = .{ .content_length = request_body.len };
+        try req.sendBodyComplete(request_body);
+
+        // Receive response
+        var redirect_buffer: [1024]u8 = undefined;
+        var response = try req.receiveHead(&redirect_buffer);
+
+        // Check status
+        if (response.head.status != .ok) {
+            utils.logError("Ollama returned status: {}", .{response.head.status});
             return error.OllamaRequestFailed;
         }
 
-        const response_body = writer.buffered();
+        // Read response body
+        const rdr = response.reader(&.{});
+        const response_body = try rdr.*.readAlloc(self.allocator, 1024 * 1024);
+        defer self.allocator.free(response_body);
+
         utils.log("Ollama response: {s}", .{response_body});
 
         // Parse JSON response and extract "response" field

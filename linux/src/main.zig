@@ -457,6 +457,11 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer cfg.deinit();
     try cfg.load();
 
+    // Create shared Io instance for HTTP client (YAP mode Ollama calls)
+    var io_threaded = std.Io.Threaded.init(allocator);
+    defer io_threaded.deinit();
+    const io = io_threaded.io();
+
     // TODO: Re-enable GTK settings UI after Ghostty bindings support Zig 0.16
     // Currently blocked: Ghostty's gobject bindings require Zig 0.15.2
     // We're on Zig 0.16.0, which removed @Type builtin
@@ -699,6 +704,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         null, // No initial context
                         cfg.yap_ollama_url,
                         cfg.yap_system_prompt,
+                        io,
                     ) catch |err| {
                         utils.logError("Failed to create sandbox: {}", .{err});
                         std.debug.print("⚠️  YAP sandbox creation failed: {}, using basic refinement\n", .{err});

@@ -254,6 +254,7 @@ pub const SessionManager = struct {
         session_id: i64,
         ollama_url: []const u8,
         system_prompt: []const u8,
+        io: std.Io,
     ) !yap_sandbox.Sandbox {
         // Get session data
         const sql = "SELECT yapping, initial_context FROM sessions WHERE id = ?";
@@ -280,6 +281,7 @@ pub const SessionManager = struct {
             context,
             ollama_url,
             system_prompt,
+            io,
         );
 
         // Load revisions (implementation simplified - would need to fetch and restore)
