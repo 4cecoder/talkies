@@ -1,0 +1,46 @@
+# Docker ignore file - excludes unnecessary files from Docker build context
+
+# Build outputs
+**/bin/
+**/obj/
+**/TestResults/
+
+# IDE and editor files
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+**/*.suo
+**/*.userosscache
+**/*.sln.docstates
+
+# Documentation
+**/*.md
+!README.md
+
+# Git
+**/.git/
+**/.gitignore
+**/.gitattributes
+
+# NuGet packages
+**/packages/
+**/*.nupkg
+
+# Test results
+**/*.trx
+**/*.coverage
+**/*.coveragexml
+
+# Logs
+**/logs/
+**/*.log
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Temporary files
+**/tmp/
+**/temp/
+**/*.tmp

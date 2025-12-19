@@ -5,29 +5,82 @@ import Cocoa
 class TextInserter {
     static let shared = TextInserter()
 
+    // MARK: - Constants
+
+    /// Virtual key code for 'V' key (used for Cmd+V paste)
+    private static let vKeyCode: CGKeyCode = 9
+
+    /// Delay to ensure clipboard is ready before pasting (50ms)
+    private static let clipboardReadyDelay: TimeInterval = 0.05
+
+    /// Delay before restoring previous clipboard contents (200ms)
+    /// This gives the paste operation time to complete before we modify the clipboard
+    private static let clipboardRestoreDelay: TimeInterval = 0.2
+
+    // MARK: - State for handling rapid successive operations
+
+    /// Stores the original clipboard content before the first operation in a sequence
+    private var originalClipboardContent: String?
+
+    /// Queue to serialize paste operations and prevent race conditions
+    private var operationQueue: [(text: String, id: UUID)] = []
+
+    /// Whether an operation is currently being executed
+    private var isExecutingOperation = false
+
     private init() {}
 
     /// Insert text at the current cursor position using clipboard + paste
     /// This is more reliable than character-by-character typing which can cause reordering issues
+    /// Handles rapid successive calls by queueing operations to prevent clipboard race conditions
     func insertTextAtCursor(_ text: String) {
-        // Save current clipboard contents to restore later
         let pasteboard = NSPasteboard.general
-        let previousContents = pasteboard.string(forType: .string)
+
+        // Capture original clipboard only on first call in a sequence
+        if operationQueue.isEmpty && !isExecutingOperation {
+            originalClipboardContent = pasteboard.string(forType: .string)
+        }
+
+        // Enqueue the operation
+        let operationId = UUID()
+        operationQueue.append((text: text, id: operationId))
+
+        // Start processing if not already running
+        processNextOperation()
+    }
+
+    /// Process the next operation in the queue serially
+    private func processNextOperation() {
+        // Don't start a new operation if one is already running or queue is empty
+        guard !isExecutingOperation, !operationQueue.isEmpty else { return }
+
+        isExecutingOperation = true
+        let operation = operationQueue.removeFirst()
+        let pasteboard = NSPasteboard.general
 
         // Copy text to clipboard
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.setString(operation.text, forType: .string)
 
         // Small delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
             // Simulate Cmd+V paste
             self.simulatePaste()
 
-            // Restore previous clipboard contents after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                if let previous = previousContents {
+            // Wait for paste to complete before processing next operation
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) {
+                self.isExecutingOperation = false
+
+                // If more operations queued, process them
+                if !self.operationQueue.isEmpty {
+                    self.processNextOperation()
+                } else {
+                    // All operations complete - restore original clipboard
                     pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
+                    if let original = self.originalClipboardContent {
+                        pasteboard.setString(original, forType: .string)
+                    }
+                    self.originalClipboardContent = nil
                 }
             }
         }
@@ -35,12 +88,9 @@ class TextInserter {
 
     /// Simulate Cmd+V paste keystroke
     private func simulatePaste() {
-        // Virtual key code for 'V' is 9
-        let vKeyCode: CGKeyCode = 9
-
         // Create key down event with Command modifier
-        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: true),
-           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: false) {
+        if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: true),
+           let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: Self.vKeyCode, keyDown: false) {
 
             // Set Command modifier flag
             keyDown.flags = .maskCommand

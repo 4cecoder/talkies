@@ -238,43 +238,66 @@ namespace Talkies.Windows.Services
         {
             for (var attempt = 1; attempt <= retries; attempt++)
             {
-                Exception? clipboardError = null;
-                void SetClipboard()
+                try
                 {
-                    try
+                    var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                    if (dispatcher != null)
                     {
-                        Clipboard.SetText(text);
+                        dispatcher.Invoke(() => System.Windows.Clipboard.SetText(text));
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        clipboardError = ex;
+                        // Use TaskCompletionSource for cleaner STA thread handling
+                        SetClipboardSta(text);
                     }
-                }
-
-                var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                if (dispatcher != null)
-                {
-                    dispatcher.Invoke(SetClipboard);
-                }
-                else
-                {
-                    var t = new Thread(SetClipboard);
-                    t.SetApartmentState(ApartmentState.STA);
-                    t.Start();
-                    t.Join();
-                }
-
-                if (clipboardError == null)
-                {
                     return true;
                 }
-
-                Logger.Warn($"TextInjector: Clipboard busy (attempt {attempt}/{retries}) - {clipboardError.Message}");
-                Thread.Sleep(delayMs);
+                catch (TimeoutException)
+                {
+                    Logger.Error("TextInjector: Clipboard operation timed out");
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"TextInjector: Clipboard busy (attempt {attempt}/{retries}) - {ex.Message}");
+                    Thread.Sleep(delayMs);
+                }
             }
 
             Logger.Error("TextInjector: Clipboard set failed after retries");
             return false;
+        }
+
+        /// <summary>
+        /// Sets clipboard text on an STA thread using TaskCompletionSource pattern.
+        /// </summary>
+        private static void SetClipboardSta(string text)
+        {
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    System.Windows.Clipboard.SetText(text);
+                    tcs.SetResult(true);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            })
+            { IsBackground = true };
+
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+
+            if (!tcs.Task.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("Clipboard operation timed out");
+            }
+
+            // Propagate any exception from the thread
+            tcs.Task.GetAwaiter().GetResult();
         }
 
         [DllImport("user32.dll", SetLastError = true)]
