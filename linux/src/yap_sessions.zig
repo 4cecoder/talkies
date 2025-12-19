@@ -35,7 +35,7 @@ pub const SessionManager = struct {
             return error.DatabaseOpenFailed;
         }
 
-        const manager = SessionManager{
+        var manager = SessionManager{
             .allocator = allocator,
             .db = db.?,
             .db_path = db_path,
@@ -54,7 +54,7 @@ pub const SessionManager = struct {
 
     /// Initialize database schema
     fn initSchema(self: *SessionManager) !void {
-        const schema = @embedFile("../schema.sql");
+        const schema = @embedFile("yap_schema.sql");
 
         var err_msg: [*c]u8 = undefined;
         const result = c.sqlite3_exec(
@@ -80,7 +80,8 @@ pub const SessionManager = struct {
         model: []const u8,
         ollama_url: []const u8,
     ) !i64 {
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
 
         const sql =
             \\INSERT INTO sessions (created_at, updated_at, status, yapping, initial_context, llm_model, ollama_url)
@@ -124,7 +125,8 @@ pub const SessionManager = struct {
         trigger_type: []const u8,
         trigger_context: ?[]const u8,
     ) !void {
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
         const char_count = text.len;
 
         const sql =
@@ -156,7 +158,8 @@ pub const SessionManager = struct {
 
     /// Complete a session (mark as completed and store final message)
     pub fn completeSession(self: *SessionManager, session_id: i64, final_message: []const u8) !void {
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
 
         const sql =
             \\UPDATE sessions
@@ -179,7 +182,8 @@ pub const SessionManager = struct {
 
     /// Abandon a session (interrupted/cancelled)
     pub fn abandonSession(self: *SessionManager, session_id: i64) !void {
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
 
         const sql =
             \\UPDATE sessions
@@ -270,7 +274,7 @@ pub const SessionManager = struct {
         const context = if (context_text != null) std.mem.span(context_text) else null;
 
         // Create sandbox
-        var sandbox = try yap_sandbox.Sandbox.init(
+        const sandbox = try yap_sandbox.Sandbox.init(
             self.allocator,
             yapping,
             context,
@@ -296,7 +300,7 @@ pub const SessionManager = struct {
         ;
 
         var stmt: ?*c.sqlite3_stmt = null;
-        var result = c.sqlite3_prepare_v2(self.db, sql.ptr, -1, &stmt, null);
+        const result = c.sqlite3_prepare_v2(self.db, sql.ptr, -1, &stmt, null);
         if (result != c.SQLITE_OK) return error.PrepareFailed;
         defer _ = c.sqlite3_finalize(stmt);
 

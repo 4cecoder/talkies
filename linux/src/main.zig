@@ -8,6 +8,8 @@ const utils = @import("utils.zig");
 const hotkey = @import("hotkey.zig");
 const websocket = @import("websocket.zig");
 const daemon_ws = @import("daemon_ws.zig");
+const yap_sandbox = @import("yap_sandbox.zig");
+const yap_sessions = @import("yap_sessions.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -652,34 +654,102 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
 
-                // YAP mode: Refine transcription with LLM before pasting
+                // YAP mode: Interactive refinement with session persistence
                 var final_text: []const u8 = transcription;
-                var yap_refined: ?[]u8 = null;
-                defer if (yap_refined) |text| allocator.free(text);
+                var session_manager: ?yap_sessions.SessionManager = null;
+                var sandbox: ?yap_sandbox.Sandbox = null;
+                var session_id: ?i64 = null;
+
+                defer {
+                    if (sandbox) |*sb| sb.deinit();
+                    if (session_manager) |*sm| sm.deinit();
+                }
 
                 yap_block: {
                     if (!cfg.yap_mode_enabled or transcription.len == 0) break :yap_block;
 
+                    utils.log("YAP MODE: Starting interactive refinement session", .{});
                     std.debug.print("\n💬 YAP MODE: Refining your message with {s}...\n", .{cfg.yap_llm_model});
 
-                    const ollama = @import("ollama.zig");
-                    var client = ollama.Client.init(allocator, cfg.yap_ollama_url);
-                    defer client.deinit();
-
-                    const refined = client.generate(
-                        cfg.yap_llm_model,
-                        transcription,
-                        cfg.yap_system_prompt,
-                    ) catch |err| {
-                        std.debug.print("⚠️  YAP refinement failed: {}, using original\n", .{err});
+                    // Step 1: Initialize SessionManager
+                    session_manager = yap_sessions.SessionManager.init(allocator) catch |err| {
+                        utils.logError("Failed to initialize session manager: {}", .{err});
+                        std.debug.print("⚠️  YAP session manager failed: {}, using basic refinement\n", .{err});
                         break :yap_block;
                     };
 
-                    if (refined.len > 0) {
-                        yap_refined = refined;
-                        final_text = refined;
-                        std.debug.print("✨ Refined ({d} chars): {s}\n\n", .{ refined.len, refined });
-                    }
+                    // Step 2: Create a new session in database
+                    session_id = session_manager.?.createSession(
+                        transcription,
+                        null, // No initial context for now
+                        cfg.yap_llm_model,
+                        cfg.yap_ollama_url,
+                    ) catch |err| {
+                        utils.logError("Failed to create YAP session: {}", .{err});
+                        std.debug.print("⚠️  YAP session creation failed: {}, using basic refinement\n", .{err});
+                        break :yap_block;
+                    };
+
+                    utils.log("Created YAP session ID: {d}", .{session_id.?});
+
+                    // Step 3: Create YAP Sandbox with the transcription
+                    sandbox = yap_sandbox.Sandbox.init(
+                        allocator,
+                        transcription,
+                        null, // No initial context
+                        cfg.yap_ollama_url,
+                        cfg.yap_system_prompt,
+                    ) catch |err| {
+                        utils.logError("Failed to create sandbox: {}", .{err});
+                        std.debug.print("⚠️  YAP sandbox creation failed: {}, using basic refinement\n", .{err});
+                        // Mark session as abandoned
+                        if (session_id) |sid| {
+                            session_manager.?.abandonSession(sid) catch {};
+                        }
+                        break :yap_block;
+                    };
+
+                    utils.log("Created YAP sandbox, requesting initial refinement...", .{});
+
+                    // Step 4: Call sandbox.refineInitial() to get first refinement
+                    const refined = sandbox.?.refineInitial(cfg.yap_llm_model) catch |err| {
+                        utils.logError("Failed to refine with LLM: {}", .{err});
+                        std.debug.print("⚠️  YAP refinement failed: {}, using original transcription\n", .{err});
+                        // Mark session as abandoned
+                        if (session_id) |sid| {
+                            session_manager.?.abandonSession(sid) catch {};
+                        }
+                        break :yap_block;
+                    };
+
+                    std.debug.print("✨ Refined ({d} chars): {s}\n\n", .{ refined.len, refined });
+
+                    // Step 5: Save sandbox to database (all revisions)
+                    session_manager.?.saveSandbox(session_id.?, &sandbox.?) catch |err| {
+                        utils.logError("Failed to save sandbox to database: {}", .{err});
+                        std.debug.print("⚠️  YAP session save failed: {}, but continuing...\n", .{err});
+                    };
+
+                    utils.log("YAP session saved to database: {d} revision(s)", .{sandbox.?.getRevisionCount()});
+
+                    // Use refined text for now
+                    // TODO: In future task, enter yap_refining state here and wait for user input
+                    final_text = refined;
+
+                    // TODO: Step 6 - Enter yap_refining state (don't paste yet!)
+                    // try daemon_state.setState(.yap_refining);
+                    // The daemon should now wait for WebSocket commands:
+                    //   - yap_accept: Complete session, paste final_text
+                    //   - yap_refine: Request another refinement with additional context
+                    //   - yap_cancel: Abandon session, paste original transcription
+
+                    // TODO: Step 7 - Handle user interaction in separate event loop
+                    // For now, we auto-accept the first refinement and complete the session
+
+                    // Mark session as completed (for now, until interactive mode is implemented)
+                    session_manager.?.completeSession(session_id.?, final_text) catch |err| {
+                        utils.logError("Failed to complete session: {}", .{err});
+                    };
                 }
 
                 // Handle output based on config

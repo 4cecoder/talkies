@@ -1,7 +1,7 @@
 const std = @import("std");
 const ollama = @import("ollama.zig");
 
-/// YAP Sandbox: Interactive refinement session
+/// YAP Sandbox: Interactive refinement session  
 /// Workflow: User provides initial context → records yapping → LLM refines → final message
 pub const Sandbox = struct {
     allocator: std.mem.Allocator,
@@ -14,10 +14,10 @@ pub const Sandbox = struct {
     yapping: []const u8,
 
     // Refinement history (newest last)
-    revisions: std.ArrayList(Revision),
+    revisions: std.ArrayListUnmanaged(Revision),
 
     // Conversation context for LLM
-    conversation: std.ArrayList(Message),
+    conversation: std.ArrayListUnmanaged(Message),
 
     pub const Revision = struct {
         text: []const u8,
@@ -51,15 +51,15 @@ pub const Sandbox = struct {
         ollama_url: []const u8,
         system_prompt: []const u8,
     ) !Sandbox {
-        var revisions = std.ArrayList(Revision).init(allocator);
-        var conversation = std.ArrayList(Message).init(allocator);
+        const revisions: std.ArrayListUnmanaged(Revision) = .{};
+        var conversation: std.ArrayListUnmanaged(Message) = .{};
 
         // Add system prompt to conversation
         const system_msg = Message{
             .role = .system,
             .content = try allocator.dupe(u8, system_prompt),
         };
-        try conversation.append(system_msg);
+        try conversation.append(allocator, system_msg);
 
         const yapping_copy = try allocator.dupe(u8, yapping_text);
         const context_copy = if (context) |ctx| try allocator.dupe(u8, ctx) else null;
@@ -79,13 +79,13 @@ pub const Sandbox = struct {
         for (self.revisions.items) |*rev| {
             rev.deinit(self.allocator);
         }
-        self.revisions.deinit();
+        self.revisions.deinit(self.allocator);
 
         // Free conversation
         for (self.conversation.items) |*msg| {
             msg.deinit(self.allocator);
         }
-        self.conversation.deinit();
+        self.conversation.deinit(self.allocator);
 
         // Free yapping and context
         self.allocator.free(self.yapping);
@@ -128,7 +128,7 @@ pub const Sandbox = struct {
             .role = .user,
             .content = try self.allocator.dupe(u8, prompt),
         };
-        try self.conversation.append(user_msg);
+        try self.conversation.append(self.allocator, user_msg);
 
         // Get refinement from LLM
         const system_prompt = self.conversation.items[0].content;
@@ -139,16 +139,17 @@ pub const Sandbox = struct {
             .role = .assistant,
             .content = try self.allocator.dupe(u8, refined),
         };
-        try self.conversation.append(assistant_msg);
+        try self.conversation.append(self.allocator, assistant_msg);
 
         // Store as new revision
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
             .char_count = refined.len,
         };
-        try self.revisions.append(revision);
+        try self.revisions.append(self.allocator, revision);
 
         return refined;
     }
@@ -170,7 +171,7 @@ pub const Sandbox = struct {
             .role = .user,
             .content = try self.allocator.dupe(u8, prompt),
         };
-        try self.conversation.append(user_msg);
+        try self.conversation.append(self.allocator, user_msg);
 
         // Get refinement
         const system_prompt = self.conversation.items[0].content;
@@ -181,16 +182,17 @@ pub const Sandbox = struct {
             .role = .assistant,
             .content = try self.allocator.dupe(u8, refined),
         };
-        try self.conversation.append(assistant_msg);
+        try self.conversation.append(self.allocator, assistant_msg);
 
         // Store revision
-        const now = std.time.timestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
+        const now = @as(i64, ts.sec);
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
             .char_count = refined.len,
         };
-        try self.revisions.append(revision);
+        try self.revisions.append(self.allocator, revision);
 
         return refined;
     }
