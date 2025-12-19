@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using WpfApplication = System.Windows.Application;
+using Sentry;
 using Talkies.Windows.Services;
 using Talkies.Windows.Models;
 
@@ -62,12 +63,30 @@ namespace Talkies.Windows
                 _settingsService.Save(settings);
             }
 
+            // Initialize Sentry SDK for crash reporting (only if user consented)
+            if (settings.CrashReportingEnabled)
+            {
+                SentrySdk.Init(o =>
+                {
+                    o.Dsn = "https://69cacaf4e5af4456f19b131aa63598c5@o4510547343114240.ingest.us.sentry.io/4510547352944640";
+                    o.Debug = false;
+                    o.TracesSampleRate = 1.0;
+                    o.IsGlobalModeEnabled = true;
+                    o.AutoSessionTracking = true;
+                });
+            }
+
             _crashReporter = new CrashReporter(settings);
         }
 
         protected override void OnExit(System.Windows.ExitEventArgs e)
         {
             _crashReporter?.OnNormalExit();
+
+            // Flush Sentry events before exit
+            SentrySdk.Flush(TimeSpan.FromSeconds(2));
+            SentrySdk.Close();
+
             base.OnExit(e);
             Environment.ExitCode = 0;
         }
