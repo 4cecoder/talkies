@@ -38,33 +38,14 @@ namespace Talkies.Windows
             StateChanged += OnStateChanged;
             Closed += (_, _) => DisposeTray();
 
-            // Add developer crash simulation menu if enabled
+            // Add developer crash simulation button if enabled
             var settingsService = new SettingsService();
             var settings = settingsService.Load();
             if (settings.TalkiesTeamConfig.EnableSimulateCrashesModule)
             {
-                AddDeveloperMenu();
+                SimulateCrashButton.Visibility = Visibility.Visible;
+                SimulateCrashButton.Click += (s, e) => SimulateCrash();
             }
-        }
-
-            // Bind audio level to waveform visualizer
-            _vm.OnAudioLevelChanged += (level) =>
-            {
-                Dispatcher.InvokeAsync(() => WaveformVisualizer.AudioLevel = level);
-            };
-            _vm.OnResetWaveform += () =>
-            {
-                Dispatcher.InvokeAsync(() => WaveformVisualizer.Clear());
-            };
-
-            _vm.OnOverlayShow += msg => Dispatcher.Invoke(() => ShowOverlay(msg));
-            _vm.OnOverlayUpdate += msg => Dispatcher.Invoke(() => UpdateOverlay(msg));
-            _vm.OnOverlayHide += () => Dispatcher.Invoke(HideOverlay);
-
-            Loaded += (_, _) => _vm.StartHotkey();
-            Loaded += (_, _) => InitTrayIcon();
-            StateChanged += OnStateChanged;
-            Closed += (_, _) => DisposeTray();
         }
 
         private void ShowOverlay(string message)
@@ -146,24 +127,10 @@ namespace Talkies.Windows
 
         private void DisposeTray()
         {
-            _notifyIcon?.Dispose();
-            _vm.Dispose();
-        }
-
-        private void AddDeveloperMenu()
-        {
-            var developerMenu = new MenuItem { Header = "Developer" };
-            var simulateCrashMenu = new MenuItem { Header = "Simulate Crash" };
-            simulateCrashMenu.Click += (s, e) => SimulateCrash();
-            developerMenu.Items.Add(simulateCrashMenu);
-
-            if (MainMenu.Items.Count > 0)
+            if (_notifyIcon != null)
             {
-                MainMenu.Items.Insert(MainMenu.Items.Count - 1, developerMenu);
-            }
-            else
-            {
-                MainMenu.Items.Add(developerMenu);
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
             }
         }
 
