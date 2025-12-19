@@ -152,8 +152,32 @@ namespace Talkies.Windows.Services
                     // Read existing, add to errors
                     var existingJson = File.ReadAllText(_crashLogPath);
                     log = JObject.Parse(existingJson);
-                    var errors = (JArray)log["errors"];
-                    errors.Add(errorEntry);
+                    if (log != null)
+                    {
+                        var errors = (JArray)log["errors"];
+                        if (errors != null)
+                        {
+                            errors.Add(errorEntry);
+                        }
+                        else
+                        {
+                            // Recreate if corrupted
+                            log = new JObject
+                            {
+                                ["system"] = crashJ["Specs"],
+                                ["errors"] = new JArray { errorEntry }
+                            };
+                        }
+                    }
+                    else
+                    {
+                        // Recreate if corrupted
+                        log = new JObject
+                        {
+                            ["system"] = crashJ["Specs"],
+                            ["errors"] = new JArray { errorEntry }
+                        };
+                    }
                 }
 
                 File.WriteAllText(_crashLogPath, log.ToString(Formatting.Indented));
