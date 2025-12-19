@@ -229,14 +229,19 @@ class TalkiesOverlay(Gtk.ApplicationWindow):
 
     def _handle_state_change(self, new_state):
         """Handle state change (runs in main GTK thread)"""
+        print(f"State change: {self.state} -> {new_state}")
+
         if new_state == self.state:
+            print("  (no change, ignoring)")
             return
 
         self.state = new_state
 
         if self.state == "recording":
+            print("  -> Showing overlay (recording)")
             self.recording_start = time.time()
             self.set_visible(True)
+            self.present()  # Force window to front
             self.status_icon.set_label("🔴")
             self.status_icon.set_visible(True)
             self.status_label.set_label("Recording")
@@ -244,11 +249,13 @@ class TalkiesOverlay(Gtk.ApplicationWindow):
             self.duration_label.set_visible(True)
 
         elif self.state == "processing":
+            print("  -> Processing state")
             self.status_icon.set_label("⚙️")
             self.status_label.set_label("Processing")
             self.duration_label.set_visible(False)
 
         elif self.state == "idle":
+            print("  -> Hiding overlay (idle)")
             self.set_visible(False)
             self.recording_start = None
 
