@@ -212,7 +212,6 @@ namespace Talkies.Windows.ViewModels
     {
         private readonly SettingsService _settingsService;
         private readonly Action _closeAction;
-        private readonly SettingsService _settingsService;
 
         public ObservableCollection<PluginInfoViewModel> Plugins { get; } = new();
 
