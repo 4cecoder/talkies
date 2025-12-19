@@ -16,6 +16,7 @@ pub const Config = struct {
     // Output settings
     auto_paste: bool = true,
     export_format: []const u8 = "txt",
+    paste_keybind: []const u8 = "ctrl+v", // Keybind for pasting (xdotool format)
 
     // Platform settings
     platform: []const u8 = "auto", // "auto", "x11", "wayland"
@@ -25,6 +26,7 @@ pub const Config = struct {
     model_owned: bool = false,
     language_owned: bool = false,
     export_format_owned: bool = false,
+    paste_keybind_owned: bool = false,
     platform_owned: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Config {
@@ -45,6 +47,9 @@ pub const Config = struct {
         }
         if (self.export_format_owned) {
             self.allocator.free(self.export_format);
+        }
+        if (self.paste_keybind_owned) {
+            self.allocator.free(self.paste_keybind);
         }
         if (self.platform_owned) {
             self.allocator.free(self.platform);
@@ -91,6 +96,12 @@ pub const Config = struct {
             \\[output]
             \\auto_paste = true
             \\export_format = "txt"
+            \\# Paste keybind in xdotool format
+            \\# Common options:
+            \\#   "ctrl+v"        - Standard (Ctrl+V)
+            \\#   "ctrl+shift+v"  - Terminal/Gentoo default (Ctrl+Shift+V)
+            \\#   "shift+Insert"  - Alternative paste
+            \\paste_keybind = "ctrl+v"
             \\
             \\[platform]
             \\# Platform mode: "auto" (detect), "x11" (daemon with Right Alt), "wayland" (compositor hotkey)
@@ -210,6 +221,13 @@ pub const Config = struct {
                 }
                 self.export_format = try self.allocator.dupe(u8, value);
                 self.export_format_owned = true;
+            } else if (std.mem.eql(u8, key, "paste_keybind")) {
+                const value = try parseStringValue(value_raw);
+                if (self.paste_keybind_owned) {
+                    self.allocator.free(self.paste_keybind);
+                }
+                self.paste_keybind = try self.allocator.dupe(u8, value);
+                self.paste_keybind_owned = true;
             }
         } else if (std.mem.eql(u8, section, "platform")) {
             if (std.mem.eql(u8, key, "mode")) {

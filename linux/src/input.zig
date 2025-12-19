@@ -33,7 +33,8 @@ pub const TextInserter = struct {
     /// Insert text at cursor position using clipboard + paste (preferred method)
     /// This is more reliable than character-by-character typing
     /// Saves and restores original clipboard content
-    pub fn insertTextAtCursor(self: *TextInserter, text: []const u8) !void {
+    /// keybind: paste keybind in xdotool format (e.g. "ctrl+v", "ctrl+shift+v")
+    pub fn insertTextAtCursor(self: *TextInserter, text: []const u8, keybind: []const u8) !void {
         var clipboard = Clipboard.init(self.allocator);
         defer clipboard.deinit();
 
@@ -50,8 +51,8 @@ pub const TextInserter = struct {
         // Small delay to ensure clipboard is ready (100ms for Wayland)
         std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
 
-        // Simulate Ctrl+V paste using native uinput
-        try self.pasteNative();
+        // Simulate paste using native uinput with configured keybind
+        try self.pasteNative(keybind);
 
         // Delay before restoring clipboard (300ms)
         std.posix.nanosleep(0, 300 * std.time.ns_per_ms);
@@ -66,8 +67,31 @@ pub const TextInserter = struct {
         utils.log("Inserted text at cursor", .{});
     }
 
-    /// Simulate Ctrl+V paste using native Linux uinput (no external tools)
-    fn pasteNative(self: *TextInserter) !void {
+    /// Simulate paste using native Linux uinput (no external tools)
+    /// Parses keybind string (e.g. "ctrl+v", "ctrl+shift+v", "shift+Insert")
+    fn pasteNative(self: *TextInserter, keybind: []const u8) !void {
+        // Parse keybind into modifier + key
+        var has_ctrl = false;
+        var has_shift = false;
+        var has_alt = false;
+        var main_key: c_int = c.KEY_V; // default
+
+        var it = std.mem.tokenizeAny(u8, keybind, "+");
+        while (it.next()) |part| {
+            // Compare case-insensitively
+            if (std.ascii.eqlIgnoreCase(part, "ctrl")) {
+                has_ctrl = true;
+            } else if (std.ascii.eqlIgnoreCase(part, "shift")) {
+                has_shift = true;
+            } else if (std.ascii.eqlIgnoreCase(part, "alt")) {
+                has_alt = true;
+            } else if (std.ascii.eqlIgnoreCase(part, "v")) {
+                main_key = c.KEY_V;
+            } else if (std.ascii.eqlIgnoreCase(part, "insert")) {
+                main_key = c.KEY_INSERT;
+            }
+        }
+
         // Open uinput device
         const fd = try std.posix.open(
             "/dev/uinput",
@@ -81,13 +105,14 @@ pub const TextInserter = struct {
         // Enable key events using C ioctl
         const ev_key: c_ulong = c.EV_KEY;
         const ev_syn: c_ulong = c.EV_SYN;
-        const key_ctrl: c_ulong = c.KEY_LEFTCTRL;
-        const key_v: c_ulong = c.KEY_V;
 
         _ = c.ioctl(fd, c.UI_SET_EVBIT, ev_key);
         _ = c.ioctl(fd, c.UI_SET_EVBIT, ev_syn);
-        _ = c.ioctl(fd, c.UI_SET_KEYBIT, key_ctrl);
-        _ = c.ioctl(fd, c.UI_SET_KEYBIT, key_v);
+
+        if (has_ctrl) _ = c.ioctl(fd, c.UI_SET_KEYBIT, @as(c_ulong, c.KEY_LEFTCTRL));
+        if (has_shift) _ = c.ioctl(fd, c.UI_SET_KEYBIT, @as(c_ulong, c.KEY_LEFTSHIFT));
+        if (has_alt) _ = c.ioctl(fd, c.UI_SET_KEYBIT, @as(c_ulong, c.KEY_LEFTALT));
+        _ = c.ioctl(fd, c.UI_SET_KEYBIT, @as(c_ulong, @intCast(main_key)));
 
         // Setup virtual device using C struct
         var setup: c.struct_uinput_setup = undefined;
@@ -106,37 +131,55 @@ pub const TextInserter = struct {
         // Small delay for device creation
         std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
 
-        // Press Ctrl
-        try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 1);
-        try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+        // Press modifiers
+        if (has_ctrl) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 1);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        }
+        if (has_shift) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTSHIFT, 1);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        }
+        if (has_alt) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTALT, 1);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        }
 
-        // Small delay
+        // Press main key
+        try self.emitEvent(c.EV_KEY, main_key, 1);
+        try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
         std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
 
-        // Press V
-        try self.emitEvent(c.EV_KEY, c.KEY_V, 1);
+        // Release main key
+        try self.emitEvent(c.EV_KEY, main_key, 0);
         try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-
-        // Small delay
         std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
 
-        // Release V
-        try self.emitEvent(c.EV_KEY, c.KEY_V, 0);
-        try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-
-        // Small delay
-        std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
-
-        // Release Ctrl
-        try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 0);
-        try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+        // Release modifiers (reverse order)
+        if (has_alt) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTALT, 0);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        }
+        if (has_shift) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTSHIFT, 0);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        }
+        if (has_ctrl) {
+            try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 0);
+            try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
+        }
 
         // Cleanup
         _ = c.ioctl(fd, c.UI_DEV_DESTROY, @as(c_int, 0));
         std.posix.close(fd);
         self.uinput_fd = null;
 
-        utils.logDebug("Executed native paste command (Ctrl+V)", .{});
+        utils.logDebug("Executed native paste command ({s})", .{keybind});
     }
 
     /// Emit a single input event

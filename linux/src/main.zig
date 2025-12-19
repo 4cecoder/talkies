@@ -165,7 +165,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     // Handle output based on config
     if (cfg.auto_paste) {
         std.debug.print("Inserting text at cursor...\n", .{});
-        try inserter.insertTextAtCursor(transcription);
+        try inserter.insertTextAtCursor(transcription, cfg.paste_keybind);
         std.debug.print("Text inserted successfully!\n", .{});
     } else {
         std.debug.print("Copying to clipboard...\n", .{});
@@ -565,7 +565,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 // Handle output based on config
                 if (cfg.auto_paste) {
                     std.debug.print("✨ Inserting text at cursor...\n", .{});
-                    inserter.insertTextAtCursor(transcription) catch |err| {
+                    inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
                         std.debug.print("Error inserting text: {}\n", .{err});
                     };
                 } else {
@@ -701,7 +701,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         // Handle output based on config
                         if (cfg.auto_paste) {
                             std.debug.print("✨ Inserting text at cursor...\n", .{});
-                            inserter.insertTextAtCursor(transcription) catch |err| {
+                            inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
                                 std.debug.print("Error inserting text: {}\n", .{err});
                             };
                         } else {
