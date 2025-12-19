@@ -3,10 +3,16 @@
 
 echo "Cleaning up stuck Talkies processes..."
 
-# Kill any stuck arecord processes
+# Kill any stuck arecord/parecord processes
 if pgrep -f "arecord.*talkies-recording" > /dev/null; then
     echo "Killing stuck arecord processes..."
     pkill -f "arecord.*talkies-recording"
+    sleep 1
+fi
+
+if pgrep -f "parecord.*talkies-recording" > /dev/null; then
+    echo "Killing stuck parecord processes..."
+    pkill -f "parecord.*talkies-recording"
     sleep 1
 fi
 
@@ -30,4 +36,4 @@ echo "Port status:"
 ss -tulpn 2>/dev/null | grep 6789 || echo "  Port 6789 is free"
 echo ""
 echo "Running talkies processes:"
-ps aux | grep -E "talkies|arecord.*talkies" | grep -v grep | grep -v cleanup.sh || echo "  None"
+ps aux | grep -E "talkies|[ap]arecord.*talkies" | grep -v grep | grep -v cleanup.sh || echo "  None"
