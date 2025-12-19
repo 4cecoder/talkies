@@ -24,6 +24,12 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    // Add C source files for GTK wrappers
+    exe.addCSourceFile(.{
+        .file = b.path("src/yap_window_gtk.c"),
+        .flags = &.{"-std=c11"},
+    });
+
     // Add build options for runtime platform detection
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", has_x11);
@@ -66,10 +72,13 @@ pub fn build(b: *std.Build) void {
 
     exe.linkSystemLibrary("dbus-1"); // For system tray
     exe.linkSystemLibrary("gtk-4"); // For settings UI
+    exe.linkSystemLibrary("glib-2.0"); // For GLib functions in GTK wrappers
+    exe.linkSystemLibrary("gobject-2.0"); // For GObject functions in GTK wrappers
     exe.linkLibC();
 
     // Add include paths for whisper.h and GTK4
     exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
+    exe.addIncludePath(b.path("src")); // For yap_window_gtk.h
     exe.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
     exe.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
     exe.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });

@@ -745,7 +745,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     const yap_win = yap_window.YapWindow.create(
                         allocator,
                         &sandbox.?,
-                        daemon_state,
+                        &daemon_state,
                     ) catch |err| {
                         utils.logError("Failed to create YAP window: {}", .{err});
                         std.debug.print("⚠️  YAP window creation failed: {}, auto-accepting\n", .{err});

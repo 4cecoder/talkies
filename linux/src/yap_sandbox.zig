@@ -205,39 +205,39 @@ pub const Sandbox = struct {
 
     /// Format revision history for display
     pub fn formatHistory(self: *Sandbox) ![]const u8 {
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        errdefer buffer.deinit();
+        // Build format string parts
+        var parts: std.ArrayList([]const u8) = .{};
+        defer parts.deinit(self.allocator);
 
-        const writer = buffer.writer();
-
-        try writer.writeAll("\n╔════════════════════════════════════════════════════════╗\n");
-        try writer.writeAll("║            YAP SANDBOX - REVISION HISTORY              ║\n");
-        try writer.writeAll("╚════════════════════════════════════════════════════════╝\n\n");
+        try parts.append(self.allocator, "\n╔════════════════════════════════════════════════════════╗\n");
+        try parts.append(self.allocator, "║            YAP SANDBOX - REVISION HISTORY              ║\n");
+        try parts.append(self.allocator, "╚════════════════════════════════════════════════════════╝\n\n");
 
         // Show initial context if provided
         if (self.initial_context) |ctx| {
-            try writer.writeAll("📋 INITIAL CONTEXT:\n");
-            try writer.print("{s}\n\n", .{ctx});
-            try writer.writeAll("─────────────────────────────────────────────────────────\n\n");
+            try parts.append(self.allocator, "📋 INITIAL CONTEXT:\n");
+            const ctx_str = try std.fmt.allocPrint(self.allocator, "{s}\n\n", .{ctx});
+            try parts.append(self.allocator, ctx_str);
+            try parts.append(self.allocator, "─────────────────────────────────────────────────────────\n\n");
         }
 
         // Show yapping
-        try writer.print("🗣️  YOUR YAPPING ({d} chars):\n", .{self.yapping.len});
-        try writer.print("{s}\n\n", .{self.yapping});
-        try writer.writeAll("─────────────────────────────────────────────────────────\n\n");
+        const yapping_header = try std.fmt.allocPrint(self.allocator, "🗣️  YOUR YAPPING ({d} chars):\n{s}\n\n", .{ self.yapping.len, self.yapping });
+        try parts.append(self.allocator, yapping_header);
+        try parts.append(self.allocator, "─────────────────────────────────────────────────────────\n\n");
 
         // Show refinements
         if (self.revisions.items.len > 0) {
-            try writer.writeAll("✨ REFINEMENTS:\n\n");
+            try parts.append(self.allocator, "✨ REFINEMENTS:\n\n");
             for (self.revisions.items, 0..) |rev, i| {
-                try writer.print("┌─ [v{d}] {d} chars ─┐\n", .{ i + 1, rev.char_count });
-                try writer.print("{s}\n", .{rev.text});
-                try writer.writeAll("└──────────────────┘\n\n");
+                const rev_str = try std.fmt.allocPrint(self.allocator, "┌─ [v{d}] {d} chars ─┐\n{s}\n└──────────────────┘\n\n", .{ i + 1, rev.char_count, rev.text });
+                try parts.append(self.allocator, rev_str);
             }
         } else {
-            try writer.writeAll("⏳ No refinements yet\n\n");
+            try parts.append(self.allocator, "⏳ No refinements yet\n\n");
         }
 
-        return buffer.toOwnedSlice();
+        // Join all parts
+        return std.mem.join(self.allocator, "", parts.items);
     }
 };
