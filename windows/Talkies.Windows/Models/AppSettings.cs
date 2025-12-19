@@ -38,6 +38,9 @@ namespace Talkies.Windows.Models
         public bool CrashReportingEnabled { get; set; } = false;
         public string CrashReportingEndpoint { get; set; } = string.Empty;
         public bool CrashReportingPrivacyAccepted { get; set; } = false;
+
+        // Developer team config
+        public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
     }
 
     public class AdvancedTtsSettings
@@ -54,5 +57,10 @@ namespace Talkies.Windows.Models
         public bool IsEnabled { get; set; } = true;
         public string Endpoint { get; set; } = "http://127.0.0.1:1234";
         public string Model { get; set; } = "lm-kit.sentiment_analysis-tinyllama-1.1b-1t-openorca-en";
+    }
+
+    public class TalkiesTeamConfig
+    {
+        public bool EnableSimulateCrashesModule { get; set; } = false;
     }
 }
