@@ -38,6 +38,8 @@ pub const TextInserter = struct {
         var clipboard = Clipboard.init(self.allocator);
         defer clipboard.deinit();
 
+        utils.logDebug("About to paste: \"{s}\"", .{text});
+
         // Copy new text to clipboard
         try clipboard.copy(text);
 

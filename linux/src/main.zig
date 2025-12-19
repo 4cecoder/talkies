@@ -550,7 +550,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 // Wait for parecord/arecord to finish writing the file
                 std.debug.print("[DEBUG] Waiting for recording file to be written...\n", .{});
-                std.posix.nanosleep(0, 500 * std.time.ns_per_ms); // 500ms delay
+                std.posix.nanosleep(0, 200 * std.time.ns_per_ms); // 200ms delay (toggle script already waits for parecord to exit)
 
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
