@@ -7,6 +7,8 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Talkies.Windows.Models;
 
 namespace Talkies.Windows.Services
@@ -88,7 +90,7 @@ namespace Talkies.Windows.Services
             SaveCrashDataForMonitor(crashData);
         }
 
-        private void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
         {
             var crashData = new
             {
@@ -111,7 +113,12 @@ namespace Talkies.Windows.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(data);
+                // Save the same format as sent to endpoint
+                var crashJson = JsonConvert.SerializeObject(data);
+                var crashJ = JObject.Parse(crashJson);
+                var errorEntry = new JObject(crashJ);
+                errorEntry.Remove("Specs");
+                var json = errorEntry.ToString(Formatting.Indented);
                 File.WriteAllText(_crashDataPath, json);
             }
             catch (Exception ex)
@@ -124,9 +131,33 @@ namespace Talkies.Windows.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                AppendToLogFile(_crashLogPath, json + Environment.NewLine);
-                Logger.Error($"Crash logged: {json}");
+                var crashJson = JsonConvert.SerializeObject(data);
+                var crashJ = JObject.Parse(crashJson);
+                var system = crashJ["Specs"];
+                var errorEntry = new JObject(crashJ);
+                errorEntry.Remove("Specs");
+
+                JObject log;
+                if (!File.Exists(_crashLogPath) || new FileInfo(_crashLogPath).Length == 0)
+                {
+                    // First entry
+                    log = new JObject
+                    {
+                        ["system"] = system,
+                        ["errors"] = new JArray { errorEntry }
+                    };
+                }
+                else
+                {
+                    // Read existing, add to errors
+                    var existingJson = File.ReadAllText(_crashLogPath);
+                    log = JObject.Parse(existingJson);
+                    var errors = (JArray)log["errors"];
+                    errors.Add(errorEntry);
+                }
+
+                File.WriteAllText(_crashLogPath, log.ToString(Formatting.Indented));
+                Logger.Error($"Crash logged: {errorEntry.ToString(Formatting.Indented)}");
             }
             catch (Exception ex)
             {
@@ -144,7 +175,12 @@ namespace Talkies.Windows.Services
 
             try
             {
-                var json = JsonSerializer.Serialize(data);
+                // Send the same format as logged errors
+                var crashJson = JsonConvert.SerializeObject(data);
+                var crashJ = JObject.Parse(crashJson);
+                var errorEntry = new JObject(crashJ);
+                errorEntry.Remove("Specs");
+                var json = errorEntry.ToString(Formatting.Indented);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
                 if (response.IsSuccessStatusCode)
@@ -246,7 +282,7 @@ namespace Talkies.Windows.Services
 
             try
             {
-                var json = JsonSerializer.Serialize(eventData);
+                var json = System.Text.Json.JsonSerializer.Serialize(eventData);
                 AppendToLogFile(_analyticsLogPath, json + Environment.NewLine);
                 if (_settings.CrashReportingEnabled && IsValidEndpoint(_settings.CrashReportingEndpoint))
                 {
@@ -269,7 +305,7 @@ namespace Talkies.Windows.Services
 
             try
             {
-                var json = JsonSerializer.Serialize(data);
+                var json = System.Text.Json.JsonSerializer.Serialize(data);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 using var response = await _httpClient.PostAsync(_settings.CrashReportingEndpoint, content);
                 if (!response.IsSuccessStatusCode)
@@ -367,7 +403,7 @@ namespace Talkies.Windows.Services
                     if (File.Exists(crashDataPath))
                     {
                         var json = File.ReadAllText(crashDataPath);
-                        var crashData = JsonSerializer.Deserialize<object>(json);
+                        var crashData = System.Text.Json.JsonSerializer.Deserialize<object>(json);
 
                         if (settings.CrashReportingEnabled && !string.IsNullOrEmpty(settings.CrashReportingEndpoint))
                         {
