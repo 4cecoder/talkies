@@ -212,7 +212,6 @@ namespace Talkies.Windows.ViewModels
     {
         private readonly SettingsService _settingsService;
         private readonly Action _closeAction;
-        private AppSettings _settings;
         private readonly SettingsService _settingsService;
 
         public ObservableCollection<PluginInfoViewModel> Plugins { get; } = new();
@@ -223,7 +222,6 @@ namespace Talkies.Windows.ViewModels
         {
             _settingsService = settingsService;
             _closeAction = closeAction;
-            _settings = _settingsService.Load();
             _settingsService = settingsService;
             CloseCommand = new RelayCommand(_ => Close());
 
