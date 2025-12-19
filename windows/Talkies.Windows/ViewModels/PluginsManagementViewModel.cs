@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Windows;
 using System.Windows.Input;
 using Talkies.Windows.Models;
 using Talkies.Windows.Plugins;
@@ -208,7 +210,9 @@ namespace Talkies.Windows.ViewModels
 
     public class PluginsManagementViewModel : ViewModelBase
     {
+        private readonly SettingsService _settingsService;
         private readonly Action _closeAction;
+        private AppSettings _settings;
         private readonly SettingsService _settingsService;
 
         public ObservableCollection<PluginInfoViewModel> Plugins { get; } = new();
@@ -217,7 +221,9 @@ namespace Talkies.Windows.ViewModels
 
         public PluginsManagementViewModel(Action closeAction, SettingsService settingsService)
         {
+            _settingsService = settingsService;
             _closeAction = closeAction;
+            _settings = _settingsService.Load();
             _settingsService = settingsService;
             CloseCommand = new RelayCommand(_ => Close());
 
