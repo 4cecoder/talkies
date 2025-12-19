@@ -228,7 +228,29 @@ namespace Talkies.Windows.ViewModels
             {
                 if (AvailableLlmModels.Count == 0)
                 {
-                    await FetchLlmModelsAsync();
+                    if (SelectedLlmProvider == "LM Studio" && !_settings.LmStudioAvailabilityChecked)
+                    {
+                        await FetchLlmModelsAsync(silent: true);
+                        _settings.LmStudioAvailabilityChecked = true;
+                        _settingsService.Save(_settings);
+                        if (AvailableLlmModels.Count == 0)
+                        {
+                            // Switch to Ollama silently
+                            SelectedLlmProvider = "Ollama";
+                            _settings.SelectedLlmProvider = "Ollama";
+                            await FetchLlmModelsAsync(silent: true);
+                        }
+                    }
+                    else if (SelectedLlmProvider == "Ollama" && !_settings.OllamaAvailabilityChecked)
+                    {
+                        await FetchLlmModelsAsync(silent: true);
+                        _settings.OllamaAvailabilityChecked = true;
+                        _settingsService.Save(_settings);
+                    }
+                    else
+                    {
+                        await FetchLlmModelsAsync();
+                    }
                 }
             }
             catch (Exception ex)
@@ -318,7 +340,7 @@ namespace Talkies.Windows.ViewModels
             _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = "openai/gpt-oss-20b" };
         }
 
-        private async System.Threading.Tasks.Task FetchLlmModelsAsync()
+        private async System.Threading.Tasks.Task FetchLlmModelsAsync(bool silent = false)
         {
             IsFetchingModels = true;
             try
@@ -354,17 +376,31 @@ namespace Talkies.Windows.ViewModels
                 var available = await _currentLlmProvider.IsAvailableAsync();
                 if (!available)
                 {
-                    Logger.Error($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
-                    DialogHelper.ShowWarning("Connection Error", $"{SelectedLlmProvider} is not available at {LlmEndpoint}.\n\nPlease verify:\n- {SelectedLlmProvider} is running\n- Endpoint URL is correct\n- Firewall is not blocking the connection");
+                    if (silent)
+                    {
+                        Logger.Info($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
+                    }
+                    else
+                    {
+                        Logger.Error($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
+                        DialogHelper.ShowWarning("Connection Error", $"{SelectedLlmProvider} is not available at {LlmEndpoint}.\n\nPlease verify:\n- {SelectedLlmProvider} is running\n- Endpoint URL is correct\n- Firewall is not blocking the connection");
+                    }
                     return;
                 }
 
                 // Fetch models
-                var success = await _currentLlmProvider.FetchModelsAsync();
+                var success = await _currentLlmProvider.FetchModelsAsync(silent);
                 if (!success)
                 {
-                    Logger.Error($"Failed to fetch models from {SelectedLlmProvider}");
-                    DialogHelper.ShowError("Fetch Error", $"Failed to fetch models from {SelectedLlmProvider}.\n\nPlease try again or check your connection.");
+                    if (silent)
+                    {
+                        Logger.Info($"Failed to fetch models from {SelectedLlmProvider}");
+                    }
+                    else
+                    {
+                        Logger.Error($"Failed to fetch models from {SelectedLlmProvider}");
+                        DialogHelper.ShowError("Fetch Error", $"Failed to fetch models from {SelectedLlmProvider}.\n\nPlease try again or check your connection.");
+                    }
                     return;
                 }
 
