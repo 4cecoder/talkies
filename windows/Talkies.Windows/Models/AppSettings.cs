@@ -33,6 +33,10 @@ namespace Talkies.Windows.Models
         // Plugin settings
         public AdvancedTtsSettings AdvancedTts { get; set; } = new();
         public SentimentSettings Sentiment { get; set; } = new();
+
+        // Crash reporting settings
+        public bool CrashReportingEnabled { get; set; } = false;
+        public string CrashReportingEndpoint { get; set; } = string.Empty;
     }
 
     public class AdvancedTtsSettings
