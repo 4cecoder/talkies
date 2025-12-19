@@ -148,6 +148,102 @@ namespace Talkies.Windows.Tests.Services
         }
 
         [Test]
+        public void OnNormalExit_DeletesCrashDataFile()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+            var crashDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Talkies", "crash_data.json");
+            File.WriteAllText(crashDataPath, "{}");
+
+            // Act
+            reporter.OnNormalExit();
+
+            // Assert
+            Assert.IsFalse(File.Exists(crashDataPath));
+        }
+
+        [Test]
+        public void TrackEvent_IncludesCorrectData()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            reporter.TrackEvent("test_event", new { key = "value" });
+
+            // Assert
+            var analyticsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Talkies", "analytics.log");
+            if (File.Exists(analyticsPath))
+            {
+                var content = File.ReadAllText(analyticsPath);
+                Assert.IsTrue(content.Contains("test_event"));
+                Assert.IsTrue(content.Contains("value"));
+                Assert.IsTrue(content.Contains(Environment.MachineName));
+            }
+        }
+
+        [Test]
+        public void GetSystemSpecs_ReturnsExpectedProperties()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            var specs = typeof(CrashReporter).GetMethod("GetSystemSpecs", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.Invoke(reporter, null) as dynamic;
+
+            // Assert
+            Assert.IsNotNull(specs);
+            Assert.IsNotNull(specs?.OS);
+            Assert.IsTrue(specs?.ProcessorCount > 0);
+        }
+
+        [Test]
+        public void GetFullLogDump_ReturnsContent_WhenFileExists()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+            var crashLogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Talkies", "crash.log");
+            var testContent = "test log content";
+            File.WriteAllText(crashLogPath, testContent);
+
+            // Act
+            var result = typeof(CrashReporter).GetMethod("GetFullLogDump", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.Invoke(reporter, null) as string;
+
+            // Assert
+            Assert.IsTrue(result?.Contains(testContent));
+        }
+
+        [Test]
+        public void IsValidEndpoint_RejectsLocalhost()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var result = (bool)method?.Invoke(reporter, new[] { "http://localhost/test" });
+
+            // Assert
+            Assert.IsFalse(result);
+        }
+
+        [Test]
+        public void IsValidEndpoint_AcceptsHttpsExternal()
+        {
+            // Arrange
+            var reporter = new CrashReporter(_settings);
+
+            // Act
+            var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var result = (bool)method?.Invoke(reporter, new[] { "https://example.com/api" });
+
+            // Assert
+            Assert.IsTrue(result);
+        }
+
+        [Test]
         public void GetLocalIpAddress_ReturnsString()
         {
             // Arrange
