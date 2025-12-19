@@ -376,11 +376,7 @@ namespace Talkies.Windows.ViewModels
                 var available = await _currentLlmProvider.IsAvailableAsync();
                 if (!available)
                 {
-                    if (silent)
-                    {
-                        Logger.Info($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
-                    }
-                    else
+                    if (!silent)
                     {
                         Logger.Error($"{SelectedLlmProvider} is not available at {LlmEndpoint}");
                         DialogHelper.ShowWarning("Connection Error", $"{SelectedLlmProvider} is not available at {LlmEndpoint}.\n\nPlease verify:\n- {SelectedLlmProvider} is running\n- Endpoint URL is correct\n- Firewall is not blocking the connection");
@@ -392,11 +388,7 @@ namespace Talkies.Windows.ViewModels
                 var success = await _currentLlmProvider.FetchModelsAsync(silent);
                 if (!success)
                 {
-                    if (silent)
-                    {
-                        Logger.Info($"Failed to fetch models from {SelectedLlmProvider}");
-                    }
-                    else
+                    if (!silent)
                     {
                         Logger.Error($"Failed to fetch models from {SelectedLlmProvider}");
                         DialogHelper.ShowError("Fetch Error", $"Failed to fetch models from {SelectedLlmProvider}.\n\nPlease try again or check your connection.");
