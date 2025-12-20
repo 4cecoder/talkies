@@ -741,6 +741,15 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
 
+                // Check if we're already in YAP mode - if so, append instead of starting new session
+                const current_daemon_state = daemon_state.getState();
+                if (current_daemon_state == .yap_refining) {
+                    std.debug.print("📎 YAP MODE: Appending transcription to existing session\n", .{});
+                    try daemon_state.setYapAppendText(transcription);
+                    // Don't start YAP block, just continue the loop
+                    continue;
+                }
+
                 // YAP mode: Interactive refinement with session persistence
                 var final_text: []const u8 = transcription;
                 var session_manager: ?yap_sessions.SessionManager = null;
@@ -900,6 +909,32 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                                 }
                                 std.debug.print("❌ YAP: Cancelled, using original\n", .{});
                                 break :yap_interactive;
+                            },
+
+                            .append_transcription => {
+                                const append_text = daemon_state.getYapAppendText();
+                                defer if (append_text) |txt| allocator.free(txt);
+
+                                if (append_text) |txt| {
+                                    std.debug.print("📎 YAP: Appending {d} chars to sandbox\n", .{txt.len});
+
+                                    // Append to sandbox yapping with space separator
+                                    const old_yapping = sandbox.?.yapping;
+                                    const new_yapping = try std.fmt.allocPrint(
+                                        allocator,
+                                        "{s} {s}",
+                                        .{ old_yapping, txt },
+                                    );
+                                    allocator.free(old_yapping);
+                                    sandbox.?.yapping = new_yapping;
+
+                                    // Update window display
+                                    yap_win.updateDisplay() catch {};
+
+                                    std.debug.print("📎 Sandbox now has {d} chars total\n", .{new_yapping.len});
+                                } else {
+                                    std.debug.print("⚠️  No append text available\n", .{});
+                                }
                             },
                         }
                     }

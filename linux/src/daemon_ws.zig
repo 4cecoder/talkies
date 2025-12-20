@@ -41,12 +41,14 @@ pub const YapCommand = enum {
     accept,  // Accept current refinement and paste
     refine,  // Request another refinement
     cancel,  // Cancel YAP mode, paste original
+    append_transcription,  // Append new transcription to sandbox
 
     pub fn toString(self: YapCommand) []const u8 {
         return switch (self) {
             .accept => "accept",
             .refine => "refine",
             .cancel => "cancel",
+            .append_transcription => "append_transcription",
         };
     }
 };
@@ -61,6 +63,7 @@ pub const DaemonState = struct {
     // YAP command queue (for interactive refinement)
     yap_command: ?YapCommand,
     yap_refine_context: ?[]const u8,  // Optional context for refine command
+    yap_append_text: ?[]const u8,  // Pending transcription to append
     yap_mutex: std.Thread.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, ws_server: *websocket.Server) DaemonState {
@@ -71,6 +74,7 @@ pub const DaemonState = struct {
             .mutex = .{},
             .yap_command = null,
             .yap_refine_context = null,
+            .yap_append_text = null,
             .yap_mutex = .{},
         };
     }
@@ -265,6 +269,36 @@ pub const DaemonState = struct {
         return null;
     }
 
+    /// Get YAP append text (thread-safe, caller owns returned memory)
+    pub fn getYapAppendText(self: *DaemonState) ?[]const u8 {
+        self.yap_mutex.lock();
+        defer self.yap_mutex.unlock();
+
+        if (self.yap_append_text) |text| {
+            // Return a copy so caller can use it safely
+            return self.allocator.dupe(u8, text) catch null;
+        }
+        return null;
+    }
+
+    /// Set YAP append transcription (thread-safe)
+    pub fn setYapAppendText(self: *DaemonState, text: []const u8) !void {
+        self.yap_mutex.lock();
+        defer self.yap_mutex.unlock();
+
+        // Clear any existing append text
+        if (self.yap_append_text) |old_text| {
+            self.allocator.free(old_text);
+            self.yap_append_text = null;
+        }
+
+        // Store new text
+        self.yap_append_text = try self.allocator.dupe(u8, text);
+        self.yap_command = .append_transcription;
+
+        std.debug.print("YAP append text set: {d} chars\n", .{text.len});
+    }
+
     /// Clear YAP command (thread-safe)
     pub fn clearYapCommand(self: *DaemonState) void {
         self.yap_mutex.lock();
@@ -275,6 +309,11 @@ pub const DaemonState = struct {
         if (self.yap_refine_context) |ctx| {
             self.allocator.free(ctx);
             self.yap_refine_context = null;
+        }
+
+        if (self.yap_append_text) |text| {
+            self.allocator.free(text);
+            self.yap_append_text = null;
         }
 
         std.debug.print("YAP command cleared\n", .{});
@@ -294,13 +333,6 @@ pub fn handleMessage(
         const after_type = message[type_start + 6 ..]; // Skip "type"
 
         if (std.mem.indexOf(u8, after_type, "\"start_recording\"")) |_| {
-            // Ignore recording commands when in YAP mode
-            const current_state = daemon_state.getState();
-            if (current_state == .yap_refining) {
-                std.debug.print("⚠️  Ignoring start_recording - YAP mode active\n", .{});
-                return;
-            }
-
             const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
             const ts_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
             std.debug.print("[{d}ms] WebSocket: Received start_recording command\n", .{ts_ms});
