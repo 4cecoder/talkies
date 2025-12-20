@@ -9,6 +9,9 @@ typedef struct DaemonStatusWindow DaemonStatusWindow;
 // GTK initialization (call once at startup)
 void daemon_status_gtk_init(void);
 
+// GTK event loop - process pending events (call in tight loop)
+void daemon_status_gtk_process_events(void);
+
 // Window lifecycle
 DaemonStatusWindow* daemon_status_window_new(void);
 void daemon_status_window_destroy(DaemonStatusWindow *win);

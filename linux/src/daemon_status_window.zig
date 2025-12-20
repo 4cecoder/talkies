@@ -104,4 +104,9 @@ pub const DaemonStatusWindow = struct {
             avg_duration,
         );
     }
+
+    /// Process GTK events - call in tight loop to keep window responsive
+    pub fn processEvents() void {
+        c.daemon_status_gtk_process_events();
+    }
 };

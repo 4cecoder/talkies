@@ -11,6 +11,7 @@ const daemon_ws = @import("daemon_ws.zig");
 const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
+const daemon_status_window = @import("daemon_status_window.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -31,6 +32,7 @@ const Command = enum {
 // Global state for daemon tray callbacks
 var daemon_should_quit = false;
 var daemon_show_settings = false;
+var daemon_status_win: ?*daemon_status_window.DaemonStatusWindow = null;
 
 // Tray callbacks
 fn onQuitCallback() void {
@@ -463,10 +465,24 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer io_threaded.deinit();
     const io = io_threaded.io();
 
+    // Initialize GTK and create daemon status window
+    // GTK init is handled in C layer when first window is created
+    daemon_status_win = try daemon_status_window.DaemonStatusWindow.create(allocator);
+    errdefer if (daemon_status_win) |win| win.destroy();
+
+    if (daemon_status_win) |win| {
+        win.show();
+        win.setState("initializing");
+        win.addLog(.info, "Daemon starting...");
+    }
+
     // Initialize GTK for YAP mode GUI (if enabled)
     if (cfg.yap_mode_enabled) {
-        // GTK init is handled in C layer when YapWindow.create() is called
-        utils.log("YAP mode enabled - GTK will be initialized when window is created", .{});
+        utils.log("YAP mode enabled - YAP window will be created when needed", .{});
+        if (daemon_status_win) |win| {
+            win.setYapEnabled(true);
+            win.addLog(.info, "YAP mode enabled");
+        }
     }
 
     // TODO: Re-enable GTK settings UI after Ghostty bindings support Zig 0.16
@@ -486,6 +502,13 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     // Get effective platform (resolve "auto")
     const platform = cfg.getEffectivePlatform();
     const is_wayland = std.mem.eql(u8, platform, "wayland");
+
+    if (daemon_status_win) |win| {
+        win.setPlatform(platform);
+        var platform_msg_buf: [128]u8 = undefined;
+        const platform_msg = try std.fmt.bufPrint(&platform_msg_buf, "Platform: {s}", .{platform});
+        win.addLog(.info, platform_msg);
+    }
 
     std.debug.print("Talkies daemon started\n", .{});
     std.debug.print("Platform: {s} (config: {s})\n", .{ platform, cfg.platform });
@@ -508,8 +531,21 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
     // Load whisper model once at startup
     std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+
+    if (daemon_status_win) |win| {
+        var model_msg_buf: [128]u8 = undefined;
+        const model_msg = try std.fmt.bufPrint(&model_msg_buf, "Loading model: {s}", .{cfg.model});
+        win.addLog(.info, model_msg);
+        win.setModel(cfg.model);
+    }
+
     try whisper_service.loadModel(cfg.model);
     std.debug.print("Model loaded. Ready!\n\n", .{});
+
+    if (daemon_status_win) |win| {
+        win.addLog(.info, "Model loaded successfully");
+        win.setState("idle");
+    }
 
     // In Wayland mode, use WebSocket for real-time communication
     // Daemon handles recording internally (no external script needed)
@@ -574,11 +610,26 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
             if (current_state == .recording and last_state != .recording) {
                 std.debug.print("🔴 STATE CHANGED TO RECORDING - Starting audio capture NOW\n", .{});
 
+                if (daemon_status_win) |win| {
+                    win.setState("recording");
+                    win.addLog(.info, "Recording started");
+                    win.setActivity("Recording audio...");
+                }
+
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_ms = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
 
                 recorder.startRecording(recording_file, device) catch |err| {
                     std.debug.print("Error starting recording: {}\n", .{err});
+
+                    if (daemon_status_win) |win| {
+                        var err_buf: [256]u8 = undefined;
+                        const err_msg = std.fmt.bufPrint(&err_buf, "Recording error: {}", .{err}) catch "Recording error";
+                        win.addLog(.err, err_msg);
+                        win.setState("idle");
+                        win.setActivity("Error");
+                    }
+
                     daemon_state.broadcastError("Failed to start recording", "RECORDING_ERROR") catch {};
                     daemon_state.setState(.idle) catch {};
                     last_state = current_state;
@@ -645,12 +696,27 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 std.debug.print("⚙️  Processing transcription...\n", .{});
 
+                if (daemon_status_win) |win| {
+                    win.setState("processing");
+                    win.addLog(.info, "Transcribing audio...");
+                    win.setActivity("Running Whisper model...");
+                }
+
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
 
                 // Transcribe the recording
                 const transcription = whisper_service.transcribe(recording_file) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
+
+                    if (daemon_status_win) |win| {
+                        var err_buf: [256]u8 = undefined;
+                        const err_msg = std.fmt.bufPrint(&err_buf, "Transcription error: {}", .{err}) catch "Transcription error";
+                        win.addLog(.err, err_msg);
+                        win.setState("idle");
+                        win.setActivity("Error");
+                    }
+
                     daemon_state.broadcastError("Transcription failed", "TRANSCRIPTION_ERROR") catch {};
                     daemon_state.setState(.idle) catch {};
                     continue;
@@ -662,6 +728,13 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 const duration_ms = end_time - start_time;
 
                 std.debug.print("📝 Transcription ({d} chars): {s}\n", .{ transcription.len, transcription });
+
+                if (daemon_status_win) |win| {
+                    var success_buf: [256]u8 = undefined;
+                    const success_msg = try std.fmt.bufPrint(&success_buf, "Transcribed: {d} chars in {d}ms", .{ transcription.len, duration_ms });
+                    win.addLog(.info, success_msg);
+                    win.setLastTranscription("Just now");
+                }
 
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
@@ -860,6 +933,17 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 // Reset state to idle
                 try daemon_state.setState(.idle);
+
+                if (daemon_status_win) |win| {
+                    win.setState("idle");
+                    win.addLog(.info, "Ready for next recording");
+                    win.setActivity("Idle");
+                }
+            }
+
+            // Process GTK events to keep status window responsive
+            if (daemon_status_win) |_| {
+                daemon_status_window.DaemonStatusWindow.processEvents();
             }
 
             // Update last state

@@ -47,6 +47,13 @@ void daemon_status_gtk_init(void) {
     }
 }
 
+void daemon_status_gtk_process_events(void) {
+    // Process all pending GTK events without blocking
+    while (g_main_context_pending(NULL)) {
+        g_main_context_iteration(NULL, FALSE);
+    }
+}
+
 static void on_clear_logs_clicked(GtkButton *button, gpointer user_data) {
     DaemonStatusWindow *win = (DaemonStatusWindow*)user_data;
     daemon_status_window_clear_logs(win);
