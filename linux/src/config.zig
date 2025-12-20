@@ -25,7 +25,7 @@ pub const Config = struct {
     yap_mode_enabled: bool = true, // Enabled by default for testing
     yap_llm_model: []const u8 = "granite3.3:2b", // Ollama model to use
     yap_ollama_url: []const u8 = "http://localhost:11434",
-    yap_system_prompt: []const u8 = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct.",
+    yap_system_prompt: []const u8 = "You refine verbose voice transcriptions into clear, natural text. Keep the user's voice and intent. Don't capitalize every sentence - write naturally like you're texting or messaging. Be conversational, not formal.",
 
     // Daemon GUI settings
     show_status_gui: bool = true, // Show daemon status monitor window

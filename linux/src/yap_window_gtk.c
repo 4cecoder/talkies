@@ -202,7 +202,7 @@ YapWindowGtk* yap_window_gtk_new(void) {
     win->refine_btn = gtk_button_new_with_label("✨ Refine with LLM");
     gtk_box_append(GTK_BOX(btn_box), win->refine_btn);
 
-    win->accept_btn = gtk_button_new_with_label("✅ Accept & Paste");
+    win->accept_btn = gtk_button_new_with_label("✅ Accept & Copy");
     gtk_box_append(GTK_BOX(btn_box), win->accept_btn);
 
     return win;
