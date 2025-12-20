@@ -113,13 +113,13 @@ pub const Sandbox = struct {
         const prompt = if (self.initial_context) |ctx|
             try std.fmt.allocPrint(
                 self.allocator,
-                "Initial Context:\n{s}\n\nMy Thoughts (verbose):\n{s}\n\nCreate a concise, well-structured message combining the context and my thoughts:",
+                "Context:\n{s}\n\nRaw thoughts:\n{s}\n\nRefine these thoughts into a clear, cohesive message. Keep technical terms precise and business language natural. Remove filler words and redundancy while preserving key details:",
                 .{ ctx, self.yapping },
             )
         else
             try std.fmt.allocPrint(
                 self.allocator,
-                "My Thoughts (verbose):\n{s}\n\nRefine this into a concise, clear message:",
+                "Raw thoughts:\n{s}\n\nRefine these into a clear, cohesive message. Keep technical terms precise and business language natural. Remove filler words and redundancy while preserving key details:",
                 .{self.yapping},
             );
         defer self.allocator.free(prompt);
@@ -155,16 +155,23 @@ pub const Sandbox = struct {
         return refined;
     }
 
-    /// Request another refinement with additional context
-    pub fn refineAgain(self: *Sandbox, model: []const u8, additional_context: []const u8) ![]const u8 {
-        const current = self.getCurrentRefinement();
-
-        // Build prompt with context
-        const prompt = try std.fmt.allocPrint(
-            self.allocator,
-            "Current message:\n{s}\n\nAdditional instructions: {s}\n\nProvide the refined version:",
-            .{ current, additional_context },
-        );
+    /// Request another refinement
+    /// Re-refines using the full context + yapping (which may have been updated)
+    pub fn refineAgain(self: *Sandbox, model: []const u8, _: ?[]const u8) ![]const u8 {
+        // Build prompt using updated context and yapping
+        // This ensures edits to the context field and new transcriptions are respected
+        const prompt = if (self.initial_context) |ctx|
+            try std.fmt.allocPrint(
+                self.allocator,
+                "Context:\n{s}\n\nRaw thoughts:\n{s}\n\nRefine these thoughts into a clear, cohesive message. Keep technical terms precise and business language natural. Remove filler words and redundancy while preserving key details:",
+                .{ ctx, self.yapping },
+            )
+        else
+            try std.fmt.allocPrint(
+                self.allocator,
+                "Raw thoughts:\n{s}\n\nRefine these into a clear, cohesive message. Keep technical terms precise and business language natural. Remove filler words and redundancy while preserving key details:",
+                .{self.yapping},
+            );
         defer self.allocator.free(prompt);
 
         // Add user message

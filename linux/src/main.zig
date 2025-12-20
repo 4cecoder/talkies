@@ -976,11 +976,11 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             const ctx = daemon_state.getYapRefineContext();
                             defer if (ctx) |c| allocator.free(c);
 
-                            std.debug.print("🔄 YAP: Requesting another refinement...\n", .{});
+                            std.debug.print("🔄 YAP: Requesting another refinement (context and yapping updated)...\n", .{});
 
                             const new_refined = yap_sb.?.refineAgain(
                                 cfg.yap_llm_model,
-                                ctx orelse "Refine further, making it more concise and clear.",
+                                ctx,
                             ) catch |err| {
                                 utils.logError("Refinement failed: {}", .{err});
                                 std.debug.print("⚠️  Refinement failed: {}\n", .{err});

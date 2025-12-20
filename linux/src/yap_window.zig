@@ -126,9 +126,9 @@ pub const YapWindow = struct {
     fn onRefineClicked(user_data: ?*anyopaque) callconv(.c) void {
         const self: *YapWindow = @ptrCast(@alignCast(user_data));
 
-        // Get context text (Part 1 - optional initial context)
+        // Get context text (Part 1 - initial/background context)
         const context_text = c.yap_window_gtk_get_context_text(self.gtk_win);
-        const context = if (context_text != null and c.strlen(context_text) > 0)
+        const new_context = if (context_text != null and c.strlen(context_text) > 0)
             std.mem.span(context_text)
         else
             null;
@@ -136,14 +136,30 @@ pub const YapWindow = struct {
         // Get sandbox text (Part 2 - main transcription area)
         const sandbox_text = c.yap_window_gtk_get_sandbox_text(self.gtk_win);
 
-        // Update sandbox in backend with edited text from GUI
+        // Update sandbox yapping with edited text from GUI
         if (sandbox_text != null and c.strlen(sandbox_text) > 0) {
             const text = std.mem.span(sandbox_text);
+            const old_yapping = self.sandbox.yapping;
             self.sandbox.yapping = self.allocator.dupe(u8, text) catch return;
+            self.allocator.free(old_yapping);
         }
 
-        // Trigger refinement with context
-        self.daemon_state.setYapCommand(.refine, context) catch {};
+        // Update sandbox initial_context with edited context from GUI
+        if (new_context) |ctx| {
+            if (self.sandbox.initial_context) |old_ctx| {
+                self.allocator.free(old_ctx);
+            }
+            self.sandbox.initial_context = self.allocator.dupe(u8, ctx) catch return;
+        } else {
+            // User cleared the context field
+            if (self.sandbox.initial_context) |old_ctx| {
+                self.allocator.free(old_ctx);
+                self.sandbox.initial_context = null;
+            }
+        }
+
+        // Trigger refinement (no additional instructions, just use default)
+        self.daemon_state.setYapCommand(.refine, null) catch {};
     }
 
     fn onCancelClicked(user_data: ?*anyopaque) callconv(.c) void {
