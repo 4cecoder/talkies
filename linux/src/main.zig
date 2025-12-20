@@ -604,6 +604,24 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
         var last_state = daemon_ws.State.idle;
 
+        // YAP mode persistent state (outside main loop)
+        var yap_win: ?*yap_window.YapWindow = null;
+        var yap_sb: ?*yap_sandbox.Sandbox = null;
+        var yap_session_manager: ?*yap_sessions.SessionManager = null;
+        var yap_session_id: ?i64 = null;
+
+        defer {
+            if (yap_win) |win| win.destroy();
+            if (yap_sb) |sb| {
+                sb.deinit();
+                allocator.destroy(sb);
+            }
+            if (yap_session_manager) |sm| {
+                sm.deinit();
+                allocator.destroy(sm);
+            }
+        }
+
         // Event loop - handle recording/transcription based on state changes
         while (!daemon_should_quit) {
             const current_state = daemon_state.getState();
@@ -741,25 +759,34 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
 
-                // Check if we're already in YAP mode - if so, append instead of starting new session
-                const current_daemon_state = daemon_state.getState();
-                if (current_daemon_state == .yap_refining) {
-                    std.debug.print("📎 YAP MODE: Appending transcription to existing session\n", .{});
-                    try daemon_state.setYapAppendText(transcription);
-                    // Don't start YAP block, just continue the loop
+                // Check if we're already in YAP mode - if so, append to existing sandbox
+                if (yap_sb) |sb| {
+                    std.debug.print("📎 YAP MODE: Appending {d} chars to existing sandbox\n", .{transcription.len});
+
+                    // Append to sandbox yapping with space separator
+                    const old_yapping = sb.yapping;
+                    const new_yapping = try std.fmt.allocPrint(
+                        allocator,
+                        "{s} {s}",
+                        .{ old_yapping, transcription },
+                    );
+                    allocator.free(old_yapping);
+                    sb.yapping = new_yapping;
+
+                    // Update window display
+                    if (yap_win) |win| {
+                        win.updateDisplay() catch {};
+                    }
+
+                    std.debug.print("📎 Sandbox now has {d} chars total\n", .{new_yapping.len});
+
+                    // Return to yap_refining state and continue
+                    try daemon_state.setState(.yap_refining);
                     continue;
                 }
 
                 // YAP mode: Interactive refinement with session persistence
                 var final_text: []const u8 = transcription;
-                var session_manager: ?yap_sessions.SessionManager = null;
-                var sandbox: ?yap_sandbox.Sandbox = null;
-                var session_id: ?i64 = null;
-
-                defer {
-                    if (sandbox) |*sb| sb.deinit();
-                    if (session_manager) |*sm| sm.deinit();
-                }
 
                 yap_block: {
                     if (!cfg.yap_mode_enabled or transcription.len == 0) break :yap_block;
@@ -768,14 +795,17 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     std.debug.print("\n💬 YAP MODE: Refining your message with {s}...\n", .{cfg.yap_llm_model});
 
                     // Step 1: Initialize SessionManager
-                    session_manager = yap_sessions.SessionManager.init(allocator) catch |err| {
+                    const sm_ptr = try allocator.create(yap_sessions.SessionManager);
+                    sm_ptr.* = yap_sessions.SessionManager.init(allocator) catch |err| {
+                        allocator.destroy(sm_ptr);
                         utils.logError("Failed to initialize session manager: {}", .{err});
                         std.debug.print("⚠️  YAP session manager failed: {}, using basic refinement\n", .{err});
                         break :yap_block;
                     };
+                    yap_session_manager = sm_ptr;
 
                     // Step 2: Create a new session in database
-                    session_id = session_manager.?.createSession(
+                    yap_session_id = yap_session_manager.?.createSession(
                         transcription,
                         null, // No initial context for now
                         cfg.yap_llm_model,
@@ -786,10 +816,11 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         break :yap_block;
                     };
 
-                    utils.log("Created YAP session ID: {d}", .{session_id.?});
+                    utils.log("Created YAP session ID: {d}", .{yap_session_id.?});
 
                     // Step 3: Create YAP Sandbox with the transcription
-                    sandbox = yap_sandbox.Sandbox.init(
+                    const sb_ptr = try allocator.create(yap_sandbox.Sandbox);
+                    sb_ptr.* = yap_sandbox.Sandbox.init(
                         allocator,
                         transcription,
                         null, // No initial context
@@ -797,24 +828,26 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         cfg.yap_system_prompt,
                         io,
                     ) catch |err| {
+                        allocator.destroy(sb_ptr);
                         utils.logError("Failed to create sandbox: {}", .{err});
                         std.debug.print("⚠️  YAP sandbox creation failed: {}, using basic refinement\n", .{err});
                         // Mark session as abandoned
-                        if (session_id) |sid| {
-                            session_manager.?.abandonSession(sid) catch {};
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.abandonSession(sid) catch {};
                         }
                         break :yap_block;
                     };
+                    yap_sb = sb_ptr;
 
                     utils.log("Created YAP sandbox, requesting initial refinement...", .{});
 
                     // Step 4: Call sandbox.refineInitial() to get first refinement
-                    const refined = sandbox.?.refineInitial(cfg.yap_llm_model) catch |err| {
+                    const refined = yap_sb.?.refineInitial(cfg.yap_llm_model) catch |err| {
                         utils.logError("Failed to refine with LLM: {}", .{err});
                         std.debug.print("⚠️  YAP refinement failed: {}, using original transcription\n", .{err});
                         // Mark session as abandoned
-                        if (session_id) |sid| {
-                            session_manager.?.abandonSession(sid) catch {};
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.abandonSession(sid) catch {};
                         }
                         break :yap_block;
                     };
@@ -822,125 +855,36 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     std.debug.print("✨ Refined ({d} chars): {s}\n\n", .{ refined.len, refined });
 
                     // Step 5: Save sandbox to database (all revisions)
-                    session_manager.?.saveSandbox(session_id.?, &sandbox.?) catch |err| {
+                    yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch |err| {
                         utils.logError("Failed to save sandbox to database: {}", .{err});
                         std.debug.print("⚠️  YAP session save failed: {}, but continuing...\n", .{err});
                     };
 
-                    utils.log("YAP session saved to database: {d} revision(s)", .{sandbox.?.getRevisionCount()});
+                    utils.log("YAP session saved to database: {d} revision(s)", .{yap_sb.?.getRevisionCount()});
 
                     // Step 6: Create and show YAP window for interactive refinement
                     try daemon_state.setState(.yap_refining);
 
-                    const yap_win = yap_window.YapWindow.create(
+                    yap_win = yap_window.YapWindow.create(
                         allocator,
-                        &sandbox.?,
+                        yap_sb.?,
                         &daemon_state,
                     ) catch |err| {
                         utils.logError("Failed to create YAP window: {}", .{err});
                         std.debug.print("⚠️  YAP window creation failed: {}, auto-accepting\n", .{err});
                         final_text = refined;
-                        if (session_id) |sid| {
-                            session_manager.?.completeSession(sid, final_text) catch {};
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.completeSession(sid, final_text) catch {};
                         }
                         break :yap_block;
                     };
 
-                    yap_win.show();
+                    yap_win.?.show();
 
-                    std.debug.print("💬 YAP window displayed. Waiting for user interaction...\n", .{});
+                    std.debug.print("💬 YAP window displayed. Use main loop to handle commands...\n", .{});
 
-                    // Step 7: Interactive refinement loop
-                    yap_interactive: while (true) {
-                        // Process GTK events to keep window responsive and visible
-                        yap_window.YapWindow.processEvents();
-
-                        // Wait for user command
-                        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
-
-                        const cmd = daemon_state.getYapCommand() orelse continue;
-                        daemon_state.clearYapCommand();
-
-                        switch (cmd) {
-                            .accept => {
-                                final_text = sandbox.?.getCurrentRefinement();
-                                if (session_id) |sid| {
-                                    session_manager.?.completeSession(sid, final_text) catch {};
-                                }
-                                std.debug.print("✅ YAP: Accepted refinement\n", .{});
-                                break :yap_interactive;
-                            },
-
-                            .refine => {
-                                const ctx = daemon_state.getYapRefineContext();
-                                defer if (ctx) |c| allocator.free(c);
-
-                                std.debug.print("🔄 YAP: Requesting another refinement...\n", .{});
-
-                                const new_refined = sandbox.?.refineAgain(
-                                    cfg.yap_llm_model,
-                                    ctx orelse "Refine further, making it more concise and clear.",
-                                ) catch |err| {
-                                    utils.logError("Refinement failed: {}", .{err});
-                                    std.debug.print("⚠️  Refinement failed: {}\n", .{err});
-                                    continue;
-                                };
-
-                                std.debug.print("✨ New refinement: {s}\n", .{new_refined});
-
-                                // Save updated sandbox
-                                session_manager.?.saveSandbox(session_id.?, &sandbox.?) catch {};
-
-                                // Update window display
-                                yap_win.updateDisplay() catch {};
-
-                                // Broadcast new refinement
-                                daemon_state.broadcastYapRefined(
-                                    new_refined,
-                                    @intCast(sandbox.?.getRevisionCount()),
-                                    sandbox.?.yapping.len,
-                                ) catch {};
-                            },
-
-                            .cancel => {
-                                final_text = sandbox.?.yapping;
-                                if (session_id) |sid| {
-                                    session_manager.?.abandonSession(sid) catch {};
-                                }
-                                std.debug.print("❌ YAP: Cancelled, using original\n", .{});
-                                break :yap_interactive;
-                            },
-
-                            .append_transcription => {
-                                const append_text = daemon_state.getYapAppendText();
-                                defer if (append_text) |txt| allocator.free(txt);
-
-                                if (append_text) |txt| {
-                                    std.debug.print("📎 YAP: Appending {d} chars to sandbox\n", .{txt.len});
-
-                                    // Append to sandbox yapping with space separator
-                                    const old_yapping = sandbox.?.yapping;
-                                    const new_yapping = try std.fmt.allocPrint(
-                                        allocator,
-                                        "{s} {s}",
-                                        .{ old_yapping, txt },
-                                    );
-                                    allocator.free(old_yapping);
-                                    sandbox.?.yapping = new_yapping;
-
-                                    // Update window display
-                                    yap_win.updateDisplay() catch {};
-
-                                    std.debug.print("📎 Sandbox now has {d} chars total\n", .{new_yapping.len});
-                                } else {
-                                    std.debug.print("⚠️  No append text available\n", .{});
-                                }
-                            },
-                        }
-                    }
-
-                    yap_win.destroy();
-                    try daemon_state.setState(.idle);
+                    // Don't block - let main loop handle YAP commands
+                    // Window will be cleaned up when accept/cancel is pressed
                 }
 
                 // Handle output based on config
@@ -975,6 +919,130 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     win.setState("idle");
                     win.addLog(.info, "Ready for next recording");
                     win.setActivity("Idle");
+                }
+            }
+
+            // Process YAP window events if active
+            if (yap_win) |win| {
+                yap_window.YapWindow.processEvents();
+
+                // Check for YAP commands
+                if (daemon_state.getYapCommand()) |cmd| {
+                    daemon_state.clearYapCommand();
+
+                    switch (cmd) {
+                        .accept => {
+                            const final_text = yap_sb.?.getCurrentRefinement();
+                            if (yap_session_id) |sid| {
+                                yap_session_manager.?.completeSession(sid, final_text) catch {};
+                            }
+                            std.debug.print("✅ YAP: Accepted refinement\n", .{});
+
+                            // Cleanup YAP session
+                            win.destroy();
+                            yap_win = null;
+                            if (yap_sb) |sb| {
+                                sb.deinit();
+                                allocator.destroy(sb);
+                                yap_sb = null;
+                            }
+                            if (yap_session_manager) |sm| {
+                                sm.deinit();
+                                allocator.destroy(sm);
+                                yap_session_manager = null;
+                            }
+                            yap_session_id = null;
+
+                            // Paste or copy the result
+                            if (cfg.auto_paste) {
+                                if (final_text.len > 0) {
+                                    std.debug.print("✨ Inserting text at cursor...\n", .{});
+                                    inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch |err| {
+                                        std.debug.print("Error inserting text: {}\n", .{err});
+                                    };
+                                }
+                            } else {
+                                var clip = clipboard.Clipboard.init(allocator);
+                                defer clip.deinit();
+                                clip.copy(final_text) catch |err| {
+                                    std.debug.print("Error copying to clipboard: {}\n", .{err});
+                                };
+                            }
+
+                            try daemon_state.setState(.idle);
+                        },
+
+                        .refine => {
+                            const ctx = daemon_state.getYapRefineContext();
+                            defer if (ctx) |c| allocator.free(c);
+
+                            std.debug.print("🔄 YAP: Requesting another refinement...\n", .{});
+
+                            const new_refined = yap_sb.?.refineAgain(
+                                cfg.yap_llm_model,
+                                ctx orelse "Refine further, making it more concise and clear.",
+                            ) catch |err| {
+                                utils.logError("Refinement failed: {}", .{err});
+                                std.debug.print("⚠️  Refinement failed: {}\n", .{err});
+                                continue;
+                            };
+
+                            std.debug.print("✨ New refinement: {s}\n", .{new_refined});
+
+                            // Save updated sandbox
+                            yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+
+                            // Update window display
+                            win.updateDisplay() catch {};
+
+                            // Broadcast new refinement
+                            daemon_state.broadcastYapRefined(
+                                new_refined,
+                                @intCast(yap_sb.?.getRevisionCount()),
+                                yap_sb.?.yapping.len,
+                            ) catch {};
+                        },
+
+                        .cancel => {
+                            const final_text = yap_sb.?.yapping;
+                            if (yap_session_id) |sid| {
+                                yap_session_manager.?.abandonSession(sid) catch {};
+                            }
+                            std.debug.print("❌ YAP: Cancelled, using original\n", .{});
+
+                            // Cleanup
+                            win.destroy();
+                            yap_win = null;
+                            if (yap_sb) |sb| {
+                                sb.deinit();
+                                allocator.destroy(sb);
+                                yap_sb = null;
+                            }
+                            if (yap_session_manager) |sm| {
+                                sm.deinit();
+                                allocator.destroy(sm);
+                                yap_session_manager = null;
+                            }
+                            yap_session_id = null;
+
+                            // Paste or copy the original
+                            if (cfg.auto_paste) {
+                                if (final_text.len > 0) {
+                                    inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch {};
+                                }
+                            } else {
+                                var clip = clipboard.Clipboard.init(allocator);
+                                defer clip.deinit();
+                                clip.copy(final_text) catch {};
+                            }
+
+                            try daemon_state.setState(.idle);
+                        },
+
+                        .append_transcription => {
+                            // Handled earlier in transcription processing
+                        },
+                    }
                 }
             }
 
