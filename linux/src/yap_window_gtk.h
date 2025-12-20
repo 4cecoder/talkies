@@ -28,19 +28,23 @@ void yap_window_gtk_connect_signals(
     void *user_data
 );
 
-// Text buffer operations
-void yap_window_gtk_set_original_text(YapWindowGtk *win, const char *text, int len);
-void yap_window_gtk_set_refined_text(YapWindowGtk *win, const char *text, int len);
+// Context management (Part 1: Initial Context)
+void yap_window_gtk_set_context_text(YapWindowGtk *win, const char *text, int len);
+const char* yap_window_gtk_get_context_text(YapWindowGtk *win);
+void yap_window_gtk_clear_context(YapWindowGtk *win);
+
+// Sandbox management (Part 2: Transcription Sandbox)
+void yap_window_gtk_set_sandbox_text(YapWindowGtk *win, const char *text, int len);
+void yap_window_gtk_append_sandbox_text(YapWindowGtk *win, const char *text, int len);
+const char* yap_window_gtk_get_sandbox_text(YapWindowGtk *win);
+void yap_window_gtk_clear_sandbox(YapWindowGtk *win);
+
+// History management (Part 3: Refinement History)
 void yap_window_gtk_set_history_text(YapWindowGtk *win, const char *text, int len);
+void yap_window_gtk_append_history_text(YapWindowGtk *win, const char *text, int len);
 
-// Label updates
+// Stats
 void yap_window_gtk_set_revision(YapWindowGtk *win, int revision);
-void yap_window_gtk_set_original_chars(YapWindowGtk *win, int chars);
-void yap_window_gtk_set_refined_chars(YapWindowGtk *win, int chars);
-void yap_window_gtk_set_compression(YapWindowGtk *win, float ratio);
-
-// Input retrieval (returns internal pointer, do not free)
-const char* yap_window_gtk_get_refine_input(YapWindowGtk *win);
-void yap_window_gtk_clear_refine_input(YapWindowGtk *win);
+void yap_window_gtk_set_sandbox_chars(YapWindowGtk *win, int chars);
 
 #endif // YAP_WINDOW_GTK_H

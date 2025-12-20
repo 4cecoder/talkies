@@ -48,35 +48,19 @@ pub const YapWindow = struct {
     }
 
     pub fn updateDisplay(self: *YapWindow) !void {
-        // Update original text
-        c.yap_window_gtk_set_original_text(
+        // Update sandbox with transcription
+        c.yap_window_gtk_set_sandbox_text(
             self.gtk_win,
             self.sandbox.yapping.ptr,
             @intCast(self.sandbox.yapping.len),
         );
 
-        // Update refined text
-        const current = self.sandbox.getCurrentRefinement();
-        c.yap_window_gtk_set_refined_text(
-            self.gtk_win,
-            current.ptr,
-            @intCast(current.len),
-        );
-
         // Update stats
         const revision_count = self.sandbox.getRevisionCount();
-        const refined_chars = current.len;
-        const compression_ratio = if (self.original_chars > 0)
-            @as(f32, @floatFromInt(refined_chars)) / @as(f32, @floatFromInt(self.original_chars))
-        else
-            1.0;
-
         c.yap_window_gtk_set_revision(self.gtk_win, @intCast(revision_count));
-        c.yap_window_gtk_set_original_chars(self.gtk_win, @intCast(self.original_chars));
-        c.yap_window_gtk_set_refined_chars(self.gtk_win, @intCast(refined_chars));
-        c.yap_window_gtk_set_compression(self.gtk_win, compression_ratio);
+        c.yap_window_gtk_set_sandbox_chars(self.gtk_win, @intCast(self.sandbox.yapping.len));
 
-        // Update history
+        // Update history with refinement progression
         const history = try self.sandbox.formatHistory();
         defer self.allocator.free(history);
         c.yap_window_gtk_set_history_text(
@@ -114,18 +98,24 @@ pub const YapWindow = struct {
     fn onRefineClicked(user_data: ?*anyopaque) callconv(.c) void {
         const self: *YapWindow = @ptrCast(@alignCast(user_data));
 
-        // Get additional context from entry (internal pointer, don't free)
-        const entry_text = c.yap_window_gtk_get_refine_input(self.gtk_win);
-
-        const context = if (entry_text != null and c.strlen(entry_text) > 0)
-            std.mem.span(entry_text)
+        // Get context text (Part 1 - optional initial context)
+        const context_text = c.yap_window_gtk_get_context_text(self.gtk_win);
+        const context = if (context_text != null and c.strlen(context_text) > 0)
+            std.mem.span(context_text)
         else
             null;
 
-        self.daemon_state.setYapCommand(.refine, context) catch {};
+        // Get sandbox text (Part 2 - main transcription area)
+        const sandbox_text = c.yap_window_gtk_get_sandbox_text(self.gtk_win);
 
-        // Clear input
-        c.yap_window_gtk_clear_refine_input(self.gtk_win);
+        // Update sandbox in backend with edited text from GUI
+        if (sandbox_text != null and c.strlen(sandbox_text) > 0) {
+            const text = std.mem.span(sandbox_text);
+            self.sandbox.yapping = self.allocator.dupe(u8, text) catch return;
+        }
+
+        // Trigger refinement with context
+        self.daemon_state.setYapCommand(.refine, context) catch {};
     }
 
     fn onCancelClicked(user_data: ?*anyopaque) callconv(.c) void {

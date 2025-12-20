@@ -5,17 +5,19 @@
 // Actual struct definition (not exposed in header)
 struct YapWindowGtk {
     GtkWidget *window;
-    GtkTextBuffer *original_buffer;
-    GtkTextBuffer *refined_buffer;
-    GtkTextBuffer *history_buffer;
-    GtkWidget *refine_input;
-    GtkWidget *original_chars_label;
-    GtkWidget *refined_chars_label;
-    GtkWidget *compression_label;
+    GtkTextBuffer *context_buffer;       // Initial context input
+    GtkTextBuffer *sandbox_buffer;       // Transcription sandbox (accumulates)
+    GtkTextBuffer *history_buffer;       // Historical refinement view
+    GtkWidget *context_view;             // Editable context view
+    GtkWidget *sandbox_view;             // Editable sandbox view
+    GtkWidget *history_view;             // Read-only history view
+    GtkWidget *sandbox_chars_label;
     GtkWidget *revision_label;
     GtkWidget *accept_btn;
     GtkWidget *refine_btn;
     GtkWidget *cancel_btn;
+    GtkWidget *clear_context_btn;
+    GtkWidget *clear_sandbox_btn;
     void *user_data; // Points to Zig YapWindow struct
 };
 
@@ -43,8 +45,8 @@ YapWindowGtk* yap_window_gtk_new(void) {
 
     // Create window
     win->window = gtk_window_new();
-    gtk_window_set_title(GTK_WINDOW(win->window), "YAP Mode - Interactive Refinement");
-    gtk_window_set_default_size(GTK_WINDOW(win->window), 800, 600);
+    gtk_window_set_title(GTK_WINDOW(win->window), "YAP Mode - Conversational Transcription");
+    gtk_window_set_default_size(GTK_WINDOW(win->window), 1000, 700);
 
     // Main vertical box
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -58,87 +60,79 @@ YapWindowGtk* yap_window_gtk_new(void) {
     GtkWidget *header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     gtk_box_append(GTK_BOX(vbox), header_box);
 
-    win->revision_label = gtk_label_new("Revision: 1");
-    win->original_chars_label = gtk_label_new("Original: 0 chars");
-    win->refined_chars_label = gtk_label_new("Refined: 0 chars");
-    win->compression_label = gtk_label_new("Compression: 100%");
+    win->revision_label = gtk_label_new("Refinement: 0");
+    win->sandbox_chars_label = gtk_label_new("Sandbox: 0 chars");
 
     gtk_box_append(GTK_BOX(header_box), win->revision_label);
-    gtk_box_append(GTK_BOX(header_box), win->original_chars_label);
-    gtk_box_append(GTK_BOX(header_box), win->refined_chars_label);
-    gtk_box_append(GTK_BOX(header_box), win->compression_label);
+    gtk_box_append(GTK_BOX(header_box), win->sandbox_chars_label);
 
-    // Paned view for original and refined
-    GtkWidget *paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
-    gtk_widget_set_vexpand(paned, TRUE);
-    gtk_box_append(GTK_BOX(vbox), paned);
+    // === PART 1: Initial Context (top section) ===
+    GtkWidget *context_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *context_label = gtk_label_new("🎯 Initial Context (optional)");
+    gtk_widget_set_hexpand(context_label, TRUE);
+    gtk_widget_set_halign(context_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(context_header), context_label);
 
-    // Left side: Original transcription
-    GtkWidget *left_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    GtkWidget *original_label = gtk_label_new("📝 Original Transcription");
-    gtk_box_append(GTK_BOX(left_vbox), original_label);
+    win->clear_context_btn = gtk_button_new_with_label("Clear");
+    gtk_box_append(GTK_BOX(context_header), win->clear_context_btn);
+    gtk_box_append(GTK_BOX(vbox), context_header);
 
-    GtkWidget *original_scroll = gtk_scrolled_window_new();
-    gtk_widget_set_vexpand(original_scroll, TRUE);
-    GtkWidget *original_view = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(original_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(original_view), GTK_WRAP_WORD);
-    win->original_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(original_view));
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(original_scroll), original_view);
-    gtk_box_append(GTK_BOX(left_vbox), original_scroll);
+    GtkWidget *context_scroll = gtk_scrolled_window_new();
+    gtk_widget_set_size_request(context_scroll, -1, 100);
+    win->context_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(win->context_view), TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(win->context_view), GTK_WRAP_WORD);
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(win->context_view), FALSE);
+    win->context_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->context_view));
+    gtk_text_buffer_set_text(win->context_buffer, "Enter background context, instructions, or topic information here...", -1);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(context_scroll), win->context_view);
+    gtk_box_append(GTK_BOX(vbox), context_scroll);
 
-    gtk_paned_set_start_child(GTK_PANED(paned), left_vbox);
+    // === PART 2: Transcription Sandbox (middle section - largest) ===
+    GtkWidget *sandbox_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *sandbox_label = gtk_label_new("🎤 Transcription Sandbox (your yapping goes here)");
+    gtk_widget_set_hexpand(sandbox_label, TRUE);
+    gtk_widget_set_halign(sandbox_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(sandbox_header), sandbox_label);
 
-    // Right side: Refined version
-    GtkWidget *right_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-    GtkWidget *refined_label = gtk_label_new("✨ Refined Version");
-    gtk_box_append(GTK_BOX(right_vbox), refined_label);
+    win->clear_sandbox_btn = gtk_button_new_with_label("Clear");
+    gtk_box_append(GTK_BOX(sandbox_header), win->clear_sandbox_btn);
+    gtk_box_append(GTK_BOX(vbox), sandbox_header);
 
-    GtkWidget *refined_scroll = gtk_scrolled_window_new();
-    gtk_widget_set_vexpand(refined_scroll, TRUE);
-    GtkWidget *refined_view = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(refined_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(refined_view), GTK_WRAP_WORD);
-    win->refined_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(refined_view));
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(refined_scroll), refined_view);
-    gtk_box_append(GTK_BOX(right_vbox), refined_scroll);
+    GtkWidget *sandbox_scroll = gtk_scrolled_window_new();
+    gtk_widget_set_vexpand(sandbox_scroll, TRUE);
+    gtk_widget_set_size_request(sandbox_scroll, -1, 250);
+    win->sandbox_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(win->sandbox_view), TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(win->sandbox_view), GTK_WRAP_WORD);
+    win->sandbox_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->sandbox_view));
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sandbox_scroll), win->sandbox_view);
+    gtk_box_append(GTK_BOX(vbox), sandbox_scroll);
 
-    gtk_paned_set_end_child(GTK_PANED(paned), right_vbox);
-
-    // History section (collapsible)
-    GtkWidget *history_expander = gtk_expander_new("📜 Revision History");
+    // === PART 3: Refinement History (bottom section - collapsible) ===
+    GtkWidget *history_expander = gtk_expander_new("📜 Refinement History (context + sandbox → refined output)");
+    gtk_expander_set_expanded(GTK_EXPANDER(history_expander), TRUE);
     gtk_box_append(GTK_BOX(vbox), history_expander);
 
     GtkWidget *history_scroll = gtk_scrolled_window_new();
     gtk_widget_set_size_request(history_scroll, -1, 150);
-    GtkWidget *history_view = gtk_text_view_new();
-    gtk_text_view_set_editable(GTK_TEXT_VIEW(history_view), FALSE);
-    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(history_view), GTK_WRAP_WORD);
-    win->history_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(history_view));
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(history_scroll), history_view);
+    win->history_view = gtk_text_view_new();
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(win->history_view), FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(win->history_view), GTK_WRAP_WORD);
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(win->history_view), TRUE);
+    win->history_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->history_view));
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(history_scroll), win->history_view);
     gtk_expander_set_child(GTK_EXPANDER(history_expander), history_scroll);
-
-    // Refine input section
-    GtkWidget *refine_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-    gtk_box_append(GTK_BOX(vbox), refine_box);
-
-    GtkWidget *refine_label = gtk_label_new("Additional instructions:");
-    gtk_box_append(GTK_BOX(refine_box), refine_label);
-
-    win->refine_input = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(win->refine_input), "e.g. Make it shorter, more formal, etc.");
-    gtk_widget_set_hexpand(win->refine_input, TRUE);
-    gtk_box_append(GTK_BOX(refine_box), win->refine_input);
 
     // Button row
     GtkWidget *btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     gtk_widget_set_halign(btn_box, GTK_ALIGN_END);
     gtk_box_append(GTK_BOX(vbox), btn_box);
 
-    win->cancel_btn = gtk_button_new_with_label("❌ Cancel (use original)");
+    win->cancel_btn = gtk_button_new_with_label("❌ Cancel");
     gtk_box_append(GTK_BOX(btn_box), win->cancel_btn);
 
-    win->refine_btn = gtk_button_new_with_label("🔄 Refine Again");
+    win->refine_btn = gtk_button_new_with_label("✨ Refine with LLM");
     gtk_box_append(GTK_BOX(btn_box), win->refine_btn);
 
     win->accept_btn = gtk_button_new_with_label("✅ Accept & Paste");
@@ -176,47 +170,62 @@ void yap_window_gtk_connect_signals(
     g_signal_connect_swapped(win->cancel_btn, "clicked", G_CALLBACK(on_cancel), user_data);
 }
 
-void yap_window_gtk_set_original_text(YapWindowGtk *win, const char *text, int len) {
-    gtk_text_buffer_set_text(win->original_buffer, text, len);
+// Context management
+void yap_window_gtk_set_context_text(YapWindowGtk *win, const char *text, int len) {
+    gtk_text_buffer_set_text(win->context_buffer, text, len);
 }
 
-void yap_window_gtk_set_refined_text(YapWindowGtk *win, const char *text, int len) {
-    gtk_text_buffer_set_text(win->refined_buffer, text, len);
+const char* yap_window_gtk_get_context_text(YapWindowGtk *win) {
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(win->context_buffer, &start, &end);
+    return gtk_text_buffer_get_text(win->context_buffer, &start, &end, FALSE);
 }
 
+void yap_window_gtk_clear_context(YapWindowGtk *win) {
+    gtk_text_buffer_set_text(win->context_buffer, "", -1);
+}
+
+// Sandbox management
+void yap_window_gtk_set_sandbox_text(YapWindowGtk *win, const char *text, int len) {
+    gtk_text_buffer_set_text(win->sandbox_buffer, text, len);
+}
+
+void yap_window_gtk_append_sandbox_text(YapWindowGtk *win, const char *text, int len) {
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(win->sandbox_buffer, &end);
+    gtk_text_buffer_insert(win->sandbox_buffer, &end, text, len);
+}
+
+const char* yap_window_gtk_get_sandbox_text(YapWindowGtk *win) {
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(win->sandbox_buffer, &start, &end);
+    return gtk_text_buffer_get_text(win->sandbox_buffer, &start, &end, FALSE);
+}
+
+void yap_window_gtk_clear_sandbox(YapWindowGtk *win) {
+    gtk_text_buffer_set_text(win->sandbox_buffer, "", -1);
+}
+
+// History management
 void yap_window_gtk_set_history_text(YapWindowGtk *win, const char *text, int len) {
     gtk_text_buffer_set_text(win->history_buffer, text, len);
 }
 
+void yap_window_gtk_append_history_text(YapWindowGtk *win, const char *text, int len) {
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(win->history_buffer, &end);
+    gtk_text_buffer_insert(win->history_buffer, &end, text, len);
+}
+
+// Stats
 void yap_window_gtk_set_revision(YapWindowGtk *win, int revision) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "Revision: %d", revision);
+    snprintf(buf, sizeof(buf), "Refinement: %d", revision);
     gtk_label_set_text(GTK_LABEL(win->revision_label), buf);
 }
 
-void yap_window_gtk_set_original_chars(YapWindowGtk *win, int chars) {
+void yap_window_gtk_set_sandbox_chars(YapWindowGtk *win, int chars) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "Original: %d chars", chars);
-    gtk_label_set_text(GTK_LABEL(win->original_chars_label), buf);
-}
-
-void yap_window_gtk_set_refined_chars(YapWindowGtk *win, int chars) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "Refined: %d chars", chars);
-    gtk_label_set_text(GTK_LABEL(win->refined_chars_label), buf);
-}
-
-void yap_window_gtk_set_compression(YapWindowGtk *win, float ratio) {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "Compression: %.0f%%", ratio * 100.0f);
-    gtk_label_set_text(GTK_LABEL(win->compression_label), buf);
-}
-
-const char* yap_window_gtk_get_refine_input(YapWindowGtk *win) {
-    GtkEntryBuffer *buffer = gtk_entry_get_buffer(GTK_ENTRY(win->refine_input));
-    return gtk_entry_buffer_get_text(buffer);
-}
-
-void yap_window_gtk_clear_refine_input(YapWindowGtk *win) {
-    gtk_editable_set_text(GTK_EDITABLE(win->refine_input), "");
+    snprintf(buf, sizeof(buf), "Sandbox: %d chars", chars);
+    gtk_label_set_text(GTK_LABEL(win->sandbox_chars_label), buf);
 }
