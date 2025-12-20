@@ -54,15 +54,21 @@ pub const DaemonStatusWindow = struct {
 
     // Status updates
     pub fn setState(self: *DaemonStatusWindow, state: []const u8) void {
-        c.daemon_status_window_set_state(self.gtk_win, state.ptr);
+        const cstr = self.allocator.dupeZ(u8, state) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_set_state(self.gtk_win, cstr.ptr);
     }
 
     pub fn setModel(self: *DaemonStatusWindow, model: []const u8) void {
-        c.daemon_status_window_set_model(self.gtk_win, model.ptr);
+        const cstr = self.allocator.dupeZ(u8, model) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_set_model(self.gtk_win, cstr.ptr);
     }
 
     pub fn setPlatform(self: *DaemonStatusWindow, platform: []const u8) void {
-        c.daemon_status_window_set_platform(self.gtk_win, platform.ptr);
+        const cstr = self.allocator.dupeZ(u8, platform) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_set_platform(self.gtk_win, cstr.ptr);
     }
 
     pub fn setClients(self: *DaemonStatusWindow, count: usize) void {
@@ -79,16 +85,22 @@ pub const DaemonStatusWindow = struct {
 
     // Activity updates
     pub fn setActivity(self: *DaemonStatusWindow, activity: []const u8) void {
-        c.daemon_status_window_set_activity(self.gtk_win, activity.ptr);
+        const cstr = self.allocator.dupeZ(u8, activity) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_set_activity(self.gtk_win, cstr.ptr);
     }
 
     pub fn setLastTranscription(self: *DaemonStatusWindow, time: []const u8) void {
-        c.daemon_status_window_set_last_transcription(self.gtk_win, time.ptr);
+        const cstr = self.allocator.dupeZ(u8, time) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_set_last_transcription(self.gtk_win, cstr.ptr);
     }
 
     // Log management
     pub fn addLog(self: *DaemonStatusWindow, level: LogLevel, message: []const u8) void {
-        c.daemon_status_window_add_log(self.gtk_win, level.toCLevel(), message.ptr);
+        const cstr = self.allocator.dupeZ(u8, message) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_add_log(self.gtk_win, level.toCLevel(), cstr.ptr);
     }
 
     pub fn clearLogs(self: *DaemonStatusWindow) void {
