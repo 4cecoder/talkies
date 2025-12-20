@@ -203,6 +203,19 @@ pub const Sandbox = struct {
         return self.revisions.items.len;
     }
 
+    /// Get a specific revision by index (0-based)
+    pub fn getRevision(self: *Sandbox, index: usize) ?[]const u8 {
+        if (index >= self.revisions.items.len) return null;
+        return self.revisions.items[index].text;
+    }
+
+    /// Get revision metadata (char count, timestamp)
+    pub fn getRevisionInfo(self: *Sandbox, index: usize) ?struct { chars: usize, timestamp: i64 } {
+        if (index >= self.revisions.items.len) return null;
+        const rev = self.revisions.items[index];
+        return .{ .chars = rev.char_count, .timestamp = rev.timestamp };
+    }
+
     /// Format revision history for display
     pub fn formatHistory(self: *Sandbox) ![]const u8 {
         // Build format string parts

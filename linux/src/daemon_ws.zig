@@ -294,6 +294,13 @@ pub fn handleMessage(
         const after_type = message[type_start + 6 ..]; // Skip "type"
 
         if (std.mem.indexOf(u8, after_type, "\"start_recording\"")) |_| {
+            // Ignore recording commands when in YAP mode
+            const current_state = daemon_state.getState();
+            if (current_state == .yap_refining) {
+                std.debug.print("⚠️  Ignoring start_recording - YAP mode active\n", .{});
+                return;
+            }
+
             const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
             const ts_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
             std.debug.print("[{d}ms] WebSocket: Received start_recording command\n", .{ts_ms});

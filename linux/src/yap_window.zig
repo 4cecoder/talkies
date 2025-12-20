@@ -15,6 +15,7 @@ pub const YapWindow = struct {
     daemon_state: *daemon_ws.DaemonState,
     sandbox: *yap_sandbox.Sandbox,
     original_chars: usize,
+    current_revision_index: usize,
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -31,6 +32,7 @@ pub const YapWindow = struct {
             .daemon_state = daemon_state,
             .sandbox = sandbox,
             .original_chars = sandbox.yapping.len,
+            .current_revision_index = 0,
         };
 
         // Connect signal handlers
@@ -39,6 +41,8 @@ pub const YapWindow = struct {
             onAcceptClicked,
             onRefineClicked,
             onCancelClicked,
+            onPrevRevisionClicked,
+            onNextRevisionClicked,
             self,
         );
 
@@ -55,19 +59,43 @@ pub const YapWindow = struct {
             @intCast(self.sandbox.yapping.len),
         );
 
-        // Update stats
-        const revision_count = self.sandbox.getRevisionCount();
-        c.yap_window_gtk_set_revision(self.gtk_win, @intCast(revision_count));
+        // Update sandbox stats
         c.yap_window_gtk_set_sandbox_chars(self.gtk_win, @intCast(self.sandbox.yapping.len));
 
-        // Update history with refinement progression
-        const history = try self.sandbox.formatHistory();
-        defer self.allocator.free(history);
-        c.yap_window_gtk_set_history_text(
-            self.gtk_win,
-            history.ptr,
-            @intCast(history.len),
-        );
+        // Update revision count and display latest
+        const revision_count = self.sandbox.getRevisionCount();
+        c.yap_window_gtk_set_revision_count(self.gtk_win, @intCast(revision_count));
+
+        if (revision_count > 0) {
+            // Show latest revision by default
+            self.current_revision_index = revision_count - 1;
+            try self.displayRevision(self.current_revision_index);
+        }
+    }
+
+    fn displayRevision(self: *YapWindow, index: usize) !void {
+        if (self.sandbox.getRevision(index)) |text| {
+            // Create null-terminated string for C
+            const cstr = try self.allocator.dupeZ(u8, text);
+            defer self.allocator.free(cstr);
+
+            c.yap_window_gtk_set_revision_text(
+                self.gtk_win,
+                cstr.ptr,
+                @intCast(text.len),
+            );
+
+            // Update stats
+            if (self.sandbox.getRevisionInfo(index)) |info| {
+                c.yap_window_gtk_set_revision_stats(
+                    self.gtk_win,
+                    @intCast(info.chars),
+                    @intCast(info.timestamp),
+                );
+            }
+
+            c.yap_window_gtk_set_current_revision_index(self.gtk_win, @intCast(index));
+        }
     }
 
     pub fn show(self: *YapWindow) void {
@@ -122,5 +150,22 @@ pub const YapWindow = struct {
         const self: *YapWindow = @ptrCast(@alignCast(user_data));
         self.daemon_state.setYapCommand(.cancel, null) catch {};
         self.hide();
+    }
+
+    fn onPrevRevisionClicked(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *YapWindow = @ptrCast(@alignCast(user_data));
+        if (self.current_revision_index > 0) {
+            self.current_revision_index -= 1;
+            self.displayRevision(self.current_revision_index) catch {};
+        }
+    }
+
+    fn onNextRevisionClicked(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *YapWindow = @ptrCast(@alignCast(user_data));
+        const total = self.sandbox.getRevisionCount();
+        if (self.current_revision_index < total - 1) {
+            self.current_revision_index += 1;
+            self.displayRevision(self.current_revision_index) catch {};
+        }
     }
 };
