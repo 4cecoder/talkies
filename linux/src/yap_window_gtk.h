@@ -50,4 +50,26 @@ void yap_window_gtk_set_revision_stats(YapWindowGtk *win, int chars, long timest
 // Stats
 void yap_window_gtk_set_sandbox_chars(YapWindowGtk *win, int chars);
 
+// Clarification management (Part 2.5: Interactive Questions)
+typedef struct {
+    const char *id;
+    const char *question_text;
+    const char **options;  // NULL-terminated array
+    int option_count;
+} YapClarificationQuestion;
+
+void yap_window_gtk_show_clarification(
+    YapWindowGtk *win,
+    YapClarificationQuestion *questions,
+    int question_count
+);
+
+void yap_window_gtk_hide_clarification(YapWindowGtk *win);
+
+void yap_window_gtk_connect_clarification_callback(
+    YapWindowGtk *win,
+    void (*on_answer)(void* button, void* user_data),
+    void *user_data
+);
+
 #endif // YAP_WINDOW_GTK_H

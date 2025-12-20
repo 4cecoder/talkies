@@ -3,9 +3,12 @@ const yap_sandbox = @import("yap_sandbox.zig");
 const daemon_ws = @import("daemon_ws.zig");
 
 // GTK4 C shim wrapper
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("yap_window_gtk.h");
 });
+
+// External GObject functions
+extern fn g_object_get_data(object: ?*anyopaque, key: [*c]const u8) ?*anyopaque;
 
 /// YAP Mode GTK Window for interactive refinement
 /// Shows original transcription, refined versions, and provides Accept/Refine/Cancel buttons
@@ -16,6 +19,7 @@ pub const YapWindow = struct {
     sandbox: *yap_sandbox.Sandbox,
     original_chars: usize,
     current_revision_index: usize,
+    clarification_active: bool,
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -33,6 +37,7 @@ pub const YapWindow = struct {
             .sandbox = sandbox,
             .original_chars = sandbox.yapping.len,
             .current_revision_index = 0,
+            .clarification_active = false,
         };
 
         // Connect signal handlers
@@ -43,6 +48,13 @@ pub const YapWindow = struct {
             onCancelClicked,
             onPrevRevisionClicked,
             onNextRevisionClicked,
+            self,
+        );
+
+        // Connect clarification callback
+        c.yap_window_gtk_connect_clarification_callback(
+            gtk_win,
+            onClarificationAnswer,
             self,
         );
 
@@ -158,8 +170,56 @@ pub const YapWindow = struct {
             }
         }
 
-        // Trigger refinement (no additional instructions, just use default)
-        self.daemon_state.setYapCommand(.refine, null) catch {};
+        // Check if this is the first refinement
+        const is_first_refinement = self.sandbox.getRevisionCount() == 0;
+
+        if (is_first_refinement) {
+            // Request clarification before first refinement
+            self.daemon_state.setYapCommand(.request_clarification, null) catch {};
+        } else {
+            // Subsequent refinement - skip clarification
+            self.daemon_state.setYapCommand(.refine, null) catch {};
+        }
+    }
+
+    fn onClarificationAnswer(button: ?*anyopaque, user_data: ?*anyopaque) callconv(.c) void {
+        const self: *YapWindow = @ptrCast(@alignCast(user_data));
+
+        // Extract question_id and answer from button data
+        const question_id_ptr = g_object_get_data(button, "question_id");
+        const answer_ptr = g_object_get_data(button, "answer");
+
+        if (question_id_ptr != null and answer_ptr != null) {
+            const question_id = std.mem.span(@as([*:0]const u8, @ptrCast(question_id_ptr)));
+            const answer = std.mem.span(@as([*:0]const u8, @ptrCast(answer_ptr)));
+
+            std.debug.print("Clarification answer: {s} = {s}\n", .{ question_id, answer });
+
+            // Store answer in daemon state
+            self.daemon_state.setClarificationAnswer(question_id, answer) catch {};
+
+            // Check if all questions answered
+            const questions = self.daemon_state.getClarificationQuestions();
+            const answers = self.daemon_state.getClarificationAnswers() catch return;
+            defer {
+                for (answers) |*item| {
+                    var mutable_item = item.*;
+                    mutable_item.deinit(self.allocator);
+                }
+                self.allocator.free(answers);
+            }
+
+            if (questions) |q| {
+                if (answers.len == q.len) {
+                    // All answered! Hide clarification and trigger refinement
+                    c.yap_window_gtk_hide_clarification(self.gtk_win);
+                    self.clarification_active = false;
+
+                    // Trigger final refinement with clarification context
+                    self.daemon_state.setYapCommand(.refine, null) catch {};
+                }
+            }
+        }
     }
 
     fn onCancelClicked(user_data: ?*anyopaque) callconv(.c) void {

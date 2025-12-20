@@ -972,35 +972,137 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             try daemon_state.setState(.idle);
                         },
 
+                        .request_clarification => {
+                            std.debug.print("🤔 YAP: Generating clarification questions...\n", .{});
+
+                            // Generate questions using LLM
+                            const questions = yap_sb.?.generateClarificationQuestions(
+                                cfg.yap_llm_model,
+                            ) catch |err| {
+                                utils.logError("Clarification generation failed: {}", .{err});
+                                std.debug.print("⚠️  Clarification failed, falling back to direct refinement: {}\n", .{err});
+                                // Fallback: skip clarification and refine directly
+                                daemon_state.setYapCommand(.refine, null) catch {};
+                                continue;
+                            };
+
+                            std.debug.print("✅ Generated {d} questions\n", .{questions.len});
+
+                            // Store questions in daemon state
+                            daemon_state.setClarificationQuestions(questions) catch {};
+
+                            // Convert to C-compatible format for GTK
+                            const c_questions = allocator.alloc(yap_window.c.YapClarificationQuestion, questions.len) catch continue;
+                            defer allocator.free(c_questions);
+
+                            // Convert options to NULL-terminated arrays
+                            var options_arrays = allocator.alloc([*c]const [*c]const u8, questions.len) catch continue;
+                            defer allocator.free(options_arrays);
+
+                            for (questions, 0..) |q, i| {
+                                const opts = allocator.alloc([*c]const u8, q.options.len) catch continue;
+                                for (q.options, 0..) |opt, j| {
+                                    opts[j] = opt.ptr;
+                                }
+                                options_arrays[i] = opts.ptr;
+
+                                c_questions[i] = .{
+                                    .id = q.id.ptr,
+                                    .question_text = q.text.ptr,
+                                    .options = opts.ptr,
+                                    .option_count = @intCast(q.options.len),
+                                };
+                            }
+
+                            // Show in UI
+                            yap_window.c.yap_window_gtk_show_clarification(
+                                win.gtk_win,
+                                c_questions.ptr,
+                                @intCast(questions.len),
+                            );
+
+                            win.clarification_active = true;
+
+                            // Clean up options arrays
+                            for (options_arrays) |opts| {
+                                allocator.free(opts[0 .. questions[0].options.len]);
+                            }
+                        },
+
                         .refine => {
                             const ctx = daemon_state.getYapRefineContext();
                             defer if (ctx) |c| allocator.free(c);
 
-                            std.debug.print("🔄 YAP: Requesting another refinement (context and yapping updated)...\n", .{});
+                            // Check if this is first refinement
+                            const is_first = yap_sb.?.getRevisionCount() == 0;
 
-                            const new_refined = yap_sb.?.refineAgain(
-                                cfg.yap_llm_model,
-                                ctx,
-                            ) catch |err| {
-                                utils.logError("Refinement failed: {}", .{err});
-                                std.debug.print("⚠️  Refinement failed: {}\n", .{err});
-                                continue;
-                            };
+                            if (is_first) {
+                                // First refinement with clarification answers
+                                std.debug.print("🔄 YAP: Performing initial refinement with clarification...\n", .{});
 
-                            std.debug.print("✨ New refinement: {s}\n", .{new_refined});
+                                const clarification_answers = daemon_state.getClarificationAnswers() catch &[_]daemon_ws.ClarificationAnswer{};
+                                defer {
+                                    for (clarification_answers) |*item| {
+                                        var mutable_item = item.*;
+                                        mutable_item.deinit(allocator);
+                                    }
+                                    allocator.free(clarification_answers);
+                                }
 
-                            // Save updated sandbox
-                            yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+                                const new_refined = yap_sb.?.refineInitialWithClarification(
+                                    cfg.yap_llm_model,
+                                    if (clarification_answers.len > 0) clarification_answers else null,
+                                ) catch |err| {
+                                    utils.logError("Initial refinement failed: {}", .{err});
+                                    std.debug.print("⚠️  Initial refinement failed: {}\n", .{err});
+                                    continue;
+                                };
 
-                            // Update window display
-                            win.updateDisplay() catch {};
+                                std.debug.print("✨ Initial refinement complete: {s}\n", .{new_refined});
 
-                            // Broadcast new refinement
-                            daemon_state.broadcastYapRefined(
-                                new_refined,
-                                @intCast(yap_sb.?.getRevisionCount()),
-                                yap_sb.?.yapping.len,
-                            ) catch {};
+                                // Clear clarification state after first refinement
+                                daemon_state.clearClarificationState();
+
+                                // Save updated sandbox
+                                yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+
+                                // Update window display
+                                win.updateDisplay() catch {};
+
+                                // Broadcast new refinement
+                                daemon_state.broadcastYapRefined(
+                                    new_refined,
+                                    @intCast(yap_sb.?.getRevisionCount()),
+                                    yap_sb.?.yapping.len,
+                                ) catch {};
+                            } else {
+                                // Subsequent refinement
+                                std.debug.print("🔄 YAP: Requesting another refinement (context and yapping updated)...\n", .{});
+
+                                const new_refined = yap_sb.?.refineAgain(
+                                    cfg.yap_llm_model,
+                                    ctx,
+                                ) catch |err| {
+                                    utils.logError("Refinement failed: {}", .{err});
+                                    std.debug.print("⚠️  Refinement failed: {}\n", .{err});
+                                    continue;
+                                };
+
+                                std.debug.print("✨ New refinement: {s}\n", .{new_refined});
+
+                                // Save updated sandbox
+                                yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+
+                                // Update window display
+                                win.updateDisplay() catch {};
+
+                                // Broadcast new refinement
+                                daemon_state.broadcastYapRefined(
+                                    new_refined,
+                                    @intCast(yap_sb.?.getRevisionCount()),
+                                    yap_sb.?.yapping.len,
+                                ) catch {};
+                            }
                         },
 
                         .cancel => {

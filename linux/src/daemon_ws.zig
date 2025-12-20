@@ -42,6 +42,7 @@ pub const YapCommand = enum {
     refine,  // Request another refinement
     cancel,  // Cancel YAP mode, paste original
     append_transcription,  // Append new transcription to sandbox
+    request_clarification,  // Request clarification questions before first refinement
 
     pub fn toString(self: YapCommand) []const u8 {
         return switch (self) {
@@ -49,7 +50,35 @@ pub const YapCommand = enum {
             .refine => "refine",
             .cancel => "cancel",
             .append_transcription => "append_transcription",
+            .request_clarification => "request_clarification",
         };
+    }
+};
+
+/// Clarification question with multiple-choice options
+pub const ClarificationQuestion = struct {
+    id: []const u8,         // "q1", "q2", "q3"
+    text: []const u8,       // Question text
+    options: [][]const u8,  // Answer options
+
+    pub fn deinit(self: *ClarificationQuestion, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.text);
+        for (self.options) |opt| {
+            allocator.free(opt);
+        }
+        allocator.free(self.options);
+    }
+};
+
+/// Clarification answer pair
+pub const ClarificationAnswer = struct {
+    question: []const u8,
+    answer: []const u8,
+
+    pub fn deinit(self: *ClarificationAnswer, allocator: std.mem.Allocator) void {
+        allocator.free(self.question);
+        allocator.free(self.answer);
     }
 };
 
@@ -66,6 +95,11 @@ pub const DaemonState = struct {
     yap_append_text: ?[]const u8,  // Pending transcription to append
     yap_mutex: std.Thread.Mutex,
 
+    // Clarification phase state
+    clarification_questions: ?[]ClarificationQuestion,
+    clarification_answers: std.ArrayListUnmanaged(ClarificationAnswer),
+    clarification_mutex: std.Thread.Mutex,
+
     pub fn init(allocator: std.mem.Allocator, ws_server: *websocket.Server) DaemonState {
         return .{
             .allocator = allocator,
@@ -76,6 +110,9 @@ pub const DaemonState = struct {
             .yap_refine_context = null,
             .yap_append_text = null,
             .yap_mutex = .{},
+            .clarification_questions = null,
+            .clarification_answers = .{},
+            .clarification_mutex = .{},
         };
     }
 
@@ -317,6 +354,90 @@ pub const DaemonState = struct {
         }
 
         std.debug.print("YAP command cleared\n", .{});
+    }
+
+    /// Set clarification questions (thread-safe)
+    pub fn setClarificationQuestions(self: *DaemonState, questions: []ClarificationQuestion) !void {
+        self.clarification_mutex.lock();
+        defer self.clarification_mutex.unlock();
+
+        // Clear any existing questions
+        if (self.clarification_questions) |old_questions| {
+            for (old_questions) |*q| {
+                var mutable_q = q.*;
+                mutable_q.deinit(self.allocator);
+            }
+            self.allocator.free(old_questions);
+        }
+
+        self.clarification_questions = questions;
+        std.debug.print("Stored {d} clarification questions\n", .{questions.len});
+    }
+
+    /// Get clarification questions (thread-safe, returns reference)
+    pub fn getClarificationQuestions(self: *DaemonState) ?[]const ClarificationQuestion {
+        self.clarification_mutex.lock();
+        defer self.clarification_mutex.unlock();
+        return self.clarification_questions;
+    }
+
+    /// Record a clarification answer (thread-safe)
+    pub fn setClarificationAnswer(self: *DaemonState, question: []const u8, answer: []const u8) !void {
+        self.clarification_mutex.lock();
+        defer self.clarification_mutex.unlock();
+
+        const answer_pair = ClarificationAnswer{
+            .question = try self.allocator.dupe(u8, question),
+            .answer = try self.allocator.dupe(u8, answer),
+        };
+
+        try self.clarification_answers.append(self.allocator, answer_pair);
+        std.debug.print("Recorded answer: {s} = {s} ({d}/{d})\n", .{
+            question, answer,
+            self.clarification_answers.items.len,
+            if (self.clarification_questions) |q| q.len else 0,
+        });
+    }
+
+    /// Get all clarification answers (thread-safe, caller must free items)
+    pub fn getClarificationAnswers(self: *DaemonState) ![]ClarificationAnswer {
+        self.clarification_mutex.lock();
+        defer self.clarification_mutex.unlock();
+
+        // Return a copy
+        const answers = try self.allocator.alloc(ClarificationAnswer, self.clarification_answers.items.len);
+        for (self.clarification_answers.items, 0..) |item, i| {
+            answers[i] = .{
+                .question = try self.allocator.dupe(u8, item.question),
+                .answer = try self.allocator.dupe(u8, item.answer),
+            };
+        }
+        return answers;
+    }
+
+    /// Clear clarification state (thread-safe)
+    pub fn clearClarificationState(self: *DaemonState) void {
+        self.clarification_mutex.lock();
+        defer self.clarification_mutex.unlock();
+
+        // Free questions
+        if (self.clarification_questions) |questions| {
+            for (questions) |*q| {
+                var mutable_q = q.*;
+                mutable_q.deinit(self.allocator);
+            }
+            self.allocator.free(questions);
+            self.clarification_questions = null;
+        }
+
+        // Free answers
+        for (self.clarification_answers.items) |*item| {
+            var mutable_item = item.*;
+            mutable_item.deinit(self.allocator);
+        }
+        self.clarification_answers.clearRetainingCapacity();
+
+        std.debug.print("Clarification state cleared\n", .{});
     }
 };
 

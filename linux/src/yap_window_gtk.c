@@ -24,6 +24,17 @@ struct YapWindowGtk {
     int current_revision_index;          // 0-based
     int total_revisions;
     void *user_data; // Points to Zig YapWindow struct
+
+    // Part 2.5: Clarification section (between sandbox and revisions)
+    GtkWidget *clarification_frame;      // Outer container
+    GtkWidget *clarification_box;        // Vertical box for questions
+    GtkWidget *clarification_label;      // Header label
+    GtkWidget *question_boxes[3];        // Up to 3 question containers
+    GtkWidget *question_labels[3];       // Question text
+    GtkWidget *answer_buttons[3][4];     // Up to 4 answer buttons per question
+    int question_count;                  // How many questions (1-3)
+    int answers_remaining;               // Countdown until all answered
+    void (*clarification_callback)(void*, void*);  // Answer callback
 };
 
 static int gtk_initialized = 0;
@@ -84,6 +95,15 @@ YapWindowGtk* yap_window_gtk_new(void) {
         "}"
         "scrolledwindow {"
         "  background-color: #24283b;"
+        "}"
+        "frame {"
+        "  border: 1px solid #565f89;"
+        "  border-radius: 6px;"
+        "  background-color: #1e2030;"
+        "}"
+        "separator {"
+        "  background-color: #414868;"
+        "  min-height: 1px;"
         "}";
 
     gtk_css_provider_load_from_string(css_provider, tokyo_night_css);
@@ -151,6 +171,46 @@ YapWindowGtk* yap_window_gtk_new(void) {
     win->sandbox_buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->sandbox_view));
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sandbox_scroll), win->sandbox_view);
     gtk_box_append(GTK_BOX(vbox), sandbox_scroll);
+
+    // === PART 2.5: Clarification Questions (initially hidden) ===
+    win->clarification_frame = gtk_frame_new(NULL);
+    gtk_widget_set_visible(win->clarification_frame, FALSE); // Hidden by default
+    gtk_widget_set_margin_top(win->clarification_frame, 10);
+    gtk_widget_set_margin_bottom(win->clarification_frame, 10);
+
+    GtkWidget *clarification_content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_set_margin_start(clarification_content, 12);
+    gtk_widget_set_margin_end(clarification_content, 12);
+    gtk_widget_set_margin_top(clarification_content, 12);
+    gtk_widget_set_margin_bottom(clarification_content, 12);
+    gtk_frame_set_child(GTK_FRAME(win->clarification_frame), clarification_content);
+
+    win->clarification_label = gtk_label_new("🤔 Quick Questions (help me refine better)");
+    gtk_widget_set_halign(win->clarification_label, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(clarification_content), win->clarification_label);
+
+    // Separator
+    GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_box_append(GTK_BOX(clarification_content), separator);
+
+    // Box for questions (will be populated dynamically)
+    win->clarification_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    gtk_box_append(GTK_BOX(clarification_content), win->clarification_box);
+
+    // Initialize question containers to NULL
+    for (int i = 0; i < 3; i++) {
+        win->question_boxes[i] = NULL;
+        win->question_labels[i] = NULL;
+        for (int j = 0; j < 4; j++) {
+            win->answer_buttons[i][j] = NULL;
+        }
+    }
+    win->question_count = 0;
+    win->answers_remaining = 0;
+    win->clarification_callback = NULL;
+
+    // Add to main vbox AFTER sandbox, BEFORE revisions
+    gtk_box_append(GTK_BOX(vbox), win->clarification_frame);
 
     // === PART 3: Navigable Revision Viewer (bottom section) ===
     GtkWidget *revision_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
@@ -330,4 +390,94 @@ void yap_window_gtk_set_sandbox_chars(YapWindowGtk *win, int chars) {
     char buf[64];
     snprintf(buf, sizeof(buf), "Sandbox: %d chars", chars);
     gtk_label_set_text(GTK_LABEL(win->sandbox_chars_label), buf);
+}
+
+// Clarification management (Part 2.5)
+void yap_window_gtk_show_clarification(
+    YapWindowGtk *win,
+    YapClarificationQuestion *questions,
+    int question_count
+) {
+    // Clear any previous questions
+    for (int i = 0; i < 3; i++) {
+        if (win->question_boxes[i]) {
+            gtk_box_remove(GTK_BOX(win->clarification_box), win->question_boxes[i]);
+            win->question_boxes[i] = NULL;
+        }
+    }
+
+    win->question_count = question_count;
+    win->answers_remaining = question_count;
+
+    // Create UI for each question
+    for (int q = 0; q < question_count && q < 3; q++) {
+        YapClarificationQuestion *qdata = &questions[q];
+
+        // Question container
+        GtkWidget *qbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+        gtk_widget_set_margin_top(qbox, 8);
+        win->question_boxes[q] = qbox;
+
+        // Question label
+        char label_buf[512];
+        snprintf(label_buf, sizeof(label_buf), "Q%d: %s", q+1, qdata->question_text);
+        win->question_labels[q] = gtk_label_new(label_buf);
+        gtk_widget_set_halign(win->question_labels[q], GTK_ALIGN_START);
+        gtk_label_set_wrap(GTK_LABEL(win->question_labels[q]), TRUE);
+        gtk_box_append(GTK_BOX(qbox), win->question_labels[q]);
+
+        // Answer buttons (horizontal box)
+        GtkWidget *btn_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_widget_set_halign(btn_box, GTK_ALIGN_START);
+        gtk_box_append(GTK_BOX(qbox), btn_box);
+
+        for (int opt = 0; opt < qdata->option_count && opt < 4; opt++) {
+            GtkWidget *btn = gtk_button_new_with_label(qdata->options[opt]);
+            win->answer_buttons[q][opt] = btn;
+
+            // Store question_id and answer in button data
+            g_object_set_data_full(
+                G_OBJECT(btn),
+                "question_id",
+                g_strdup(qdata->id),
+                g_free
+            );
+            g_object_set_data_full(
+                G_OBJECT(btn),
+                "answer",
+                g_strdup(qdata->options[opt]),
+                g_free
+            );
+
+            // Connect callback if set
+            if (win->clarification_callback) {
+                g_signal_connect(
+                    btn,
+                    "clicked",
+                    G_CALLBACK(win->clarification_callback),
+                    win->user_data
+                );
+            }
+
+            gtk_box_append(GTK_BOX(btn_box), btn);
+        }
+
+        gtk_box_append(GTK_BOX(win->clarification_box), qbox);
+    }
+
+    // Show the frame
+    gtk_widget_set_visible(win->clarification_frame, TRUE);
+}
+
+void yap_window_gtk_hide_clarification(YapWindowGtk *win) {
+    gtk_widget_set_visible(win->clarification_frame, FALSE);
+}
+
+void yap_window_gtk_connect_clarification_callback(
+    YapWindowGtk *win,
+    void (*on_answer)(void*, void*),
+    void *user_data
+) {
+    win->clarification_callback = on_answer;
+    win->user_data = user_data;
 }
