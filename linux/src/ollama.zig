@@ -85,9 +85,10 @@ pub const Client = struct {
             return error.OllamaRequestFailed;
         }
 
-        // Read response body
-        const rdr = response.reader(&.{});
-        const response_body = try rdr.*.readAlloc(self.allocator, 1024 * 1024);
+        // Read response body using Zig 0.16 API
+        var transfer_buffer: [4096]u8 = undefined;
+        const rdr = response.reader(&transfer_buffer);
+        const response_body = try rdr.allocRemaining(self.allocator, .unlimited);
         defer self.allocator.free(response_body);
 
         utils.log("Ollama response: {s}", .{response_body});
