@@ -76,6 +76,50 @@ DaemonStatusWindow* daemon_status_window_new(void) {
     gtk_window_set_title(GTK_WINDOW(win->window), "Talkies Daemon - Status Monitor");
     gtk_window_set_default_size(GTK_WINDOW(win->window), 800, 600);
 
+    // Apply Tokyo Night dark theme
+    GtkCssProvider *css_provider = gtk_css_provider_new();
+    const char *tokyo_night_css =
+        "window {"
+        "  background-color: #1a1b26;"
+        "  color: #c0caf5;"
+        "}"
+        "label {"
+        "  color: #c0caf5;"
+        "}"
+        "textview {"
+        "  background-color: #24283b;"
+        "  color: #c0caf5;"
+        "  caret-color: #c0caf5;"
+        "}"
+        "textview text {"
+        "  background-color: #24283b;"
+        "  color: #c0caf5;"
+        "}"
+        "button {"
+        "  background-color: #414868;"
+        "  color: #c0caf5;"
+        "  border: 1px solid #565f89;"
+        "  border-radius: 4px;"
+        "  padding: 6px 12px;"
+        "}"
+        "button:hover {"
+        "  background-color: #565f89;"
+        "}"
+        "scrolledwindow {"
+        "  background-color: #24283b;"
+        "}"
+        "checkbutton {"
+        "  color: #c0caf5;"
+        "}";
+
+    gtk_css_provider_load_from_string(css_provider, tokyo_night_css);
+    gtk_style_context_add_provider_for_display(
+        gdk_display_get_default(),
+        GTK_STYLE_PROVIDER(css_provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+    g_object_unref(css_provider);
+
     // Main vertical box
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_widget_set_margin_start(vbox, 10);
