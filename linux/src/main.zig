@@ -465,15 +465,17 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer io_threaded.deinit();
     const io = io_threaded.io();
 
-    // Initialize GTK and create daemon status window
+    // Initialize GTK and create daemon status window (if enabled)
     // GTK init is handled in C layer when first window is created
-    daemon_status_win = try daemon_status_window.DaemonStatusWindow.create(allocator);
-    errdefer if (daemon_status_win) |win| win.destroy();
+    if (cfg.show_status_gui) {
+        daemon_status_win = try daemon_status_window.DaemonStatusWindow.create(allocator);
+        errdefer if (daemon_status_win) |win| win.destroy();
 
-    if (daemon_status_win) |win| {
-        win.show();
-        win.setState("initializing");
-        win.addLog(.info, "Daemon starting...");
+        if (daemon_status_win) |win| {
+            win.show();
+            win.setState("initializing");
+            win.addLog(.info, "Daemon starting...");
+        }
     }
 
     // Initialize GTK for YAP mode GUI (if enabled)

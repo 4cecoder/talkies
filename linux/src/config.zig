@@ -27,6 +27,9 @@ pub const Config = struct {
     yap_ollama_url: []const u8 = "http://localhost:11434",
     yap_system_prompt: []const u8 = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct.",
 
+    // Daemon GUI settings
+    show_status_gui: bool = true, // Show daemon status monitor window
+
     // Track if strings are owned (allocated)
     audio_device_owned: bool = false,
     model_owned: bool = false,
