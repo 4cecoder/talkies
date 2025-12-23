@@ -157,15 +157,15 @@ namespace Talkies.Windows.ViewModels
         public bool IsIdle => !IsRecording;
         public bool CanSave => !string.IsNullOrEmpty(_lastVtt) && !IsRecording;
 
-        public ICommand StartCommand { get; }
-        public ICommand StopCommand { get; }
-        public ICommand SaveCommand { get; }
-        public ICommand ClearCommand { get; }
-        public ICommand FetchModelsCommand { get; }
-        public ICommand ExportSrtCommand { get; }
-        public ICommand ExportTxtCommand { get; }
-        public ICommand SavePromptCommand { get; }
-        public ICommand ShowPluginsCommand { get; }
+        public ICommand StartCommand { get; } = null!;
+        public ICommand StopCommand { get; } = null!;
+        public ICommand SaveCommand { get; } = null!;
+        public ICommand ClearCommand { get; } = null!;
+        public ICommand FetchModelsCommand { get; } = null!;
+        public ICommand ExportSrtCommand { get; } = null!;
+        public ICommand ExportTxtCommand { get; } = null!;
+        public ICommand SavePromptCommand { get; } = null!;
+        public ICommand ShowPluginsCommand { get; } = null!;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
