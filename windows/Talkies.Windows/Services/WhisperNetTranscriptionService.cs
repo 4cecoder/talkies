@@ -35,17 +35,19 @@ namespace Talkies.Windows.Services
             string language,
             bool vadEnabled,
             bool filterEnabled,
+            bool preferGpu,
+            GpuBackend gpuBackend,
             DecodingOptions? decodingOptions = null,
             IProgress<TranscriptionProgress>? progress = null)
         {
-            var useCuda = CudaDetector.IsNvidiaCudaAvailable(out var cudaReason);
+            var useCuda = preferGpu && gpuBackend == GpuBackend.Cuda && CudaDetector.IsNvidiaCudaAvailable(out var cudaReason);
             if (useCuda)
             {
                 Environment.SetEnvironmentVariable("GGML_USE_CUBLAS", "1");
                 Environment.SetEnvironmentVariable("GGML_CUDA", "1");
                 Logger.Info($"CUDA detected: enabling GGML CUDA offload for whisper.net ({cudaReason})");
             }
-            else if (!string.IsNullOrEmpty(cudaReason))
+            else if (preferGpu && !string.IsNullOrEmpty(cudaReason))
             {
                 Logger.Warn($"CUDA not available: {cudaReason}");
             }
@@ -81,6 +83,13 @@ namespace Talkies.Windows.Services
                 // whisper.net usage
                 using var factory = WhisperFactory.FromPath(modelPath);
                 var builder = factory.CreateBuilder();
+                
+                if (useCuda)
+                {
+                    builder.WithCuda();
+                    Logger.Info("Using CUDA for transcription acceleration");
+                }
+                
                 if (!string.IsNullOrWhiteSpace(language) && language != "auto")
                 {
                     builder.WithLanguage(language);

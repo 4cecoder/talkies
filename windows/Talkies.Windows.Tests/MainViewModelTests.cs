@@ -92,7 +92,7 @@ namespace Talkies.Windows.Tests
 
     internal class FakeTranscriber : ITranscriptionService
     {
-        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled, DecodingOptions? decodingOptions = null, IProgress<TranscriptionProgress>? progress = null)
+        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled, bool preferGpu, GpuBackend gpuBackend, DecodingOptions? decodingOptions = null, IProgress<TranscriptionProgress>? progress = null)
         {
             progress?.Report(new TranscriptionProgress(TranscriptionStage.DownloadModel, 100, "Download complete", false));
             progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 50, "Halfway", false));
