@@ -20,6 +20,8 @@ namespace Talkies.Windows.Models
         public bool InsertEnabled { get; set; }
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
+        public bool PreferGpu { get; set; } = true;
+        public string GpuBackend { get; set; } = "Auto";
 
         // LLM Provider Settings
         public string SelectedLlmProvider { get; set; } = "LM Studio";

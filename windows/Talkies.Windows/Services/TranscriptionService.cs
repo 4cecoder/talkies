@@ -6,6 +6,15 @@ using Talkies.Windows.Models;
 
 namespace Talkies.Windows.Services
 {
+    public enum GpuBackend
+    {
+        Cpu,
+        Cuda,
+        DirectMl
+    }
+
+namespace Talkies.Windows.Services
+{
     /// <summary>
     /// Decoding options for transcription (similar to WhisperKit's DecodingOptions).
     /// </summary>
@@ -102,6 +111,8 @@ namespace Talkies.Windows.Services
             string language,
             bool vadEnabled,
             bool filterEnabled,
+            bool preferGpu,
+            GpuBackend gpuBackend,
             DecodingOptions? decodingOptions = null,
             IProgress<TranscriptionProgress>? progress = null);
 
