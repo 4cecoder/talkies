@@ -85,7 +85,7 @@ namespace Talkies.Windows.Tests
         public bool IsRecording { get; private set; }
         public TimeSpan Duration => TimeSpan.Zero;
         public void Dispose() { }
-        public void Start(string? deviceId = null) { IsRecording = true; }
+        public void Start(string? deviceId = null, AudioQualitySettings? qualitySettings = null) { IsRecording = true; }
         public void Stop() { IsRecording = false; }
         public void RaiseCompleted(string path) => RecordingCompleted?.Invoke(this, new RecordingCompletedEventArgs { FilePath = path });
     }

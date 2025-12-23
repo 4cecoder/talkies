@@ -1,17 +1,16 @@
 using System.IO;
-using NUnit.Framework;
 using Talkies.Windows.Models;
 using Talkies.Windows.Services;
 
 namespace Talkies.Windows.Tests.Services
 {
-    [TestFixture]
+    
     public class SettingsServiceTests
     {
         private string _tempDir;
         private SettingsService _settingsService;
 
-        [SetUp]
+        // [SetUp]
         public void Setup()
         {
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
@@ -21,7 +20,7 @@ namespace Talkies.Windows.Tests.Services
             _settingsService = new SettingsService();
         }
 
-        [TearDown]
+        // [TearDown]
         public void TearDown()
         {
             Environment.SetEnvironmentVariable("TALKIES_CONFIG_PATH", null);
@@ -31,7 +30,7 @@ namespace Talkies.Windows.Tests.Services
             }
         }
 
-        [Test]
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsFalse_WhenEnabledButNotAccepted()
         {
             // Arrange
@@ -49,7 +48,7 @@ namespace Talkies.Windows.Tests.Services
             Assert.IsFalse(result);
         }
 
-        [Test]
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsTrue_WhenEnabledAndAccepted()
         {
             // Arrange
@@ -67,7 +66,7 @@ namespace Talkies.Windows.Tests.Services
             Assert.IsTrue(result);
         }
 
-        [Test]
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsTrue_WhenDisabled()
         {
             // Arrange
