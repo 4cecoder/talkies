@@ -41,6 +41,9 @@ namespace Talkies.Windows.Models
         public bool LmStudioAvailabilityChecked { get; set; } = false;
         public bool OllamaAvailabilityChecked { get; set; } = false;
 
+        // Audio quality settings
+        public AudioQualitySettings AudioQualitySettings { get; set; } = AudioQualitySettings.FromPreset(AudioQualityPreset.High);
+
         // Developer team config
         public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
     }
