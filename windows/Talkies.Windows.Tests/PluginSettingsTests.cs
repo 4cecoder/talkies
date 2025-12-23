@@ -32,7 +32,8 @@ namespace Talkies.Windows.Tests
             };
             plugin.SelectedVoice = plugin.AvailableVoices.FirstOrDefault()?.VoiceInfo.Name ?? "TestVoice";
 
-            var vm = new PluginInfoViewModel(plugin);
+            var settingsService = new SettingsService();
+            var vm = new PluginInfoViewModel(plugin, settingsService);
 
             // Change settings through the view model to trigger persistence
             vm.Rate = 4;
@@ -75,7 +76,7 @@ namespace Talkies.Windows.Tests
             var service = new SettingsService();
             service.Save(settings);
 
-            var vm = new MainViewModel(new FakeRecorder(), new FakeTranscriber(), new FakeDevices());
+            var vm = new MainViewModel(new FakeRecorder(), new FakeDevices());
             var adv = PluginManager.TtsSynthesizer as AdvancedTtsPlugin;
             var expectedVoice = adv?.SelectedVoice;
 

@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -47,7 +46,7 @@ namespace Talkies.Windows.Tests.Services
             if (File.Exists(analyticsPath))
             {
                 var content = File.ReadAllText(analyticsPath);
-                Assert.True(content.Contains("test_event"));
+                Assert.Contains("test_event", content);
             }
         }
 
@@ -62,7 +61,11 @@ namespace Talkies.Windows.Tests.Services
             // Act
             var data = new { Test = "data" };
             var method = typeof(CrashReporter).GetMethod("SendCrashReportAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            await (Task)method?.Invoke(reporter, new[] { data });
+            var result = method?.Invoke(reporter, new[] { data });
+            if (result is Task task)
+            {
+                await task;
+            }
 
             // Assert
             // Check if no exception thrown
@@ -107,7 +110,7 @@ namespace Talkies.Windows.Tests.Services
 
             // Act
             var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var result = (bool)method?.Invoke(reporter, new[] { "https://example.com" });
+            var result = (bool?)(method?.Invoke(reporter, new[] { "https://example.com" })) ?? false;
 
             // Assert
             Assert.True(result);
@@ -121,7 +124,7 @@ namespace Talkies.Windows.Tests.Services
 
             // Act
             var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var result = (bool)method?.Invoke(reporter, new[] { "invalid-url" });
+            var result = (bool?)(method?.Invoke(reporter, new[] { "invalid-url" })) ?? false;
 
             // Assert
             Assert.False(result);
@@ -174,9 +177,9 @@ namespace Talkies.Windows.Tests.Services
             if (File.Exists(analyticsPath))
             {
                 var content = File.ReadAllText(analyticsPath);
-                Assert.True(content.Contains("test_event"));
-                Assert.True(content.Contains("value"));
-                Assert.True(content.Contains(Environment.MachineName));
+                Assert.Contains("test_event", content);
+                Assert.Contains("value", content);
+                Assert.Contains(Environment.MachineName, content);
             }
         }
 
@@ -221,7 +224,7 @@ namespace Talkies.Windows.Tests.Services
 
             // Act
             var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var result = (bool)method?.Invoke(reporter, new[] { "http://localhost/test" });
+            var result = (bool?)(method?.Invoke(reporter, new[] { "http://localhost/test" })) ?? false;
 
             // Assert
             Assert.False(result);
@@ -235,7 +238,7 @@ namespace Talkies.Windows.Tests.Services
 
             // Act
             var method = typeof(CrashReporter).GetMethod("IsValidEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var result = (bool)method?.Invoke(reporter, new[] { "https://example.com/api" });
+            var result = (bool?)(method?.Invoke(reporter, new[] { "https://example.com/api" })) ?? false;
 
             // Assert
             Assert.True(result);

@@ -215,7 +215,6 @@ namespace Talkies.Windows.ViewModels
         public MainViewModel()
             : this(new AudioRecorder(), new AudioDeviceService())
         {
-            UpdateTranscriptionService();
         }
 
         public MainViewModel(IAudioRecorder recorder, IAudioDeviceService deviceService)
@@ -223,6 +222,14 @@ namespace Talkies.Windows.ViewModels
             _recorder = recorder;
             _deviceService = deviceService;
             UpdateTranscriptionService();
+        }
+
+        // Constructor for testing that allows injecting all dependencies
+        internal MainViewModel(IAudioRecorder recorder, ITranscriptionService transcriber, IAudioDeviceService deviceService)
+        {
+            _recorder = recorder;
+            _transcriber = transcriber;
+            _deviceService = deviceService;
 
             StartCommand = new RelayCommand(_ => StartRecording(), _ => IsIdle);
             StopCommand = new RelayCommand(_ => StopRecording(), _ => IsRecording);

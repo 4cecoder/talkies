@@ -81,7 +81,11 @@ namespace Talkies.Windows.Tests
     internal class FakeRecorder : IAudioRecorder
     {
         public event EventHandler<RecordingCompletedEventArgs>? RecordingCompleted;
-        public event EventHandler<float>? LevelChanged;
+        public event EventHandler<float>? LevelChanged
+        {
+            add { }
+            remove { }
+        }
         public bool IsRecording { get; private set; }
         public TimeSpan Duration => TimeSpan.Zero;
         public void Dispose() { }
