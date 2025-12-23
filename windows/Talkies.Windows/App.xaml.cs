@@ -12,6 +12,7 @@ namespace Talkies.Windows
     {
         private CrashReporter? _crashReporter;
         private SettingsService? _settingsService;
+        private AutoUpdateService? _autoUpdateService;
 
         protected override void OnStartup(System.Windows.StartupEventArgs e)
         {
@@ -63,6 +64,10 @@ namespace Talkies.Windows
             }
 
             _crashReporter = new CrashReporter(settings);
+
+            // Initialize auto-update service
+            _autoUpdateService = new AutoUpdateService(settings);
+            _autoUpdateService.Initialize();
         }
 
         protected override void OnExit(System.Windows.ExitEventArgs e)

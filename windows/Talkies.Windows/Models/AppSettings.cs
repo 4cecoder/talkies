@@ -43,6 +43,11 @@ namespace Talkies.Windows.Models
         public bool LmStudioAvailabilityChecked { get; set; } = false;
         public bool OllamaAvailabilityChecked { get; set; } = false;
 
+        // Auto-update settings
+        public bool AutoCheckForUpdates { get; set; } = true;
+        public string UpdateChannel { get; set; } = "stable";
+        public string? AutoUpdatePublicKey { get; set; }
+
         // Developer team config
         public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
     }

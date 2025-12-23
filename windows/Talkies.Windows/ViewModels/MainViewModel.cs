@@ -59,6 +59,13 @@ namespace Talkies.Windows.ViewModels
         public string SelectedGpuBackend { get => _selectedGpuBackend; set { _selectedGpuBackend = value; OnPropertyChanged(); UpdateTranscriptionService(); } }
         private string _selectedGpuBackend = "Auto";
 
+        // Auto-update settings
+        public bool AutoCheckForUpdates { get => _autoCheckForUpdates; set { _autoCheckForUpdates = value; OnPropertyChanged(); } }
+        private bool _autoCheckForUpdates = true;
+        public string UpdateChannel { get => _updateChannel; set { _updateChannel = value; OnPropertyChanged(); } }
+        private string _updateChannel = "stable";
+        public ObservableCollection<string> UpdateChannels { get; } = new(new[] { "stable", "beta", "nightly" });
+
         public bool IsFetchingModels { get => _isFetchingModels; set { _isFetchingModels = value; OnPropertyChanged(); } }
         private bool _isFetchingModels;
         public AudioDeviceInfo? SelectedMicrophone { get => _selectedMicrophone; set { _selectedMicrophone = value; OnPropertyChanged(); } }
@@ -949,6 +956,14 @@ namespace Talkies.Windows.ViewModels
             _settings.PreferGpu = PreferGpu;
             _settings.GpuBackend = SelectedGpuBackend;
 
+            // Load auto-update settings
+            AutoCheckForUpdates = _settings.AutoCheckForUpdates;
+            UpdateChannel = _settings.UpdateChannel;
+
+            // Save auto-update settings
+            _settings.AutoCheckForUpdates = AutoCheckForUpdates;
+            _settings.UpdateChannel = UpdateChannel;
+
             // Save LLM provider settings
             _settings.SelectedLlmProvider = SelectedLlmProvider;
             _settings.LlmEndpoint = LlmEndpoint;
@@ -1006,6 +1021,12 @@ namespace Talkies.Windows.ViewModels
                     EnhancementModes.Add(prompt.Name);
                 }
             }
+        }
+
+        private void SaveSettings()
+        {
+            // Save all settings to persistent storage
+            _settingsService.Save(_settings);
         }
 
         private void SaveCustomPrompt()
@@ -1110,7 +1131,9 @@ namespace Talkies.Windows.ViewModels
                 or nameof(SelectedEnhancementMode)
                 or nameof(CustomPrompts)
                 or nameof(NewPromptName)
-                or nameof(NewPromptText))
+                or nameof(NewPromptText)
+                or nameof(AutoCheckForUpdates)
+                or nameof(UpdateChannel))
             {
                 SaveSettings();
             }

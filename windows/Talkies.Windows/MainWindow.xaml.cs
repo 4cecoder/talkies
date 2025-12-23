@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Forms = System.Windows.Forms;
 using Talkies.Windows.ViewModels;
 using Talkies.Windows.Services;
@@ -8,16 +9,30 @@ namespace Talkies.Windows
 {
     public partial class MainWindow : Window
     {
+        public static readonly RoutedUICommand CheckForUpdatesCommand = new(
+            "Check for Updates",
+            "CheckForUpdates",
+            typeof(MainWindow));
+
         private readonly MainViewModel _vm;
         private HotkeyOverlayWindow? _overlay;
         private Forms.NotifyIcon? _notifyIcon;
         private bool _exitRequested;
+        private AutoUpdateService? _autoUpdateService;
 
         public MainWindow()
         {
             InitializeComponent();
             _vm = new MainViewModel();
             DataContext = _vm;
+
+            // Initialize auto-update service
+            var autoUpdateSettingsService = new SettingsService();
+            var autoUpdateSettings = autoUpdateSettingsService.Load();
+            _autoUpdateService = new AutoUpdateService(autoUpdateSettings);
+
+            // Add command binding
+            CommandBindings.Add(new CommandBinding(CheckForUpdatesCommand, CheckForUpdates_Executed));
 
             // Bind audio level to waveform visualizer
             _vm.OnAudioLevelChanged += (level) =>
@@ -131,6 +146,22 @@ namespace Talkies.Windows
             {
                 _notifyIcon.Visible = false;
                 _notifyIcon.Dispose();
+            }
+        }
+
+        private void CheckForUpdates_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            try
+            {
+                _autoUpdateService?.CheckForUpdatesAtUserRequest();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Failed to check for updates: {ex.Message}",
+                    "Update Check Failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
         }
 

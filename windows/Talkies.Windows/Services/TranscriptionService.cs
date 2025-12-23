@@ -12,9 +12,6 @@ namespace Talkies.Windows.Services
         Cuda,
         DirectMl
     }
-
-namespace Talkies.Windows.Services
-{
     /// <summary>
     /// Decoding options for transcription (similar to WhisperKit's DecodingOptions).
     /// </summary>
