@@ -2,11 +2,21 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Talkies.Windows.Controls"
+        xmlns:sys="clr-namespace:Talkies.Windows"
         Title="Talkies Windows"
         Height="700" Width="1200"
         MinHeight="600" MinWidth="900"
         Background="#1a1a1a" Foreground="White"
         WindowStartupLocation="CenterScreen">
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static sys:MainWindow.CheckForUpdatesCommand}" Executed="CheckForUpdates_Executed"/>
+    </Window.CommandBindings>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top" Background="#1a1a1a" Foreground="White">
+            <MenuItem Header="_Help">
+                <MenuItem Header="_Check for Updates" Command="{x:Static sys:MainWindow.CheckForUpdatesCommand}" />
+            </MenuItem>
+        </Menu>
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="360" MinWidth="300" />
@@ -84,17 +94,28 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Additional Features -->
-                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="Additional Features" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
-                        <CheckBox Content="Speak response (TTS)" IsChecked="{Binding TtsEnabled}" Margin="0,6,0,6" FontSize="11"/>
-                        <CheckBox Content="Insert text after transcription" IsChecked="{Binding InsertEnabled}" Margin="0,0,0,0" FontSize="11"/>
+                 <!-- Additional Features -->
+                 <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                     <StackPanel>
+                         <TextBlock Text="Additional Features" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+                         <CheckBox Content="Speak response (TTS)" IsChecked="{Binding TtsEnabled}" Margin="0,6,0,6" FontSize="11"/>
+                         <CheckBox Content="Insert text after transcription" IsChecked="{Binding InsertEnabled}" Margin="0,0,0,0" FontSize="11"/>
 
-                        <Button Content="Manage Plugins" Command="{Binding ShowPluginsCommand}" Height="32" Margin="0,8,0,0"/>
-                        <Button x:Name="SimulateCrashButton" Content="Simulate Crash" Height="32" Margin="0,8,0,0" Visibility="Collapsed"/>
-                    </StackPanel>
-                </Border>
+                         <Button Content="Manage Plugins" Command="{Binding ShowPluginsCommand}" Height="32" Margin="0,8,0,0"/>
+                         <Button x:Name="SimulateCrashButton" Content="Simulate Crash" Height="32" Margin="0,8,0,0" Visibility="Collapsed"/>
+                     </StackPanel>
+                 </Border>
+
+                 <!-- Update Settings -->
+                 <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                     <StackPanel>
+                         <TextBlock Text="Update Settings" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+                         <CheckBox Content="Automatically check for updates" IsChecked="{Binding AutoCheckForUpdates}" Margin="0,0,0,8" FontSize="11"/>
+
+                         <TextBlock Text="Update Channel" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                         <ComboBox ItemsSource="{Binding UpdateChannels}" SelectedItem="{Binding UpdateChannel}" Margin="0,0,0,0" Height="32" Padding="8,6"/>
+                     </StackPanel>
+                 </Border>
 
             </StackPanel>
         </ScrollViewer>
@@ -239,5 +260,7 @@
                 </StackPanel>
             </Border>
         </Grid>
+
     </Grid>
+    </DockPanel>
 </Window>

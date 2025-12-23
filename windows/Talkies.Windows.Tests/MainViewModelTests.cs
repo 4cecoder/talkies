@@ -81,7 +81,11 @@ namespace Talkies.Windows.Tests
     internal class FakeRecorder : IAudioRecorder
     {
         public event EventHandler<RecordingCompletedEventArgs>? RecordingCompleted;
-        public event EventHandler<float>? LevelChanged;
+        public event EventHandler<float>? LevelChanged
+        {
+            add { }
+            remove { }
+        }
         public bool IsRecording { get; private set; }
         public TimeSpan Duration => TimeSpan.Zero;
         public void Dispose() { }
@@ -92,7 +96,7 @@ namespace Talkies.Windows.Tests
 
     internal class FakeTranscriber : ITranscriptionService
     {
-        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled, DecodingOptions? decodingOptions = null, IProgress<TranscriptionProgress>? progress = null)
+        public Task<TranscriptionResult> TranscribeAsync(string filePath, string model, string language, bool vadEnabled, bool filterEnabled, bool preferGpu, GpuBackend gpuBackend, DecodingOptions? decodingOptions = null, IProgress<TranscriptionProgress>? progress = null)
         {
             progress?.Report(new TranscriptionProgress(TranscriptionStage.DownloadModel, 100, "Download complete", false));
             progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 50, "Halfway", false));

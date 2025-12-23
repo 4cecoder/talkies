@@ -20,7 +20,7 @@ namespace Talkies.Windows.ViewModels
         private readonly HotkeyManager _hotkey = new();
         private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
         private readonly IAudioRecorder _recorder;
-        private readonly ITranscriptionService _transcriber;
+        private ITranscriptionService? _transcriber;
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
         private AppSettings _settings = new();
@@ -38,6 +38,7 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<string> EnhancementModes { get; } = new();
         public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
         public ObservableCollection<string> ErrorMessages { get; } = new();
+        public ObservableCollection<string> GpuBackends { get; } = new(new[] { "Auto", "CPU", "CUDA", "DirectML" });
 
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
@@ -53,6 +54,17 @@ namespace Talkies.Windows.ViewModels
         private bool _vadEnabled = true;
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }
         private bool _filterEnabled = true;
+        public bool PreferGpu { get => _preferGpu; set { _preferGpu = value; OnPropertyChanged(); } }
+        private bool _preferGpu = true;
+        public string SelectedGpuBackend { get => _selectedGpuBackend; set { _selectedGpuBackend = value; OnPropertyChanged(); UpdateTranscriptionService(); } }
+        private string _selectedGpuBackend = "Auto";
+
+        // Auto-update settings
+        public bool AutoCheckForUpdates { get => _autoCheckForUpdates; set { _autoCheckForUpdates = value; OnPropertyChanged(); } }
+        private bool _autoCheckForUpdates = true;
+        public string UpdateChannel { get => _updateChannel; set { _updateChannel = value; OnPropertyChanged(); } }
+        private string _updateChannel = "stable";
+        public ObservableCollection<string> UpdateChannels { get; } = new(new[] { "stable", "beta", "nightly" });
 
         public bool IsFetchingModels { get => _isFetchingModels; set { _isFetchingModels = value; OnPropertyChanged(); } }
         private bool _isFetchingModels;
@@ -145,15 +157,15 @@ namespace Talkies.Windows.ViewModels
         public bool IsIdle => !IsRecording;
         public bool CanSave => !string.IsNullOrEmpty(_lastVtt) && !IsRecording;
 
-        public ICommand StartCommand { get; }
-        public ICommand StopCommand { get; }
-        public ICommand SaveCommand { get; }
-        public ICommand ClearCommand { get; }
-        public ICommand FetchModelsCommand { get; }
-        public ICommand ExportSrtCommand { get; }
-        public ICommand ExportTxtCommand { get; }
-        public ICommand SavePromptCommand { get; }
-        public ICommand ShowPluginsCommand { get; }
+        public ICommand StartCommand { get; } = null!;
+        public ICommand StopCommand { get; } = null!;
+        public ICommand SaveCommand { get; } = null!;
+        public ICommand ClearCommand { get; } = null!;
+        public ICommand FetchModelsCommand { get; } = null!;
+        public ICommand ExportSrtCommand { get; } = null!;
+        public ICommand ExportTxtCommand { get; } = null!;
+        public ICommand SavePromptCommand { get; } = null!;
+        public ICommand ShowPluginsCommand { get; } = null!;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -164,12 +176,56 @@ namespace Talkies.Windows.ViewModels
         private bool _autoPastePending;
         private const string DefaultLlmModel = "openai/gpt-oss-20b";
 
+        private void UpdateTranscriptionService()
+        {
+            // Dispose existing service
+            if (_transcriber != null && _transcriber != _recorder) // Don't dispose injected services
+            {
+                _transcriber.Dispose();
+            }
+
+            // Select transcription service based on GPU backend preference
+            var gpuBackend = SelectedGpuBackend switch
+            {
+                "CPU" => GpuBackend.Cpu,
+                "CUDA" => GpuBackend.Cuda,
+                "DirectML" => GpuBackend.DirectMl,
+                "Auto" => AutoSelectGpuBackend(),
+                _ => GpuBackend.Cpu
+            };
+
+            _transcriber = gpuBackend == GpuBackend.DirectMl
+                ? new DirectMLTranscriptionService()
+                : new WhisperNetTranscriptionService();
+
+            Logger.Info($"Selected transcription service: {gpuBackend} ({_transcriber.GetType().Name})");
+        }
+
+        private GpuBackend AutoSelectGpuBackend()
+        {
+            var gpuType = GpuDetector.DetectPrimaryGpu();
+            return gpuType switch
+            {
+                GpuType.Nvidia => GpuBackend.Cuda,
+                GpuType.Amd or GpuType.Intel => GpuBackend.DirectMl,
+                _ => GpuBackend.Cpu
+            };
+        }
+
         public MainViewModel()
-            : this(new AudioRecorder(), new WhisperNetTranscriptionService(), new AudioDeviceService())
+            : this(new AudioRecorder(), new AudioDeviceService())
         {
         }
 
-        public MainViewModel(IAudioRecorder recorder, ITranscriptionService transcriber, IAudioDeviceService deviceService)
+        public MainViewModel(IAudioRecorder recorder, IAudioDeviceService deviceService)
+        {
+            _recorder = recorder;
+            _deviceService = deviceService;
+            UpdateTranscriptionService();
+        }
+
+        // Constructor for testing that allows injecting all dependencies
+        internal MainViewModel(IAudioRecorder recorder, ITranscriptionService transcriber, IAudioDeviceService deviceService)
         {
             _recorder = recorder;
             _transcriber = transcriber;
@@ -435,7 +491,8 @@ namespace Talkies.Windows.ViewModels
             IsTranscribing = true;
             TranscriptionProgress = 0;
             IsTranscriptionIndeterminate = true;
-            _usingGpu = CudaDetector.IsNvidiaCudaAvailable(out var gpuReason);
+            string gpuReason = "";
+            _usingGpu = PreferGpu && CudaDetector.IsNvidiaCudaAvailable(out gpuReason);
             Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
             if (!_usingGpu && !string.IsNullOrEmpty(gpuReason))
             {
@@ -502,12 +559,28 @@ namespace Talkies.Windows.ViewModels
                     Verbose = false
                 };
 
+                var gpuBackend = SelectedGpuBackend switch
+                {
+                    "CPU" => GpuBackend.Cpu,
+                    "CUDA" => GpuBackend.Cuda,
+                    "DirectML" => GpuBackend.DirectMl,
+                    "Auto" => AutoSelectGpuBackend(),
+                    _ => GpuBackend.Cpu
+                };
+
+                if (_transcriber == null)
+                {
+                    throw new InvalidOperationException("Transcription service not initialized");
+                }
+
                 var result = await _transcriber.TranscribeAsync(
                     e.FilePath,
                     SelectedModel,
                     SelectedLanguage,
                     VadEnabled,
                     FilterEnabled,
+                    PreferGpu,
+                    gpuBackend,
                     decodingOptions,
                     progress);
 
@@ -893,65 +966,16 @@ namespace Talkies.Windows.ViewModels
             InsertEnabled = _settings.InsertEnabled;
             VadEnabled = _settings.VadEnabled;
             FilterEnabled = _settings.FilterEnabled;
+            _settings.PreferGpu = PreferGpu;
+            _settings.GpuBackend = SelectedGpuBackend;
 
-            CustomPrompts.Clear();
-            if (_settings.CustomPrompts != null)
-            {
-                foreach (var prompt in _settings.CustomPrompts)
-                {
-                    CustomPrompts.Add(prompt);
-                }
-            }
-            RefreshEnhancementModes();
+            // Load auto-update settings
+            AutoCheckForUpdates = _settings.AutoCheckForUpdates;
+            UpdateChannel = _settings.UpdateChannel;
 
-            // Load LLM provider settings
-            if (string.IsNullOrWhiteSpace(_settings.SelectedLlmModelName))
-            {
-                _settings.SelectedLlmModelName = DefaultLlmModel;
-            }
-
-            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "LM Studio";
-            LlmEndpoint = _settings.LlmEndpoint ?? "http://127.0.0.1:1234";
-            SelectedEnhancementMode = _settings.SelectedEnhancementMode ?? "Grammar";
-
-            // Load Advanced TTS settings
-            _settings.AdvancedTts ??= new AdvancedTtsSettings();
-            var adv = PluginManager.TtsSynthesizer as AdvancedTtsPlugin 
-                      ?? (AdvancedTtsPlugin)(PluginManager.TtsSynthesizer = new AdvancedTtsPlugin());
-            adv.IsEnabled = _settings.AdvancedTts.IsEnabled;
-            adv.SelectedVoice = _settings.AdvancedTts.SelectedVoice;
-            adv.Rate = _settings.AdvancedTts.Rate;
-            adv.Pitch = _settings.AdvancedTts.Pitch;
-            adv.Volume = _settings.AdvancedTts.Volume;
-
-            // Load Sentiment plugin settings
-            _settings.Sentiment ??= new SentimentSettings();
-            if (PluginManager.TextEnhancer is SentimentAnalyzerPlugin sentiment)
-            {
-                sentiment.IsEnabled = _settings.Sentiment.IsEnabled;
-                sentiment.Endpoint = _settings.Sentiment.Endpoint;
-                sentiment.Model = _settings.Sentiment.Model;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_settings.MicrophoneId) && Microphones.Count > 0)
-            {
-                SelectedMicrophone = Microphones.FirstOrDefault(m => m.Id == _settings.MicrophoneId) ?? SelectedMicrophone;
-            }
-            _loadingSettings = false;
-        }
-
-        private void SaveSettings()
-        {
-            _settings.Model = SelectedModel;
-            _settings.Language = SelectedLanguage;
-            _settings.MicrophoneId = SelectedMicrophone?.Id;
-            _settings.EnhanceEnabled = EnhanceEnabled;
-            _settings.OllamaUrl = OllamaUrl;
-            _settings.OllamaModel = OllamaModel;
-            _settings.TtsEnabled = TtsEnabled;
-            _settings.InsertEnabled = InsertEnabled;
-            _settings.VadEnabled = VadEnabled;
-            _settings.FilterEnabled = FilterEnabled;
+            // Save auto-update settings
+            _settings.AutoCheckForUpdates = AutoCheckForUpdates;
+            _settings.UpdateChannel = UpdateChannel;
 
             // Save LLM provider settings
             _settings.SelectedLlmProvider = SelectedLlmProvider;
@@ -1010,6 +1034,12 @@ namespace Talkies.Windows.ViewModels
                     EnhancementModes.Add(prompt.Name);
                 }
             }
+        }
+
+        private void SaveSettings()
+        {
+            // Save all settings to persistent storage
+            _settingsService.Save(_settings);
         }
 
         private void SaveCustomPrompt()
@@ -1114,7 +1144,9 @@ namespace Talkies.Windows.ViewModels
                 or nameof(SelectedEnhancementMode)
                 or nameof(CustomPrompts)
                 or nameof(NewPromptName)
-                or nameof(NewPromptText))
+                or nameof(NewPromptText)
+                or nameof(AutoCheckForUpdates)
+                or nameof(UpdateChannel))
             {
                 SaveSettings();
             }

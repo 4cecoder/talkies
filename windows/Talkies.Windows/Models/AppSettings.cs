@@ -20,6 +20,8 @@ namespace Talkies.Windows.Models
         public bool InsertEnabled { get; set; }
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
+        public bool PreferGpu { get; set; } = true;
+        public string GpuBackend { get; set; } = "Auto";
 
         // LLM Provider Settings
         public string SelectedLlmProvider { get; set; } = "LM Studio";
@@ -40,6 +42,11 @@ namespace Talkies.Windows.Models
         public bool CrashReportingPrivacyAccepted { get; set; } = false;
         public bool LmStudioAvailabilityChecked { get; set; } = false;
         public bool OllamaAvailabilityChecked { get; set; } = false;
+
+        // Auto-update settings
+        public bool AutoCheckForUpdates { get; set; } = true;
+        public string UpdateChannel { get; set; } = "stable";
+        public string? AutoUpdatePublicKey { get; set; }
 
         // Developer team config
         public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
