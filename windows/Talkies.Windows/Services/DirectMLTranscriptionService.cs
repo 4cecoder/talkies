@@ -166,35 +166,41 @@ namespace Talkies.Windows.Services
 
         private async Task<Tensor<float>> RunEncoderAsync(float[] audioData)
         {
-            if (_encoderSession == null)
-                throw new InvalidOperationException("Encoder session not initialized");
-
-            // Create input tensor - audio data should be shaped appropriately for Whisper
-            // This is a simplified implementation - actual Whisper ONNX models have specific input requirements
-            var inputTensor = new DenseTensor<float>(audioData, new int[] { 1, audioData.Length });
-
-            var inputs = new List<NamedOnnxValue>
+            return await Task.Run(() =>
             {
-                NamedOnnxValue.CreateFromTensor("input_features", inputTensor)
-            };
+                if (_encoderSession == null)
+                    throw new InvalidOperationException("Encoder session not initialized");
 
-            using var results = _encoderSession.Run(inputs);
-            return results.First().AsTensor<float>();
+                // Create input tensor - audio data should be shaped appropriately for Whisper
+                // This is a simplified implementation - actual Whisper ONNX models have specific input requirements
+                var inputTensor = new DenseTensor<float>(audioData, new int[] { 1, audioData.Length });
+
+                var inputs = new List<NamedOnnxValue>
+                {
+                    NamedOnnxValue.CreateFromTensor("input_features", inputTensor)
+                };
+
+                using var results = _encoderSession.Run(inputs);
+                return results.First().AsTensor<float>();
+            });
         }
 
         private async Task<int[]> RunDecoderAsync(Tensor<float> melSpectrogram, string language)
         {
-            if (_decoderSession == null)
-                throw new InvalidOperationException("Decoder session not initialized");
+            return await Task.Run(() =>
+            {
+                if (_decoderSession == null)
+                    throw new InvalidOperationException("Decoder session not initialized");
 
-            // Simplified decoder implementation
-            // Actual implementation would need proper token generation with beam search
-            var startToken = 50258; // <|startoftranscript|>
-            var tokens = new List<int> { startToken };
+                // Simplified decoder implementation
+                // Actual implementation would need proper token generation with beam search
+                var startToken = 50258; // <|startoftranscript|>
+                var tokens = new List<int> { startToken };
 
-            // For now, return a basic implementation
-            // This would need to be expanded with proper Whisper decoder logic
-            return tokens.ToArray();
+                // For now, return a basic implementation
+                // This would need to be expanded with proper Whisper decoder logic
+                return tokens.ToArray();
+            });
         }
 
         private (string text, List<TranscriptSegment> segments) DecodeTokens(int[] tokens)

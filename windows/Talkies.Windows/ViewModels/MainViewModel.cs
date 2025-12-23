@@ -20,7 +20,7 @@ namespace Talkies.Windows.ViewModels
         private readonly HotkeyManager _hotkey = new();
         private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
         private readonly IAudioRecorder _recorder;
-        private ITranscriptionService _transcriber;
+        private ITranscriptionService? _transcriber;
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
         private AppSettings _settings = new();
@@ -484,7 +484,8 @@ namespace Talkies.Windows.ViewModels
             IsTranscribing = true;
             TranscriptionProgress = 0;
             IsTranscriptionIndeterminate = true;
-            _usingGpu = PreferGpu && CudaDetector.IsNvidiaCudaAvailable(out var gpuReason);
+            string gpuReason = "";
+            _usingGpu = PreferGpu && CudaDetector.IsNvidiaCudaAvailable(out gpuReason);
             Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
             if (!_usingGpu && !string.IsNullOrEmpty(gpuReason))
             {
@@ -559,6 +560,11 @@ namespace Talkies.Windows.ViewModels
                     "Auto" => AutoSelectGpuBackend(),
                     _ => GpuBackend.Cpu
                 };
+
+                if (_transcriber == null)
+                {
+                    throw new InvalidOperationException("Transcription service not initialized");
+                }
 
                 var result = await _transcriber.TranscribeAsync(
                     e.FilePath,

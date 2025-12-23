@@ -27,11 +27,11 @@ namespace Talkies.Windows.Services
 
                 foreach (var name in gpuNames)
                 {
-                    if (name.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (name != null && name.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0)
                         return GpuType.Nvidia;
-                    if (name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (name != null && (name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0))
                         return GpuType.Amd;
-                    if (name.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (name != null && name.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0)
                         return GpuType.Intel;
                 }
             }

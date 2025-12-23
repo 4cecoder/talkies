@@ -1,33 +1,31 @@
 using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Moq;
 using Newtonsoft.Json;
-using NUnit.Framework;
+using Xunit;
 using Talkies.Windows.Models;
 using Talkies.Windows.Services;
 
 namespace Talkies.Windows.Tests.Services
 {
-    [TestFixture]
-    public class CrashReporterTests
+    public class CrashReporterTests : IDisposable
     {
         private string _tempDir;
         private AppSettings _settings;
         private const long MaxLogSize = 10 * 1024 * 1024; // 10MB
 
-        [SetUp]
-        public void Setup()
+        public CrashReporterTests()
         {
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(_tempDir);
             _settings = new AppSettings { CrashReportingEnabled = false, CrashReportingEndpoint = "" };
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             if (Directory.Exists(_tempDir))
             {
@@ -35,7 +33,7 @@ namespace Talkies.Windows.Tests.Services
             }
         }
 
-        [Test]
+        [Fact]
         public void CrashReporter_LogsCrashLocally()
         {
             // Arrange
@@ -49,11 +47,11 @@ namespace Talkies.Windows.Tests.Services
             if (File.Exists(analyticsPath))
             {
                 var content = File.ReadAllText(analyticsPath);
-                Assert.IsTrue(content.Contains("test_event"));
+                Assert.True(content.Contains("test_event"));
             }
         }
 
-        [Test]
+        [Fact]
         public async Task CrashReporter_SendsCrashReport_WhenEnabled()
         {
             // Arrange
@@ -70,7 +68,7 @@ namespace Talkies.Windows.Tests.Services
             // Check if no exception thrown
         }
 
-        [Test]
+        [Fact]
         public void CrashReporter_OnNormalExit_DeletesCrashData()
         {
             // Arrange
@@ -82,10 +80,10 @@ namespace Talkies.Windows.Tests.Services
             reporter.OnNormalExit();
 
             // Assert
-            Assert.IsFalse(File.Exists(crashDataPath));
+            Assert.False(File.Exists(crashDataPath));
         }
 
-        [Test]
+        [Fact]
         public async Task RunMonitorAsync_SendsReport_OnNonZeroExit()
         {
             // Arrange
@@ -101,7 +99,7 @@ namespace Talkies.Windows.Tests.Services
             // Hard to test without actual process, but check method exists
         }
 
-        [Test]
+        [Fact]
         public void IsValidEndpoint_ValidHttps_ReturnsTrue()
         {
             // Arrange
@@ -112,10 +110,10 @@ namespace Talkies.Windows.Tests.Services
             var result = (bool)method?.Invoke(reporter, new[] { "https://example.com" });
 
             // Assert
-            Assert.IsTrue(result);
+            Assert.True(result);
         }
 
-        [Test]
+        [Fact]
         public void IsValidEndpoint_InvalidUrl_ReturnsFalse()
         {
             // Arrange
@@ -126,10 +124,10 @@ namespace Talkies.Windows.Tests.Services
             var result = (bool)method?.Invoke(reporter, new[] { "invalid-url" });
 
             // Assert
-            Assert.IsFalse(result);
+            Assert.False(result);
         }
 
-        [Test]
+        [Fact]
         public void AppendToLogFile_LimitsSize()
         {
             // Arrange
@@ -144,10 +142,10 @@ namespace Talkies.Windows.Tests.Services
 
             // Assert
             var fileInfo = new FileInfo(testFile);
-            Assert.IsTrue(fileInfo.Length <= CrashReporterTests.MaxLogSize + 100); // Allow some margin
+            Assert.True(fileInfo.Length <= CrashReporterTests.MaxLogSize + 100); // Allow some margin
         }
 
-        [Test]
+        [Fact]
         public void OnNormalExit_DeletesCrashDataFile()
         {
             // Arrange
@@ -159,10 +157,10 @@ namespace Talkies.Windows.Tests.Services
             reporter.OnNormalExit();
 
             // Assert
-            Assert.IsFalse(File.Exists(crashDataPath));
+            Assert.False(File.Exists(crashDataPath));
         }
 
-        [Test]
+        [Fact]
         public void TrackEvent_IncludesCorrectData()
         {
             // Arrange
@@ -176,13 +174,13 @@ namespace Talkies.Windows.Tests.Services
             if (File.Exists(analyticsPath))
             {
                 var content = File.ReadAllText(analyticsPath);
-                Assert.IsTrue(content.Contains("test_event"));
-                Assert.IsTrue(content.Contains("value"));
-                Assert.IsTrue(content.Contains(Environment.MachineName));
+                Assert.True(content.Contains("test_event"));
+                Assert.True(content.Contains("value"));
+                Assert.True(content.Contains(Environment.MachineName));
             }
         }
 
-        [Test]
+        [Fact]
         public void GetSystemSpecs_ReturnsExpectedProperties()
         {
             // Arrange
@@ -193,12 +191,12 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(reporter, null) as dynamic;
 
             // Assert
-            Assert.IsNotNull(specs);
-            Assert.IsNotNull(specs?.OS);
-            Assert.IsTrue(specs?.ProcessorCount > 0);
+            Assert.NotNull(specs);
+            Assert.NotNull(specs?.OS);
+            Assert.True(specs?.ProcessorCount > 0);
         }
 
-        [Test]
+        [Fact]
         public void GetFullLogDump_ReturnsContent_WhenFileExists()
         {
             // Arrange
@@ -212,10 +210,10 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(reporter, null) as string;
 
             // Assert
-            Assert.IsTrue(result?.Contains(testContent));
+            Assert.True(result?.Contains(testContent));
         }
 
-        [Test]
+        [Fact]
         public void IsValidEndpoint_RejectsLocalhost()
         {
             // Arrange
@@ -226,10 +224,10 @@ namespace Talkies.Windows.Tests.Services
             var result = (bool)method?.Invoke(reporter, new[] { "http://localhost/test" });
 
             // Assert
-            Assert.IsFalse(result);
+            Assert.False(result);
         }
 
-        [Test]
+        [Fact]
         public void IsValidEndpoint_AcceptsHttpsExternal()
         {
             // Arrange
@@ -240,10 +238,10 @@ namespace Talkies.Windows.Tests.Services
             var result = (bool)method?.Invoke(reporter, new[] { "https://example.com/api" });
 
             // Assert
-            Assert.IsTrue(result);
+            Assert.True(result);
         }
 
-        [Test]
+        [Fact]
         public void GetLocalIpAddress_ReturnsString()
         {
             // Arrange
@@ -254,11 +252,11 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(reporter, null) as string;
 
             // Assert
-            Assert.IsNotNull(ip);
-            Assert.IsTrue(ip.Length > 0);
+            Assert.NotNull(ip);
+            Assert.True(ip.Length > 0);
         }
 
-        [Test]
+        [Fact]
         public void GetSystemSpecs_ReturnsObject()
         {
             // Arrange
@@ -269,7 +267,7 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(reporter, null);
 
             // Assert
-            Assert.IsNotNull(specs);
+            Assert.NotNull(specs);
         }
     }
 }

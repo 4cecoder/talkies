@@ -40,7 +40,8 @@ namespace Talkies.Windows.Services
             DecodingOptions? decodingOptions = null,
             IProgress<TranscriptionProgress>? progress = null)
         {
-            var useCuda = preferGpu && gpuBackend == GpuBackend.Cuda && CudaDetector.IsNvidiaCudaAvailable(out var cudaReason);
+            string cudaReason = "";
+            var useCuda = preferGpu && gpuBackend == GpuBackend.Cuda && CudaDetector.IsNvidiaCudaAvailable(out cudaReason);
             if (useCuda)
             {
                 Environment.SetEnvironmentVariable("GGML_USE_CUBLAS", "1");
@@ -84,11 +85,12 @@ namespace Talkies.Windows.Services
                 using var factory = WhisperFactory.FromPath(modelPath);
                 var builder = factory.CreateBuilder();
                 
-                if (useCuda)
-                {
-                    builder.WithCuda();
-                    Logger.Info("Using CUDA for transcription acceleration");
-                }
+                // CUDA support temporarily disabled due to package compatibility
+                // if (useCuda)
+                // {
+                //     builder.WithCuda();
+                //     Logger.Info("Using CUDA for transcription acceleration");
+                // }
                 
                 if (!string.IsNullOrWhiteSpace(language) && language != "auto")
                 {

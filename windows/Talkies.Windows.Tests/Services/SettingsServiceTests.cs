@@ -1,18 +1,17 @@
 using System.IO;
-using NUnit.Framework;
+using System;
+using Xunit;
 using Talkies.Windows.Models;
 using Talkies.Windows.Services;
 
 namespace Talkies.Windows.Tests.Services
 {
-    [TestFixture]
-    public class SettingsServiceTests
+    public class SettingsServiceTests : IDisposable
     {
         private string _tempDir;
         private SettingsService _settingsService;
 
-        [SetUp]
-        public void Setup()
+        public SettingsServiceTests()
         {
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(_tempDir);
@@ -21,9 +20,9 @@ namespace Talkies.Windows.Tests.Services
             _settingsService = new SettingsService();
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
+            // Clean up
             Environment.SetEnvironmentVariable("TALKIES_CONFIG_PATH", null);
             if (Directory.Exists(_tempDir))
             {
@@ -31,7 +30,37 @@ namespace Talkies.Windows.Tests.Services
             }
         }
 
-        [Test]
+        [Fact]
+        public void Load_ReturnsDefaultSettings_WhenFileDoesNotExist()
+        {
+            // Act
+            var settings = _settingsService.Load();
+
+            // Assert
+            Assert.NotNull(settings);
+            Assert.Equal("tiny", settings.Model);
+        }
+
+        [Fact]
+        public void SaveAndLoad_PreservesSettings()
+        {
+            // Arrange
+            var originalSettings = new AppSettings
+            {
+                Model = "base",
+                Language = "en"
+            };
+
+            // Act
+            _settingsService.Save(originalSettings);
+            var loadedSettings = _settingsService.Load();
+
+            // Assert
+            Assert.Equal(originalSettings.Model, loadedSettings.Model);
+            Assert.Equal(originalSettings.Language, loadedSettings.Language);
+        }
+
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsFalse_WhenEnabledButNotAccepted()
         {
             // Arrange
@@ -46,10 +75,10 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(_settingsService, new[] { settings }) as bool?;
 
             // Assert
-            Assert.IsFalse(result);
+            Assert.False(result);
         }
 
-        [Test]
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsTrue_WhenEnabledAndAccepted()
         {
             // Arrange
@@ -64,10 +93,10 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(_settingsService, new[] { settings }) as bool?;
 
             // Assert
-            Assert.IsTrue(result);
+            Assert.True(result);
         }
 
-        [Test]
+        [Fact]
         public void ValidateCrashReportingSettings_ReturnsTrue_WhenDisabled()
         {
             // Arrange
@@ -82,7 +111,7 @@ namespace Talkies.Windows.Tests.Services
                 ?.Invoke(_settingsService, new[] { settings }) as bool?;
 
             // Assert
-            Assert.IsTrue(result);
+            Assert.True(result);
         }
     }
 }
