@@ -6,7 +6,8 @@
     "dev": "bun --bun next dev",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
-    "lint": "bun eslint"
+    "lint": "bun eslint",
+    "vercel": "./scripts/vercel-wrapper.sh"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^5.4.1",
