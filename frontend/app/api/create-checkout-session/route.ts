@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
-});
+function getStripe(): Stripe {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not set');
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-12-15.clover',
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,6 +31,9 @@ export async function POST(req: NextRequest) {
 
     // Get the origin for redirect URLs
     const origin = req.headers.get('origin') || 'http://localhost:3000';
+
+    // Get Stripe client
+    const stripe = getStripe();
 
     // Create Checkout Session
     const session = await stripe.checkout.sessions.create({
