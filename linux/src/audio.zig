@@ -142,6 +142,18 @@ pub const AudioRecorder = struct {
             try self.prepare(device_name);
         }
 
+        // CRITICAL: Flush PulseAudio's internal buffer to discard pre-recorded audio
+        // This ensures we only capture audio from THIS moment onwards (hotkey press)
+        if (self.pa_stream) |stream| {
+            var error_code: c_int = 0;
+            _ = c.pa_simple_flush(stream, &error_code);
+            if (error_code != 0) {
+                const err_str = c.pa_strerror(error_code);
+                utils.log("PulseAudio flush warning: {s}", .{err_str});
+                // Continue anyway - flush failure is not critical
+            }
+        }
+
         // Store output path
         self.output_path = try self.allocator.dupe(u8, output_path);
         errdefer {
