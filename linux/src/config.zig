@@ -30,6 +30,10 @@ pub const Config = struct {
     // Daemon GUI settings
     show_status_gui: bool = true, // Show daemon status monitor window
 
+    // VAD (Voice Activity Detection) settings
+    vad_enabled: bool = true, // Enable VAD to trim silence
+    vad_mode: u8 = 2, // 0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive
+
     // Track if strings are owned (allocated)
     audio_device_owned: bool = false,
     model_owned: bool = false,
@@ -135,6 +139,13 @@ pub const Config = struct {
             \\llm_model = "granite"
             \\ollama_url = "http://localhost:11434"
             \\system_prompt = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct."
+            \\
+            \\[vad]
+            \\# Voice Activity Detection: Trim silence before transcription
+            \\# Improves speed by skipping silent portions
+            \\enabled = true
+            \\# Mode: 0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive
+            \\mode = 2
             \\
         ;
 
@@ -292,6 +303,12 @@ pub const Config = struct {
                 self.yap_system_prompt = try self.allocator.dupe(u8, value);
                 self.yap_system_prompt_owned = true;
             }
+        } else if (std.mem.eql(u8, section, "vad")) {
+            if (std.mem.eql(u8, key, "enabled")) {
+                self.vad_enabled = try parseBoolValue(value_raw);
+            } else if (std.mem.eql(u8, key, "mode")) {
+                self.vad_mode = try parseIntValue(u8, value_raw);
+            }
         }
     }
 
@@ -331,6 +348,10 @@ pub const Config = struct {
             \\[platform]
             \\mode = "{s}"
             \\
+            \\[vad]
+            \\enabled = {s}
+            \\mode = {d}
+            \\
         ,
             .{
                 self.audio_device,
@@ -340,6 +361,8 @@ pub const Config = struct {
                 if (self.auto_paste) "true" else "false",
                 self.export_format,
                 self.platform,
+                if (self.vad_enabled) "true" else "false",
+                self.vad_mode,
             },
         );
         defer self.allocator.free(content);

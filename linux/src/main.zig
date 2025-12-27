@@ -12,6 +12,8 @@ const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
 const daemon_status_window = @import("daemon_status_window.zig");
+const vad = @import("vad.zig");
+const audio_processing = @import("audio_processing.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -722,8 +724,49 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
 
-                // Transcribe the recording
-                const transcription = whisper_service.transcribe(recording_file) catch |err| {
+                // Apply VAD to trim silence (if enabled in config)
+                var audio_file_to_transcribe: []const u8 = recording_file;
+                const vad_trimmed_file = "/tmp/talkies-recording-vad.wav";
+                if (cfg.vad_enabled) {
+                    const vad_mode: vad.VadMode = switch (cfg.vad_mode) {
+                        0 => .quality,
+                        1 => .low_bitrate,
+                        3 => .very_aggressive,
+                        else => .aggressive,
+                    };
+
+                    if (daemon_status_win) |win| {
+                        win.addLog(.info, "Applying VAD to trim silence...");
+                    }
+
+                    const has_voice = audio_processing.trimSilenceFromWav(
+                        allocator,
+                        recording_file,
+                        vad_trimmed_file,
+                        vad_mode,
+                    ) catch |err| blk: {
+                        utils.log("VAD processing failed: {}, continuing without VAD", .{err});
+                        break :blk false;
+                    };
+
+                    if (has_voice) {
+                        audio_file_to_transcribe = vad_trimmed_file;
+                        if (daemon_status_win) |win| {
+                            win.addLog(.info, "VAD complete - silence trimmed");
+                        }
+                    } else {
+                        utils.log("VAD: No voice detected, skipping transcription", .{});
+                        if (daemon_status_win) |win| {
+                            win.addLog(.warn, "No voice detected in recording");
+                            win.setState("idle");
+                        }
+                        daemon_state.setState(.idle) catch {};
+                        continue;
+                    }
+                }
+
+                // Transcribe the recording (possibly VAD-trimmed)
+                const transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
 
                     if (daemon_status_win) |win| {
