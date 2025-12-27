@@ -22,7 +22,7 @@ const FAQ = dynamic(() => import('./components/sections/FAQ').then(mod => ({ def
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white relative overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a0f] text-white relative overflow-hidden" role="document">
       {/* Animated gradient background orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 -left-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-purple-600/30 via-violet-600/20 to-transparent blur-3xl animate-glow"></div>
@@ -33,8 +33,9 @@ export default function Home() {
       <Header />
       <ModalManager />
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-6">
+      <main>
+        {/* Hero Section */}
+        <section className="relative pt-32 pb-20 px-6" aria-labelledby="hero-heading">
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <div className="flex justify-center mb-4">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-xl bg-white/5 border border-white/10">
@@ -42,7 +43,7 @@ export default function Home() {
               <span className="text-sm text-neutral-300">Voice-Powered AI Writing</span>
             </div>
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+          <h1 id="hero-heading" className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-purple-300 via-pink-300 to-blue-300 bg-clip-text text-transparent animate-gradient">
               Write 3x faster,
             </span>
@@ -291,6 +292,8 @@ export default function Home() {
       <Suspense fallback={<FAQSkeleton />}>
         <FAQ />
       </Suspense>
+      </main>
+
 
 
       {/* Footer */}
