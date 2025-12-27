@@ -1,21 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
+import { openAuthModal, openCheckoutModal } from '../ModalManager';
 
-interface HeaderProps {
-  onSignInClick: () => void;
-  onGetStartedClick: () => void;
-}
-
-export function Header({ onSignInClick, onGetStartedClick }: HeaderProps) {
+export function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('scroll', () => {
+  useEffect(() => {
+    const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
-    });
-  }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
@@ -84,10 +83,10 @@ export function Header({ onSignInClick, onGetStartedClick }: HeaderProps) {
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={onSignInClick}>
+            <Button variant="ghost" onClick={() => openAuthModal('login')}>
               Sign In
             </Button>
-            <Button variant="gradient" onClick={onGetStartedClick}>
+            <Button variant="gradient" onClick={() => openCheckoutModal('pro')}>
               Get Started
             </Button>
           </div>

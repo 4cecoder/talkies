@@ -1,15 +1,10 @@
-'use client';
-
-import { useState } from 'react';
-import AuthModal from './components/AuthModal';
-import CheckoutModal from './components/CheckoutModal';
-import { Globe, Shield, Smartphone, TrendingUp, Users, Award, Zap, Check, ArrowRight, Sparkles, Download, Star } from 'lucide-react';
+import { ModalManager } from './components/ModalManager';
+import { Header } from './components/sections/Header';
+import { AuthButton } from './components/AuthButton';
+import { CheckoutButton } from './components/CheckoutButton';
+import { Globe, Shield, TrendingUp, Users, Award, Zap, Check, ArrowRight, Sparkles, Download, Star } from 'lucide-react';
 
 export default function Home() {
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white relative overflow-hidden">
       {/* Animated gradient background orbs */}
@@ -19,40 +14,8 @@ export default function Home() {
         <div className="absolute bottom-0 left-1/3 w-[700px] h-[700px] rounded-full bg-gradient-to-tr from-pink-600/25 via-fuchsia-600/15 to-transparent blur-3xl animate-glow" style={{animationDelay: "2s"}}></div>
       </div>
 
-      {/* Header with glassmorphism */}
-      <header className="fixed top-0 w-full backdrop-blur-xl bg-white/5 border-b border-white/10 z-50 shadow-lg shadow-purple-500/5">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-            Talkies
-          </div>
-          <nav className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-neutral-300 hover:text-white transition-all hover:scale-105">Features</a>
-            <a href="#pricing" className="text-neutral-300 hover:text-white transition-all hover:scale-105">Pricing</a>
-            <a href="#testimonials" className="text-neutral-300 hover:text-white transition-all hover:scale-105">Testimonials</a>
-            <a href="#faq" className="text-neutral-300 hover:text-white transition-all hover:scale-105">FAQ</a>
-            <button
-              onClick={() => {
-                setAuthMode('login');
-                setAuthModalOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => setCheckoutModalOpen(true)}
-              className="relative px-6 py-2 rounded-xl font-semibold overflow-hidden group transition-all hover:scale-105"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 animate-gradient-fast"></div>
-              <span className="relative text-white">Get Started</span>
-            </button>
-          </nav>
-        </div>
-      </header>
-
-      {/* Modals */}
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} initialMode={authMode} />
-      <CheckoutModal isOpen={checkoutModalOpen} onClose={() => setCheckoutModalOpen(false)} plan="pro" />
+      <Header />
+      <ModalManager />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6">
@@ -78,8 +41,8 @@ export default function Home() {
 
           {/* Download Button - macOS */}
           <div className="flex flex-col gap-6 justify-center items-center mb-8">
-            <button
-              onClick={() => setCheckoutModalOpen(true)}
+            <CheckoutButton
+              plan="pro"
               className="group relative px-10 py-5 rounded-full font-semibold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 animate-gradient-fast"></div>
@@ -88,7 +51,7 @@ export default function Home() {
                 <Download className="w-6 h-6" />
                 Download for macOS
               </span>
-            </button>
+            </CheckoutButton>
             <div className="flex items-center gap-2 text-sm text-neutral-500">
               <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
                 Requires macOS 15+ and Apple Silicon
@@ -316,15 +279,12 @@ export default function Home() {
                   <span className="text-neutral-200">All core features</span>
                 </li>
               </ul>
-              <button
-                onClick={() => {
-                  setAuthMode('signup');
-                  setAuthModalOpen(true);
-                }}
+              <AuthButton
+                mode="signup"
                 className="w-full py-4 rounded-full backdrop-blur-xl bg-white/10 border border-white/20 hover:bg-white/20 transition-all font-semibold hover:shadow-lg hover:shadow-cyan-500/20"
               >
                 Download Free
-              </button>
+              </AuthButton>
             </div>
 
             <div className="group relative p-8 rounded-3xl overflow-hidden transition-all hover:scale-105">
@@ -358,13 +318,13 @@ export default function Home() {
                     <span className="text-neutral-200">Priority support</span>
                   </li>
                 </ul>
-                <button
-                  onClick={() => setCheckoutModalOpen(true)}
+                <CheckoutButton
+                  plan="pro"
                   className="group/btn relative w-full py-4 rounded-full overflow-hidden font-bold transition-all hover:shadow-2xl hover:shadow-purple-500/50"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 animate-gradient-fast"></div>
                   <span className="relative text-white">Get Pro</span>
-                </button>
+                </CheckoutButton>
               </div>
             </div>
           </div>
@@ -390,8 +350,8 @@ export default function Home() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <button
-                  onClick={() => setCheckoutModalOpen(true)}
+                <CheckoutButton
+                  plan="pro"
                   className="group relative px-10 py-5 rounded-full font-bold overflow-hidden transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50 text-lg"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 animate-gradient-fast"></div>
@@ -401,16 +361,13 @@ export default function Home() {
                     Start Free Trial
                     <ArrowRight className="w-5 h-5" />
                   </span>
-                </button>
-                <button
-                  onClick={() => {
-                    setAuthMode('signup');
-                    setAuthModalOpen(true);
-                  }}
+                </CheckoutButton>
+                <AuthButton
+                  mode="signup"
                   className="px-10 py-5 rounded-full font-bold backdrop-blur-xl bg-white/10 border border-white/20 hover:bg-white/20 transition-all text-lg"
                 >
                   Try Free Version
-                </button>
+                </AuthButton>
               </div>
 
               <div className="mt-8 flex items-center justify-center gap-8 text-sm text-neutral-400">

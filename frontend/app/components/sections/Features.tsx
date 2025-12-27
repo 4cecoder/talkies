@@ -1,5 +1,3 @@
-'use client';
-
 import { Card, CardHeader, CardTitle, CardDescription } from '../ui/Card';
 import { Globe, Shield, Zap } from 'lucide-react';
 

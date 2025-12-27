@@ -16,7 +16,7 @@ export function ModalManager() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [selectedPlan, setSelectedPlan] = useState<'pro' | 'enterprise'>('pro');
+  const [selectedPlan, setSelectedPlan] = useState<'free' | 'pro'>('pro');
 
   // Listen for custom events to open modals from Server Components
   useEffect(() => {
@@ -70,7 +70,7 @@ export function openAuthModal(mode: 'login' | 'signup' = 'login') {
   }
 }
 
-export function openCheckoutModal(plan: 'pro' | 'enterprise' = 'pro') {
+export function openCheckoutModal(plan: 'free' | 'pro' = 'pro') {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('openCheckoutModal', { detail: { plan } })
