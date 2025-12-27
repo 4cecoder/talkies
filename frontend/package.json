@@ -8,7 +8,9 @@
     "analyze": "ANALYZE=true bun --bun next build",
     "start": "bun --bun next start",
     "lint": "bun eslint",
-    "vercel": "./scripts/vercel-wrapper.sh"
+    "vercel": "./scripts/vercel-wrapper.sh",
+    "lighthouse": "lhci autorun",
+    "test:a11y": "bun run build && npm run lighthouse"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^5.4.1",
