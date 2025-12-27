@@ -14,19 +14,19 @@ export function Footer() {
 
           <nav className="flex gap-6" aria-label="Footer navigation">
             <a
-              href="#privacy"
+              href="/legal/privacy"
               className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
             >
               Privacy
             </a>
             <a
-              href="#terms"
+              href="/legal/terms"
               className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
             >
               Terms
             </a>
             <a
-              href="#contact"
+              href="/contact"
               className="text-sm text-neutral-500 hover:text-purple-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
             >
               Contact

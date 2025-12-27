@@ -6,6 +6,7 @@ import { AuthButton } from './components/AuthButton';
 import { CheckoutButton } from './components/CheckoutButton';
 import { StatsSkeleton, TestimonialsSkeleton, FAQSkeleton } from './components/ui/Skeleton';
 import { Globe, Shield, Zap, Check, ArrowRight, Sparkles, Download } from './components/icons';
+import { LiveTranscriptionDemo } from './components/demo/LiveTranscriptionDemo';
 
 // Lazy load below-fold sections for code splitting
 const Stats = dynamic(() => import('./components/sections/Stats').then(mod => ({ default: mod.Stats })), {
@@ -45,15 +46,15 @@ export default function Home() {
           </div>
           <h1 id="hero-heading" className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-purple-300 via-pink-300 to-blue-300 bg-clip-text text-transparent animate-gradient">
-              Write 3x faster,
+              Write 3x faster
             </span>
             <br />
             <span className="bg-gradient-to-r from-blue-300 via-cyan-300 to-purple-300 bg-clip-text text-transparent animate-gradient">
-              without lifting a finger
+              with AI that runs on YOUR device
             </span>
           </h1>
           <p className="text-xl md:text-2xl text-neutral-300 mb-12 max-w-2xl mx-auto">
-            Voice-powered writing assistant that helps you capture ideas instantly
+            Voice-powered AI that transcribes instantly. 100% private, works offline.
           </p>
 
           {/* Download Button - macOS */}
@@ -80,6 +81,21 @@ export default function Home() {
             Windows & Linux coming soon • No signup required
           </div>
         </div>
+      </section>
+
+      {/* Live ML Demo Section */}
+      <section className="relative py-20 px-6">
+        <div className="mx-auto max-w-4xl text-center mb-12">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">
+            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              Try It Now - Right in Your Browser
+            </span>
+          </h2>
+          <p className="text-lg text-neutral-400 max-w-2xl mx-auto">
+            Powered by AI running on <span className="text-purple-300 font-semibold">YOUR device</span>. No signup, no cloud, 100% private.
+          </p>
+        </div>
+        <LiveTranscriptionDemo />
       </section>
 
       {/* Features Section */}
