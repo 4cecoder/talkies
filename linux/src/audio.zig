@@ -89,14 +89,16 @@ pub const AudioRecorder = struct {
         }
     }
 
-    /// Pre-initialize PulseAudio stream for instant recording start
-    /// Call this once at daemon startup to avoid 28ms delay on first recording
-    pub fn prepare(self: *AudioRecorder, device_name: ?[]const u8) !void {
-        if (self.pa_stream != null) {
-            return; // Already prepared
+
+    /// Start recording audio to a WAV file
+    /// device_name: PulseAudio device name (null or empty = use default)
+    pub fn startRecording(self: *AudioRecorder, output_path: []const u8, device_name: ?[]const u8) !void {
+        if (self.recording) {
+            return error.AlreadyRecording;
         }
 
-        // Initialize PulseAudio stream
+        // Create fresh PulseAudio stream for this recording (like macOS/Windows)
+        // This avoids buffer accumulation issues on PipeWire
         var sample_spec = c.pa_sample_spec{
             .format = c.PA_SAMPLE_S16LE,
             .rate = self.sample_rate,
@@ -127,33 +129,6 @@ pub const AudioRecorder = struct {
             return error.PulseAudioInitFailed;
         }
 
-        utils.log("PulseAudio stream pre-initialized (ready for instant recording)", .{});
-    }
-
-    /// Start recording audio to a WAV file
-    /// device_name: PulseAudio device name (null or empty = use default)
-    pub fn startRecording(self: *AudioRecorder, output_path: []const u8, device_name: ?[]const u8) !void {
-        if (self.recording) {
-            return error.AlreadyRecording;
-        }
-
-        // If stream not prepared, prepare it now (slower path)
-        if (self.pa_stream == null) {
-            try self.prepare(device_name);
-        }
-
-        // CRITICAL: Flush PulseAudio's internal buffer to discard pre-recorded audio
-        // This ensures we only capture audio from THIS moment onwards (hotkey press)
-        if (self.pa_stream) |stream| {
-            var error_code: c_int = 0;
-            _ = c.pa_simple_flush(stream, &error_code);
-            if (error_code != 0) {
-                const err_str = c.pa_strerror(error_code);
-                utils.log("PulseAudio flush warning: {s}", .{err_str});
-                // Continue anyway - flush failure is not critical
-            }
-        }
-
         // Store output path
         self.output_path = try self.allocator.dupe(u8, output_path);
         errdefer {
@@ -173,7 +148,7 @@ pub const AudioRecorder = struct {
         const header_bytes = std.mem.asBytes(&header);
         try self.output_file.?.writeAll(header_bytes);
 
-        // Stream is already open - just start recording!
+        // Start recording with fresh stream
         self.recording = true;
         self.bytes_recorded = 0;
         self.level_buffer_size = 0;
@@ -220,7 +195,7 @@ pub const AudioRecorder = struct {
     }
 
     /// Stop recording and finalize the WAV file
-    /// Note: Keeps PulseAudio stream open for next recording (instant start!)
+    /// Closes the PulseAudio stream to avoid buffer accumulation (like macOS/Windows)
     pub fn stopRecording(self: *AudioRecorder) !void {
         if (!self.recording) {
             return;
@@ -228,11 +203,12 @@ pub const AudioRecorder = struct {
 
         self.recording = false;
 
-        // Drain PulseAudio buffer but KEEP stream open for instant next recording
+        // Drain and close the PulseAudio stream (fresh stream for next recording)
         if (self.pa_stream) |stream| {
             var error_code: c_int = 0;
             _ = c.pa_simple_drain(stream, &error_code);
-            // Don't free the stream! Keep it ready for next recording
+            c.pa_simple_free(stream);
+            self.pa_stream = null;
         }
 
         // Update WAV header with actual sizes

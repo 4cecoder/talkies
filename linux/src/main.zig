@@ -561,11 +561,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         var recorder = audio.AudioRecorder.init(allocator);
         defer recorder.deinit();
 
-        // Pre-initialize PulseAudio stream for INSTANT recording start (eliminates 28ms delay!)
+        // Get audio device from config (will be used on each recording)
         const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
-        std.debug.print("Pre-initializing audio stream...\n", .{});
-        try recorder.prepare(device);
-        std.debug.print("✅ Audio ready - recording will start INSTANTLY!\n", .{});
 
         // Initialize WebSocket server
         var ws_server = try websocket.Server.init(allocator, 6789);

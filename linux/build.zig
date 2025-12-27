@@ -69,6 +69,10 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("whisper");
     exe.linkSystemLibrary("sqlite3"); // For YAP session management
 
+    // Link libfvad (WebRTC VAD) - vendored static library
+    exe.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    exe.addIncludePath(b.path("vendor/libfvad/include"));
+
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
         exe.linkSystemLibrary("X11");
@@ -141,6 +145,10 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("pulse");
     unit_tests.linkSystemLibrary("whisper");
     unit_tests.linkSystemLibrary("sqlite3");
+
+    // Link libfvad for tests
+    unit_tests.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    unit_tests.addIncludePath(b.path("vendor/libfvad/include"));
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
