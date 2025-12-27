@@ -1,8 +1,24 @@
+import { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { ModalManager } from './components/ModalManager';
 import { Header } from './components/sections/Header';
 import { AuthButton } from './components/AuthButton';
 import { CheckoutButton } from './components/CheckoutButton';
-import { Globe, Shield, TrendingUp, Users, Award, Zap, Check, ArrowRight, Sparkles, Download, Star } from 'lucide-react';
+import { StatsSkeleton, TestimonialsSkeleton, FAQSkeleton } from './components/ui/Skeleton';
+import { Globe, Shield, Zap, Check, ArrowRight, Sparkles, Download } from 'lucide-react';
+
+// Lazy load below-fold sections for code splitting
+const Stats = dynamic(() => import('./components/sections/Stats').then(mod => ({ default: mod.Stats })), {
+  ssr: true,
+});
+
+const Testimonials = dynamic(() => import('./components/sections/Testimonials').then(mod => ({ default: mod.Testimonials })), {
+  ssr: true,
+});
+
+const FAQ = dynamic(() => import('./components/sections/FAQ').then(mod => ({ default: mod.FAQ })), {
+  ssr: true,
+});
 
 export default function Home() {
   return (
@@ -123,134 +139,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof Stats */}
-      <section className="relative py-20 px-6">
-        <div className="max-w-6xl mx-auto relative z-10">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 text-center group hover:border-purple-500/50 transition-all">
-              <div className="flex justify-center mb-3">
-                <TrendingUp className="w-8 h-8 text-purple-400" />
-              </div>
-              <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                87%
-              </div>
-              <div className="text-neutral-400">Faster Writing</div>
-            </div>
-            <div className="p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 text-center group hover:border-blue-500/50 transition-all">
-              <div className="flex justify-center mb-3">
-                <Users className="w-8 h-8 text-blue-400" />
-              </div>
-              <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                500K+
-              </div>
-              <div className="text-neutral-400">Active Users</div>
-            </div>
-            <div className="p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 text-center group hover:border-pink-500/50 transition-all">
-              <div className="flex justify-center mb-3">
-                <Globe className="w-8 h-8 text-pink-400" />
-              </div>
-              <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-pink-400 to-orange-400 bg-clip-text text-transparent">
-                100+
-              </div>
-              <div className="text-neutral-400">Languages</div>
-            </div>
-            <div className="p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 text-center group hover:border-green-500/50 transition-all">
-              <div className="flex justify-center mb-3">
-                <Award className="w-8 h-8 text-green-400" />
-              </div>
-              <div className="text-5xl font-bold mb-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-                4.9/5
-              </div>
-              <div className="text-neutral-400">User Rating</div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Social Proof Stats - Lazy loaded */}
+      <Suspense fallback={<StatsSkeleton />}>
+        <Stats />
+      </Suspense>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="relative py-20 px-6">
-        <div className="max-w-6xl mx-auto relative z-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-            <span className="bg-gradient-to-r from-yellow-300 via-orange-300 to-pink-300 bg-clip-text text-transparent">
-              Loved by Creators Worldwide
-            </span>
-          </h2>
-          <p className="text-center text-neutral-400 mb-16 max-w-2xl mx-auto">
-            Join thousands of writers, journalists, and content creators who use Talkies daily
-          </p>
+      {/* Testimonials Section - Lazy loaded */}
+      <Suspense fallback={<TestimonialsSkeleton />}>
+        <Testimonials />
+      </Suspense>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="group relative p-8 rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-purple-500/50 transition-all">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-purple-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative">
-                <div className="flex gap-1 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                  ))}
-                </div>
-                <p className="text-neutral-300 mb-6 leading-relaxed">
-                  &quot;Talkies has completely transformed my workflow. I can now write articles 3x faster just by speaking my thoughts. Game changer!&quot;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center font-bold">
-                    SM
-                  </div>
-                  <div>
-                    <div className="font-semibold">Sarah Miller</div>
-                    <div className="text-sm text-neutral-400">Tech Journalist</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative p-8 rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-blue-500/50 transition-all">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative">
-                <div className="flex gap-1 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                  ))}
-                </div>
-                <p className="text-neutral-300 mb-6 leading-relaxed">
-                  &quot;The accuracy is incredible. Works perfectly offline and my data stays private. Exactly what I needed for client meetings.&quot;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center font-bold">
-                    JD
-                  </div>
-                  <div>
-                    <div className="font-semibold">James Davis</div>
-                    <div className="text-sm text-neutral-400">Product Manager</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="group relative p-8 rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-pink-500/50 transition-all">
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-pink-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative">
-                <div className="flex gap-1 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                  ))}
-                </div>
-                <p className="text-neutral-300 mb-6 leading-relaxed">
-                  &quot;As a non-native English speaker, Talkies helps me write professional emails effortlessly. The multi-language support is fantastic!&quot;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-600 to-orange-600 flex items-center justify-center font-bold">
-                    ML
-                  </div>
-                  <div>
-                    <div className="font-semibold">Maria Lopez</div>
-                    <div className="text-sm text-neutral-400">Content Creator</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Pricing Section */}
       <section id="pricing" className="relative py-20 px-6">
@@ -389,47 +287,11 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FAQ Section */}
-      <section id="faq" className="relative py-20 px-6">
-        <div className="max-w-3xl mx-auto relative z-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">
-            <span className="bg-gradient-to-r from-green-300 via-emerald-300 to-teal-300 bg-clip-text text-transparent">
-              Frequently Asked Questions
-            </span>
-          </h2>
+      {/* FAQ Section - Lazy loaded */}
+      <Suspense fallback={<FAQSkeleton />}>
+        <FAQ />
+      </Suspense>
 
-          <div className="space-y-6">
-            <details className="group p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-green-500/50 transition-all">
-              <summary className="font-semibold cursor-pointer text-lg bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent">
-                How does the voice transcription work?
-              </summary>
-              <p className="mt-4 text-neutral-300 leading-relaxed">
-                Our app uses advanced speech recognition technology that runs directly on your device,
-                ensuring privacy and offline functionality.
-              </p>
-            </details>
-
-            <details className="group p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-blue-500/50 transition-all">
-              <summary className="font-semibold cursor-pointer text-lg bg-gradient-to-r from-blue-300 to-cyan-300 bg-clip-text text-transparent">
-                Is my data secure?
-              </summary>
-              <p className="mt-4 text-neutral-300 leading-relaxed">
-                Yes! Everything stays on your device. We never upload your voice recordings or
-                transcriptions to the cloud.
-              </p>
-            </details>
-
-            <details className="group p-6 rounded-2xl backdrop-blur-xl bg-white/5 border border-white/10 hover:border-purple-500/50 transition-all">
-              <summary className="font-semibold cursor-pointer text-lg bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
-                Can I use it offline?
-              </summary>
-              <p className="mt-4 text-neutral-300 leading-relaxed">
-                Absolutely! The app works completely offline once installed. No internet connection required.
-              </p>
-            </details>
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="relative py-12 px-6 border-t border-white/10 backdrop-blur-xl bg-white/5">
