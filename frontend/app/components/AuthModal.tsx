@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { X, Mail, Lock, User } from './icons';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -34,6 +34,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     password: '',
     rememberMe: false,
   });
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +49,62 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
+
+  // Handle Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
+  // Focus trap
+  useEffect(() => {
+    if (!isOpen || !modalRef.current) return;
+
+    const focusableElements = modalRef.current.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+    );
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTab);
+
+    // Auto-focus first input
+    setTimeout(() => {
+      const firstInput = modalRef.current?.querySelector('input');
+      firstInput?.focus();
+    }, 100);
+
+    return () => {
+      document.removeEventListener('keydown', handleTab);
+    };
+  }, [isOpen, mode]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -114,7 +172,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       ></div>
 
       {/* Modal */}
-      <div className="relative w-full max-w-md animate-scale-in">
+      <div ref={modalRef} className="relative w-full max-w-md animate-scale-in">
         <div className="relative rounded-3xl overflow-hidden">
           {/* Animated gradient border */}
           <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 animate-gradient"></div>
