@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Check } from 'lucide-react';
+import { Check } from '../icons';
 
 const plans = [
   {

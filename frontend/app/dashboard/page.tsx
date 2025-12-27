@@ -1,6 +1,6 @@
 'use client';
 
-import { TrendingUp, Clock, Languages, ChevronRight, Settings, User } from 'lucide-react';
+import { TrendingUp, Clock, Languages, ChevronRight, Settings, User } from '../components/icons';
 
 export default function Dashboard() {
   return (

@@ -1,4 +1,4 @@
-import { TrendingUp, Users, Globe, Award } from 'lucide-react';
+import { TrendingUp, Users, Globe, Award } from '../icons';
 
 export function Stats() {
   return (

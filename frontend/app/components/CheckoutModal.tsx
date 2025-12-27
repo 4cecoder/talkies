@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Shield, Check, Lock, Loader2 } from 'lucide-react';
+import { X, Shield, Check, Lock, Loader2 } from './icons';
 import { PLAN_PRICING } from '../lib/stripe';
 
 interface CheckoutModalProps {

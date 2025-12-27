@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { X, Mail, Lock, User } from 'lucide-react';
+import { X, Mail, Lock, User } from './icons';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 

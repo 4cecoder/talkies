@@ -5,7 +5,7 @@ import { Header } from './components/sections/Header';
 import { AuthButton } from './components/AuthButton';
 import { CheckoutButton } from './components/CheckoutButton';
 import { StatsSkeleton, TestimonialsSkeleton, FAQSkeleton } from './components/ui/Skeleton';
-import { Globe, Shield, Zap, Check, ArrowRight, Sparkles, Download } from 'lucide-react';
+import { Globe, Shield, Zap, Check, ArrowRight, Sparkles, Download } from './components/icons';
 
 // Lazy load below-fold sections for code splitting
 const Stats = dynamic(() => import('./components/sections/Stats').then(mod => ({ default: mod.Stats })), {
