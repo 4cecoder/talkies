@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { openCheckoutModal } from './ModalManager';
+import { useModalStore } from '@/app/store/modal-store';
 
 interface CheckoutButtonProps {
   plan?: 'free' | 'pro';
@@ -10,6 +10,8 @@ interface CheckoutButtonProps {
 }
 
 export function CheckoutButton({ plan = 'pro', children, className = '' }: CheckoutButtonProps) {
+  const { openCheckoutModal } = useModalStore();
+
   return (
     <button onClick={() => openCheckoutModal(plan)} className={className}>
       {children}

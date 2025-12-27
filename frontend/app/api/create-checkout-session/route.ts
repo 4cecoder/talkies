@@ -1,65 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
+import { ConvexHttpClient } from 'convex/browser';
+import { api } from '@/convex/_generated/api';
+import { createCheckoutSchema } from '@/app/lib/validations/checkout';
+import { auth } from '@/app/lib/auth';
 
-function getStripe(): Stripe {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error('STRIPE_SECRET_KEY is not set');
-  }
-  return new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2025-12-15.clover',
-  });
-}
+// Initialize Convex client
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function POST(req: NextRequest) {
   try {
-    const { priceId, billingCycle } = await req.json();
+    // CRITICAL: Verify authentication
+    const session = await auth.api.getSession({ headers: req.headers });
 
-    if (!priceId || !billingCycle) {
+    if (!session?.user?.id) {
       return NextResponse.json(
-        { error: 'Missing required parameters' },
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+
+    // Validate input with Zod
+    const parsed = createCheckoutSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid input', details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    // Validate billing cycle
-    if (billingCycle !== 'monthly' && billingCycle !== 'yearly') {
-      return NextResponse.json(
-        { error: 'Invalid billing cycle' },
-        { status: 400 }
-      );
-    }
-
-    // Get the origin for redirect URLs
-    const origin = req.headers.get('origin') || 'http://localhost:3000';
-
-    // Get Stripe client
-    const stripe = getStripe();
-
-    // Create Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      success_url: `${origin}/dashboard?session_id={CHECKOUT_SESSION_ID}&success=true`,
-      cancel_url: `${origin}/?canceled=true`,
-      metadata: {
-        billingCycle,
-      },
-      subscription_data: {
-        metadata: {
-          billingCycle,
-        },
-      },
-      allow_promotion_codes: true,
-      billing_address_collection: 'required',
+    // Call Convex action to create checkout session
+    // The action handles Stripe API calls and validation
+    const result = await convex.action(api.stripe.createCheckoutSession, {
+      userId: session.user.id as any, // Cast to Convex ID type
+      priceId: parsed.data.priceId,
+      billingCycle: parsed.data.billingCycle,
     });
 
-    return NextResponse.json({ sessionId: session.id, url: session.url });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error creating checkout session:', error);
     return NextResponse.json(

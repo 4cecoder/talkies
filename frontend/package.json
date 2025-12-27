@@ -13,14 +13,22 @@
     "test:a11y": "bun run build && npm run lighthouse"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@stripe/react-stripe-js": "^5.4.1",
     "@stripe/stripe-js": "^8.6.0",
+    "@tanstack/react-query": "^5.90.12",
+    "better-auth": "^1.4.9",
     "clsx": "^2.1.1",
+    "convex": "^1.31.2",
+    "immer": "^11.1.0",
     "lucide-react": "^0.556.0",
     "next": "16.1.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "tailwind-merge": "^3.4.0"
+    "react-hook-form": "^7.69.0",
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.2.1",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.1.1",

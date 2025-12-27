@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/Button';
 import { Menu, X } from '../icons';
-import { openAuthModal, openCheckoutModal } from '../ModalManager';
+import { useModalStore } from '@/app/store/modal-store';
 
 export function Header() {
+  const { openAuthModal, openCheckoutModal } = useModalStore();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
