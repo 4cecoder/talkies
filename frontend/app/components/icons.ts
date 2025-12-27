@@ -4,6 +4,7 @@
 export {
   // Navigation & UI
   X,
+  Menu,
   Check,
   ChevronRight,
 
