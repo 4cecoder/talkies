@@ -82,10 +82,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
-      console.log('Auth submission:', { mode, ...formData });
+      // TODO: Implement actual authentication
       onClose();
     } catch (error) {
-      console.error('Auth error:', error);
+      // Error handling would go here
+      setIsLoading(false);
     } finally {
       setIsLoading(false);
     }

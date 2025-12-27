@@ -57,7 +57,7 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
+      // Error is displayed to user via setError
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
     }
