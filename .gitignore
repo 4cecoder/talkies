@@ -48,3 +48,4 @@ linux/zig-out/
 
 # Misc
 *.log
+.vercel

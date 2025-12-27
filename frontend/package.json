@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun --bun next dev",
     "build": "bun --bun next build",
+    "analyze": "ANALYZE=true bun --bun next build",
     "start": "bun --bun next start",
     "lint": "bun eslint",
     "vercel": "./scripts/vercel-wrapper.sh"
@@ -17,16 +18,17 @@
     "next": "16.1.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "stripe": "^20.1.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.1.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "stripe": "^20.1.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
