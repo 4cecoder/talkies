@@ -14,7 +14,7 @@
     <PackageReference Include="Whisper.net" Version="1.7.0" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
     <PackageReference Include="Microsoft.Windows.Compatibility" Version="8.0.7" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.1" />
   </ItemGroup>
    <ItemGroup>
      <EmbeddedResource Include="Resources\Prompts\*.txt" />
