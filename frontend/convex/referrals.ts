@@ -2,7 +2,7 @@ import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 
 // Generate a unique referral code
-function generateReferralCode(userName: string): string {
+function createReferralCodeString(userName: string): string {
   const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
   const namePart = userName.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
   return `TALK-${namePart || 'USER'}-${randomPart}`;
@@ -28,7 +28,7 @@ export const generateReferralCode = mutation({
     if (!user) throw new Error('User not found');
 
     // Generate new code
-    const code = generateReferralCode(user.name || user.email);
+    const code = createReferralCodeString(user.name || user.email);
 
     // Create referral record
     await ctx.db.insert('referrals', {
@@ -221,7 +221,10 @@ export const getTopReferrers = query({
     // Get user details
     const leaderboard = await Promise.all(
       sorted.map(async ([userId, count]) => {
-        const user = await ctx.db.get(userId as any);
+        const user = await ctx.db
+          .query('users')
+          .filter((q) => q.eq(q.field('_id'), userId as any))
+          .first();
         return {
           userId,
           userName: user?.name || 'Anonymous',

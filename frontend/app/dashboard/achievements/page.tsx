@@ -9,6 +9,8 @@ import { useState } from 'react';
 // Mock user ID for now - replace with actual auth
 const MOCK_USER_ID = 'mock_user_id' as any;
 
+export const dynamic = 'force-dynamic';
+
 export default function AchievementsPage() {
   const achievements = useQuery(api.gamification.getUserAchievements, { userId: MOCK_USER_ID });
   const badges = useQuery(api.gamification.getUserBadges, { userId: MOCK_USER_ID });

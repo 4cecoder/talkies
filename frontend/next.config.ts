@@ -30,7 +30,12 @@ const nextConfig: NextConfig = {
     pagesBufferLength: 2,
   },
 
-  // Webpack configuration for Transformers.js
+  // Turbopack configuration
+  // Note: Turbopack handles browser/node package resolution differently than webpack
+  // The webpack config below is maintained for explicit webpack builds
+  turbopack: {},
+
+  // Webpack configuration for Transformers.js (fallback)
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,

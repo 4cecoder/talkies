@@ -1,3 +1,5 @@
+'use client';
+
 import { Header } from '@/app/components/sections/Header';
 import { LegalSection } from '@/app/components/legal/LegalSection';
 import {
@@ -10,12 +12,7 @@ import {
   Scale,
   Edit
 } from 'lucide-react';
-import { CheckCircle, XCircle } from '@/app/components/icons';
-
-export const metadata = {
-  title: 'Terms of Service | Talkies',
-  description: 'Simple, transparent terms of service for Talkies voice transcription app',
-};
+import { CheckCircle2, XCircle } from '@/app/components/icons';
 
 export default function TermsOfServicePage() {
   return (
@@ -50,7 +47,7 @@ export default function TermsOfServicePage() {
             <h2 className="text-2xl font-bold mb-6 text-white">TL;DR - Quick Summary</h2>
             <div className="grid md:grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-white font-medium">You own your data</p>
                   <p className="text-sm text-neutral-400">All transcriptions belong to you</p>
@@ -58,7 +55,7 @@ export default function TermsOfServicePage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-white font-medium">Cancel anytime</p>
                   <p className="text-sm text-neutral-400">No questions, no hassle</p>
@@ -66,7 +63,7 @@ export default function TermsOfServicePage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-white font-medium">14-day money-back</p>
                   <p className="text-sm text-neutral-400">Full refund guarantee</p>
@@ -74,7 +71,7 @@ export default function TermsOfServicePage() {
               </div>
 
               <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-white font-medium">Free tier forever</p>
                   <p className="text-sm text-neutral-400">No expiration on free plan</p>

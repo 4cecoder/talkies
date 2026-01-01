@@ -1,3 +1,5 @@
+'use client';
+
 import { Header } from '@/app/components/sections/Header';
 import { LegalSection } from '@/app/components/legal/LegalSection';
 import {
@@ -11,11 +13,6 @@ import {
   XCircle,
   CheckCircle
 } from 'lucide-react';
-
-export const metadata = {
-  title: 'Privacy Policy | Talkies',
-  description: 'Privacy-first voice transcription. Your data stays on your device.',
-};
 
 export default function PrivacyPolicyPage() {
   return (

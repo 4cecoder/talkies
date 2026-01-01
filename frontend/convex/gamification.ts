@@ -51,7 +51,7 @@ export const incrementWordCount = mutation({
 
     if (!stats) {
       // Create new stats
-      stats = {
+      const newStats = {
         userId: args.userId,
         totalWords: args.words,
         totalMinutes: args.minutes,
@@ -63,7 +63,9 @@ export const incrementWordCount = mutation({
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      await ctx.db.insert('userStats', stats);
+      const statsId = await ctx.db.insert('userStats', newStats);
+      stats = await ctx.db.get(statsId);
+      if (!stats) throw new Error('Failed to create user stats');
     } else {
       // Update existing stats
       const updatedLanguages = stats.languagesUsed.includes(args.language)

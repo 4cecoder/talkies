@@ -8,8 +8,12 @@
  * @module
  */
 
+import type * as gamification from "../gamification.js";
+import type * as referrals from "../referrals.js";
+import type * as showcase from "../showcase.js";
 import type * as stripe from "../stripe.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as support from "../support.js";
 import type * as users from "../users.js";
 
 import type {
@@ -19,8 +23,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  gamification: typeof gamification;
+  referrals: typeof referrals;
+  showcase: typeof showcase;
   stripe: typeof stripe;
   subscriptions: typeof subscriptions;
+  support: typeof support;
   users: typeof users;
 }>;
 

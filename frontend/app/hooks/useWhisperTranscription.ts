@@ -42,7 +42,7 @@ export function useWhisperTranscription(): UseWhisperTranscriptionReturn {
   const startTime = useRef<number>(0);
   const audioContext = useRef<AudioContext | null>(null);
   const analyser = useRef<AnalyserNode | null>(null);
-  const animationFrame = useRef<number>();
+  const animationFrame = useRef<number | undefined>(undefined);
 
   // Load Whisper model
   const loadModel = useCallback(async () => {
@@ -138,10 +138,10 @@ export function useWhisperTranscription(): UseWhisperTranscriptionReturn {
           const arrayBuffer = await audioBlob.arrayBuffer();
 
           // Transcribe audio
-          const result = await transcriber.current!({
-            raw: new Float32Array(arrayBuffer),
-            sampling_rate: 16000,
-          }) as TranscriptionResult;
+          // Convert audio data to Float32Array at 16kHz sampling rate
+          const result = await transcriber.current!(
+            new Float32Array(arrayBuffer)
+          ) as TranscriptionResult;
 
           setTranscript(result.text);
 

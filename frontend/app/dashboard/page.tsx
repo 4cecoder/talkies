@@ -2,11 +2,13 @@
 
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
-import { TrendingUp, Clock, Languages, Settings, User, Download, Sparkles, Trophy } from '../components/icons';
+import { TrendingUp, Clock, Languages, Settings, User, Download, Sparkles, Award } from '../components/icons';
 import Link from 'next/link';
 
 // Mock user ID for now - replace with actual auth
 const MOCK_USER_ID = 'mock_user_id' as any;
+
+export const dynamic = 'force-dynamic';
 
 export default function Dashboard() {
   const stats = useQuery(api.gamification.getUserStats, { userId: MOCK_USER_ID });
@@ -47,7 +49,7 @@ export default function Dashboard() {
                 href="/dashboard/achievements"
                 className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center gap-2"
               >
-                <Trophy className="w-4 h-4" />
+                <Award className="w-4 h-4" />
                 Achievements
               </Link>
               <Link

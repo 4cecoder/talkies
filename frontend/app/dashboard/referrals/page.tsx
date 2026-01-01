@@ -9,6 +9,8 @@ import { useState } from 'react';
 // Mock user ID for now - replace with actual auth
 const MOCK_USER_ID = 'mock_user_id' as any;
 
+export const dynamic = 'force-dynamic';
+
 export default function ReferralsPage() {
   const stats = useQuery(api.referrals.getReferralStats, { userId: MOCK_USER_ID });
   const generateCode = useMutation(api.referrals.generateReferralCode);

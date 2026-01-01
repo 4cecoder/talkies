@@ -6,6 +6,8 @@ import { Send, Mail, MessageSquare, Bug, Lightbulb, CreditCard, CheckCircle, Clo
 import { useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
+export const dynamic = 'force-dynamic';
+
 export default function ContactPage() {
   const submitContactForm = useMutation(api.support.submitContactForm);
 
