@@ -28,14 +28,19 @@ pub const DaemonStatusWindow = struct {
 
     pub fn create(allocator: std.mem.Allocator) !*DaemonStatusWindow {
         const self = try allocator.create(DaemonStatusWindow);
+        errdefer allocator.destroy(self);
 
-        const gtk_win = c.daemon_status_window_new() orelse return error.GtkInitFailed;
+        const gtk_win = c.daemon_status_window_new() orelse {
+            std.log.err("[GTK] Failed to create status window (backend unavailable or widget creation failed)", .{});
+            return error.GtkInitFailed;
+        };
 
         self.* = .{
             .allocator = allocator,
             .gtk_win = gtk_win,
         };
 
+        std.log.info("[GTK] Status window created successfully", .{});
         return self;
     }
 
@@ -120,5 +125,17 @@ pub const DaemonStatusWindow = struct {
     /// Process GTK events - call in tight loop to keep window responsive
     pub fn processEvents() void {
         c.daemon_status_gtk_process_events();
+    }
+
+    /// Show settings dialog
+    pub fn showSettingsDialog(self: *DaemonStatusWindow, config_path: []const u8) void {
+        const cstr = self.allocator.dupeZ(u8, config_path) catch return;
+        defer self.allocator.free(cstr);
+        c.daemon_status_window_show_settings_dialog(self.gtk_win, cstr.ptr);
+    }
+
+    /// Set settings callback
+    pub fn setSettingsCallback(self: *DaemonStatusWindow, callback: ?*const fn (?*anyopaque) callconv(.c) void, user_data: ?*anyopaque) void {
+        c.daemon_status_window_set_settings_callback(self.gtk_win, callback, user_data);
     }
 };

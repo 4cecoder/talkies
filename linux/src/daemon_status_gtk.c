@@ -562,3 +562,184 @@ void daemon_status_window_set_settings_callback(DaemonStatusWindow *win, void (*
     win->settings_callback = callback;
     win->settings_user_data = user_data;
 }
+
+void daemon_status_window_show_settings_dialog(DaemonStatusWindow *win, const char *config_path) {
+    if (!win || !win->initialized || !win->widgets_valid) return;
+    if (!is_valid_widget(win->window)) return;
+
+    // Create dialog (GTK4 style)
+    GtkWidget *dialog = gtk_window_new();
+    gtk_window_set_title(GTK_WINDOW(dialog), "Talkies Settings");
+    gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(win->window));
+    gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+    gtk_window_set_default_size(GTK_WINDOW(dialog), 600, 500);
+
+    // Create main box for content + button
+    GtkWidget *main_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_window_set_child(GTK_WINDOW(dialog), main_box);
+
+    // Create scrolled window for settings
+    GtkWidget *scroll = gtk_scrolled_window_new();
+    gtk_widget_set_vexpand(scroll, TRUE);
+    gtk_box_append(GTK_BOX(main_box), scroll);
+
+    // Main settings box
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 15);
+    gtk_widget_set_margin_start(vbox, 20);
+    gtk_widget_set_margin_end(vbox, 20);
+    gtk_widget_set_margin_top(vbox, 20);
+    gtk_widget_set_margin_bottom(vbox, 20);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), vbox);
+
+    // === Header ===
+    GtkWidget *header = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(header), "<span size='large' weight='bold'>Talkies Configuration</span>");
+    gtk_widget_set_halign(header, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(vbox), header);
+
+    GtkWidget *subtitle = gtk_label_new("Current configuration values (read-only)");
+    gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
+    gtk_widget_add_css_class(subtitle, "dim-label");
+    gtk_box_append(GTK_BOX(vbox), subtitle);
+
+    // === Config file location ===
+    GtkWidget *config_frame = gtk_frame_new("Configuration File");
+    gtk_box_append(GTK_BOX(vbox), config_frame);
+
+    GtkWidget *config_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_margin_start(config_box, 10);
+    gtk_widget_set_margin_end(config_box, 10);
+    gtk_widget_set_margin_top(config_box, 10);
+    gtk_widget_set_margin_bottom(config_box, 10);
+    gtk_frame_set_child(GTK_FRAME(config_frame), config_box);
+
+    GtkWidget *config_label = gtk_label_new(config_path ? config_path : "~/.config/talkies/config.toml");
+    gtk_label_set_selectable(GTK_LABEL(config_label), TRUE);
+    gtk_label_set_wrap(GTK_LABEL(config_label), TRUE);
+    gtk_widget_set_hexpand(config_label, TRUE);
+    gtk_box_append(GTK_BOX(config_box), config_label);
+
+    // === Read config file ===
+    FILE *config_file = fopen(config_path ? config_path : "", "r");
+    if (!config_file) {
+        // Try default location
+        char default_path[512];
+        const char *home = getenv("HOME");
+        if (home) {
+            snprintf(default_path, sizeof(default_path), "%s/.config/talkies/config.toml", home);
+            config_file = fopen(default_path, "r");
+        }
+    }
+
+    if (config_file) {
+        // Read entire file
+        char *file_content = NULL;
+        size_t file_size = 0;
+        fseek(config_file, 0, SEEK_END);
+        file_size = ftell(config_file);
+        fseek(config_file, 0, SEEK_SET);
+
+        if (file_size > 0 && file_size < 1024 * 1024) { // Max 1MB
+            file_content = malloc(file_size + 1);
+            if (file_content) {
+                size_t read_size = fread(file_content, 1, file_size, config_file);
+                file_content[read_size] = '\0';
+
+                // === Config content ===
+                GtkWidget *content_frame = gtk_frame_new("Configuration Content");
+                gtk_box_append(GTK_BOX(vbox), content_frame);
+
+                GtkWidget *text_scroll = gtk_scrolled_window_new();
+                gtk_widget_set_size_request(text_scroll, -1, 300);
+                gtk_frame_set_child(GTK_FRAME(content_frame), text_scroll);
+
+                GtkWidget *text_view = gtk_text_view_new();
+                gtk_text_view_set_editable(GTK_TEXT_VIEW(text_view), FALSE);
+                gtk_text_view_set_monospace(GTK_TEXT_VIEW(text_view), TRUE);
+                gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD);
+                gtk_text_view_set_left_margin(GTK_TEXT_VIEW(text_view), 10);
+                gtk_text_view_set_right_margin(GTK_TEXT_VIEW(text_view), 10);
+                gtk_text_view_set_top_margin(GTK_TEXT_VIEW(text_view), 10);
+                gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(text_view), 10);
+
+                GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+                gtk_text_buffer_set_text(buffer, file_content, -1);
+
+                gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(text_scroll), text_view);
+
+                free(file_content);
+            }
+        }
+        fclose(config_file);
+    } else {
+        // Show error if config file not found
+        GtkWidget *error_frame = gtk_frame_new("Error");
+        gtk_box_append(GTK_BOX(vbox), error_frame);
+
+        GtkWidget *error_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+        gtk_widget_set_margin_start(error_box, 10);
+        gtk_widget_set_margin_end(error_box, 10);
+        gtk_widget_set_margin_top(error_box, 10);
+        gtk_widget_set_margin_bottom(error_box, 10);
+        gtk_frame_set_child(GTK_FRAME(error_frame), error_box);
+
+        GtkWidget *error_label = gtk_label_new("❌ Configuration file not found");
+        gtk_box_append(GTK_BOX(error_box), error_label);
+
+        GtkWidget *hint_label = gtk_label_new("Run 'talkies config' to create default configuration");
+        gtk_widget_add_css_class(hint_label, "dim-label");
+        gtk_box_append(GTK_BOX(error_box), hint_label);
+    }
+
+    // === Help text ===
+    GtkWidget *help_frame = gtk_frame_new("How to Edit Settings");
+    gtk_box_append(GTK_BOX(vbox), help_frame);
+
+    GtkWidget *help_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_widget_set_margin_start(help_box, 10);
+    gtk_widget_set_margin_end(help_box, 10);
+    gtk_widget_set_margin_top(help_box, 10);
+    gtk_widget_set_margin_bottom(help_box, 10);
+    gtk_frame_set_child(GTK_FRAME(help_frame), help_box);
+
+    const char *help_lines[] = {
+        "1. Open the config file in your favorite text editor",
+        "2. Edit the values as needed (TOML format)",
+        "3. Save the file",
+        "4. Restart the daemon for changes to take effect",
+        "",
+        "Common settings:",
+        "  • model: 'tiny', 'base', 'small', 'medium', 'large'",
+        "  • auto_paste: true/false",
+        "  • yap_mode_enabled: true/false",
+        "  • vad_enabled: true/false (trim silence)",
+        NULL
+    };
+
+    for (int i = 0; help_lines[i] != NULL; i++) {
+        GtkWidget *line = gtk_label_new(help_lines[i]);
+        gtk_widget_set_halign(line, GTK_ALIGN_START);
+        gtk_label_set_wrap(GTK_LABEL(line), TRUE);
+        if (i > 4) {  // Indent common settings
+            gtk_widget_set_margin_start(line, 20);
+        }
+        gtk_box_append(GTK_BOX(help_box), line);
+    }
+
+    // === Close button at bottom ===
+    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_halign(button_box, GTK_ALIGN_END);
+    gtk_widget_set_margin_start(button_box, 20);
+    gtk_widget_set_margin_end(button_box, 20);
+    gtk_widget_set_margin_top(button_box, 10);
+    gtk_widget_set_margin_bottom(button_box, 20);
+    gtk_box_append(GTK_BOX(main_box), button_box);
+
+    GtkWidget *close_btn = gtk_button_new_with_label("Close");
+    gtk_widget_add_css_class(close_btn, "suggested-action");
+    g_signal_connect_swapped(close_btn, "clicked", G_CALLBACK(gtk_window_destroy), dialog);
+    gtk_box_append(GTK_BOX(button_box), close_btn);
+
+    // Show dialog
+    gtk_widget_set_visible(dialog, TRUE);
+}

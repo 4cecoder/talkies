@@ -470,13 +470,47 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     // Initialize GTK and create daemon status window (if enabled)
     // GTK init is handled in C layer when first window is created
     if (cfg.show_status_gui) {
-        daemon_status_win = try daemon_status_window.DaemonStatusWindow.create(allocator);
-        errdefer if (daemon_status_win) |win| win.destroy();
+        daemon_status_win = daemon_status_window.DaemonStatusWindow.create(allocator) catch |err| blk: {
+            utils.log("GTK status window initialization failed: {}, continuing without GUI", .{err});
+            std.debug.print("⚠️  GTK status window unavailable (continuing in headless mode)\n", .{});
+            break :blk null;
+        };
 
         if (daemon_status_win) |win| {
             win.show();
             win.setState("initializing");
             win.addLog(.info, "Daemon starting...");
+            std.debug.print("✓ GTK status window initialized\n", .{});
+
+            // Set up settings callback - show dialog when clicked
+            const SettingsContext = struct {
+                win: *daemon_status_window.DaemonStatusWindow,
+                config_path: [:0]const u8,
+
+                fn callback(ctx_ptr: ?*anyopaque) callconv(.c) void {
+                    const ctx = @as(*const @This(), @ptrCast(@alignCast(ctx_ptr.?)));
+                    ctx.win.showSettingsDialog(ctx.config_path);
+                }
+            };
+
+            // Get config path
+            const config_dir = try utils.getConfigDir(allocator);
+            defer allocator.free(config_dir);
+            const config_path = try std.fmt.allocPrint(
+                allocator,
+                "{s}/config.toml\x00",
+                .{config_dir},
+            );
+            // Note: config_path is leaked intentionally - it needs to live for entire daemon lifetime
+            const config_path_z: [:0]const u8 = config_path[0 .. config_path.len - 1 :0];
+
+            const ctx = try allocator.create(SettingsContext);
+            ctx.* = .{
+                .win = win,
+                .config_path = config_path_z,
+            };
+
+            win.setSettingsCallback(SettingsContext.callback, ctx);
         }
     }
 
