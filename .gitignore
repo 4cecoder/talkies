@@ -38,9 +38,14 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 
+# Zig build artifacts (linux/)
+linux/.zig-cache/
+linux/zig-out/
+
 # Large ML model files
 *.safetensors
 *.npz
 
 # Misc
 *.log
+.vercel

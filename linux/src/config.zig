@@ -21,6 +21,19 @@ pub const Config = struct {
     // Platform settings
     platform: []const u8 = "auto", // "auto", "x11", "wayland"
 
+    // YAP mode settings (conversational LLM refinement)
+    yap_mode_enabled: bool = true, // Enabled by default for testing
+    yap_llm_model: []const u8 = "granite3.3:2b", // Ollama model to use
+    yap_ollama_url: []const u8 = "http://localhost:11434",
+    yap_system_prompt: []const u8 = "You refine verbose voice transcriptions into clear, natural text. Keep the user's voice and intent. Don't capitalize every sentence - write naturally like you're texting or messaging. Be conversational, not formal.",
+
+    // Daemon GUI settings
+    show_status_gui: bool = true, // Show daemon status monitor window
+
+    // VAD (Voice Activity Detection) settings
+    vad_enabled: bool = true, // Enable VAD to trim silence
+    vad_mode: u8 = 2, // 0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive
+
     // Track if strings are owned (allocated)
     audio_device_owned: bool = false,
     model_owned: bool = false,
@@ -28,6 +41,9 @@ pub const Config = struct {
     export_format_owned: bool = false,
     paste_keybind_owned: bool = false,
     platform_owned: bool = false,
+    yap_llm_model_owned: bool = false,
+    yap_ollama_url_owned: bool = false,
+    yap_system_prompt_owned: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
@@ -53,6 +69,15 @@ pub const Config = struct {
         }
         if (self.platform_owned) {
             self.allocator.free(self.platform);
+        }
+        if (self.yap_llm_model_owned) {
+            self.allocator.free(self.yap_llm_model);
+        }
+        if (self.yap_ollama_url_owned) {
+            self.allocator.free(self.yap_ollama_url);
+        }
+        if (self.yap_system_prompt_owned) {
+            self.allocator.free(self.yap_system_prompt);
         }
     }
 
@@ -106,6 +131,21 @@ pub const Config = struct {
             \\[platform]
             \\# Platform mode: "auto" (detect), "x11" (daemon with Right Alt), "wayland" (compositor hotkey)
             \\mode = "auto"
+            \\
+            \\[yap]
+            \\# YAP mode: Conversational LLM refinement before pasting
+            \\# Helps yappers refine verbose speech into concise messages
+            \\enabled = true
+            \\llm_model = "granite"
+            \\ollama_url = "http://localhost:11434"
+            \\system_prompt = "You are a helpful assistant that refines verbose speech into concise, well-crafted messages. Maintain the user's intent and tone while being more succinct."
+            \\
+            \\[vad]
+            \\# Voice Activity Detection: Trim silence before transcription
+            \\# Improves speed by skipping silent portions
+            \\enabled = true
+            \\# Mode: 0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive
+            \\mode = 2
             \\
         ;
 
@@ -238,6 +278,37 @@ pub const Config = struct {
                 self.platform = try self.allocator.dupe(u8, value);
                 self.platform_owned = true;
             }
+        } else if (std.mem.eql(u8, section, "yap")) {
+            if (std.mem.eql(u8, key, "enabled")) {
+                self.yap_mode_enabled = try parseBoolValue(value_raw);
+            } else if (std.mem.eql(u8, key, "llm_model")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_llm_model_owned) {
+                    self.allocator.free(self.yap_llm_model);
+                }
+                self.yap_llm_model = try self.allocator.dupe(u8, value);
+                self.yap_llm_model_owned = true;
+            } else if (std.mem.eql(u8, key, "ollama_url")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_ollama_url_owned) {
+                    self.allocator.free(self.yap_ollama_url);
+                }
+                self.yap_ollama_url = try self.allocator.dupe(u8, value);
+                self.yap_ollama_url_owned = true;
+            } else if (std.mem.eql(u8, key, "system_prompt")) {
+                const value = try parseStringValue(value_raw);
+                if (self.yap_system_prompt_owned) {
+                    self.allocator.free(self.yap_system_prompt);
+                }
+                self.yap_system_prompt = try self.allocator.dupe(u8, value);
+                self.yap_system_prompt_owned = true;
+            }
+        } else if (std.mem.eql(u8, section, "vad")) {
+            if (std.mem.eql(u8, key, "enabled")) {
+                self.vad_enabled = try parseBoolValue(value_raw);
+            } else if (std.mem.eql(u8, key, "mode")) {
+                self.vad_mode = try parseIntValue(u8, value_raw);
+            }
         }
     }
 
@@ -277,6 +348,10 @@ pub const Config = struct {
             \\[platform]
             \\mode = "{s}"
             \\
+            \\[vad]
+            \\enabled = {s}
+            \\mode = {d}
+            \\
         ,
             .{
                 self.audio_device,
@@ -286,6 +361,8 @@ pub const Config = struct {
                 if (self.auto_paste) "true" else "false",
                 self.export_format,
                 self.platform,
+                if (self.vad_enabled) "true" else "false",
+                self.vad_mode,
             },
         );
         defer self.allocator.free(content);

@@ -1,7 +1,5 @@
-'use client';
-
 import { Button } from '../ui/Button';
-import { Download } from 'lucide-react';
+import { Download } from '../icons';
 
 export function Hero() {
   return (

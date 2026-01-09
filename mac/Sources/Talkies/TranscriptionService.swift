@@ -3,16 +3,54 @@ import Foundation
 import Combine
 import WhisperKit
 import AVFoundation
+import TalkiesCore
 
-struct TranscriptSegment: Identifiable, Codable {
-    let id = UUID()
-    let timestamp: String
-    let text: String
-    let start: Double
-    let end: Double
+/// Pipeline stages for status indication
+enum PipelineStage: Equatable {
+    case idle
+    case recording
+    case transcribing
+    case enhancingOllama
+    case enhancingLMStudio
+    case insertingText
+    case complete
+    case error(String)
 
-    enum CodingKeys: String, CodingKey {
-        case timestamp, text, start, end
+    var displayText: String {
+        switch self {
+        case .idle: return "Ready"
+        case .recording: return "Recording..."
+        case .transcribing: return "Transcribing..."
+        case .enhancingOllama: return "Enhancing with Ollama..."
+        case .enhancingLMStudio: return "Enhancing with LM Studio..."
+        case .insertingText: return "Inserting text..."
+        case .complete: return "Complete"
+        case .error(let msg): return "Error: \(msg)"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .idle: return .green
+        case .recording: return .red
+        case .transcribing: return .orange
+        case .enhancingOllama, .enhancingLMStudio: return .purple
+        case .insertingText: return .blue
+        case .complete: return .green
+        case .error: return .red
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .idle: return "checkmark.circle.fill"
+        case .recording: return "mic.fill"
+        case .transcribing: return "waveform"
+        case .enhancingOllama, .enhancingLMStudio: return "sparkles"
+        case .insertingText: return "text.cursor"
+        case .complete: return "checkmark.circle.fill"
+        case .error: return "exclamationmark.triangle.fill"
+        }
     }
 }
 
@@ -25,6 +63,7 @@ class TranscriptionService: ObservableObject {
     @Published var isDownloadingModel = false
     @Published var downloadProgress: Double = 0.0
     @Published var statusMessage: String = "Initializing..."
+    @Published var pipelineStage: PipelineStage = .idle
 
     private var whisperKit: WhisperKit?
     private var audioBuffers: [AVAudioPCMBuffer] = []

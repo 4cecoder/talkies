@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using Talkies.Windows.Models;
 
 namespace Talkies.Windows.Services
 {
@@ -16,7 +17,7 @@ namespace Talkies.Windows.Services
         event EventHandler<float>? LevelChanged;
         bool IsRecording { get; }
         TimeSpan Duration { get; }
-        void Start(string? deviceId = null);
+        void Start(string? deviceId = null, AudioQualitySettings? qualitySettings = null);
         void Stop();
     }
 
@@ -37,7 +38,7 @@ namespace Talkies.Windows.Services
         public bool IsRecording { get; private set; }
         public TimeSpan Duration => IsRecording ? DateTime.UtcNow - _startTime : TimeSpan.Zero;
 
-        public void Start(string? deviceId = null)
+        public void Start(string? deviceId = null, AudioQualitySettings? qualitySettings = null)
         {
             if (IsRecording) return;
 
@@ -70,8 +71,13 @@ namespace Talkies.Windows.Services
             _capture.DataAvailable += OnData;
             _capture.RecordingStopped += OnStopped;
 
-            _writer = new WaveFileWriter(_currentFile, _capture.WaveFormat);
-            Logger.Info($"Audio source: {(useLoopback ? "Loopback" : "Microphone")} | Format: {_capture.WaveFormat.SampleRate}Hz, {_capture.WaveFormat.Channels}ch, {_capture.WaveFormat.BitsPerSample}bit");
+            // Configure audio format based on quality settings
+            var waveFormat = qualitySettings != null
+                ? new WaveFormat(qualitySettings.SampleRateHz, qualitySettings.BitsPerSample, qualitySettings.ChannelCount)
+                : _capture.WaveFormat;
+
+            _writer = new WaveFileWriter(_currentFile, waveFormat);
+            Logger.Info($"Audio source: {(useLoopback ? "Loopback" : "Microphone")} | Format: {waveFormat.SampleRate}Hz, {waveFormat.Channels}ch, {waveFormat.BitsPerSample}bit");
 
             _capture.StartRecording();
             Logger.Info($"Recording started -> {_currentFile}");

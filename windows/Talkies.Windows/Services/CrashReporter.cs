@@ -154,7 +154,7 @@ namespace Talkies.Windows.Services
                     log = JObject.Parse(existingJson);
                     if (log != null)
                     {
-                        var errors = (JArray)log["errors"];
+                        var errors = log["errors"] as JArray;
                         if (errors != null)
                         {
                             errors.Add(errorEntry);

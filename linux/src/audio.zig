@@ -89,11 +89,44 @@ pub const AudioRecorder = struct {
         }
     }
 
+
     /// Start recording audio to a WAV file
     /// device_name: PulseAudio device name (null or empty = use default)
     pub fn startRecording(self: *AudioRecorder, output_path: []const u8, device_name: ?[]const u8) !void {
         if (self.recording) {
             return error.AlreadyRecording;
+        }
+
+        // Create fresh PulseAudio stream for this recording (like macOS/Windows)
+        // This avoids buffer accumulation issues on PipeWire
+        var sample_spec = c.pa_sample_spec{
+            .format = c.PA_SAMPLE_S16LE,
+            .rate = self.sample_rate,
+            .channels = self.channels,
+        };
+
+        const device_ptr = if (device_name) |name|
+            if (name.len > 0) name.ptr else null
+        else
+            null;
+
+        var error_code: c_int = 0;
+        self.pa_stream = c.pa_simple_new(
+            null,
+            "Talkies",
+            c.PA_STREAM_RECORD,
+            device_ptr,
+            "Voice Recording",
+            &sample_spec,
+            null,
+            null,
+            &error_code,
+        );
+
+        if (self.pa_stream == null) {
+            const err_str = c.pa_strerror(error_code);
+            utils.log("PulseAudio error: {s}", .{err_str});
+            return error.PulseAudioInitFailed;
         }
 
         // Store output path
@@ -115,38 +148,7 @@ pub const AudioRecorder = struct {
         const header_bytes = std.mem.asBytes(&header);
         try self.output_file.?.writeAll(header_bytes);
 
-        // Initialize PulseAudio
-        var sample_spec = c.pa_sample_spec{
-            .format = c.PA_SAMPLE_S16LE, // 16-bit signed little-endian
-            .rate = self.sample_rate,
-            .channels = self.channels,
-        };
-
-        // Determine which device to use
-        const device_ptr = if (device_name) |name|
-            if (name.len > 0) name.ptr else null
-        else
-            null;
-
-        var error_code: c_int = 0;
-        self.pa_stream = c.pa_simple_new(
-            null, // Use default server
-            "Talkies", // Application name
-            c.PA_STREAM_RECORD, // Record stream
-            device_ptr, // Device (null = default)
-            "Voice Recording", // Stream description
-            &sample_spec,
-            null, // Use default channel map
-            null, // Use default buffering attributes
-            &error_code,
-        );
-
-        if (self.pa_stream == null) {
-            const err_str = c.pa_strerror(error_code);
-            utils.log("PulseAudio error: {s}", .{err_str});
-            return error.PulseAudioInitFailed;
-        }
-
+        // Start recording with fresh stream
         self.recording = true;
         self.bytes_recorded = 0;
         self.level_buffer_size = 0;
@@ -160,7 +162,9 @@ pub const AudioRecorder = struct {
             return false;
         }
 
-        const buffer_size: usize = 4096;
+        // Smaller buffer = faster response to stop command
+        // 128 bytes = 4ms at 16kHz mono (64 samples)
+        const buffer_size: usize = 128;
         var buffer: [buffer_size]u8 = undefined;
 
         var error_code: c_int = 0;
@@ -191,6 +195,7 @@ pub const AudioRecorder = struct {
     }
 
     /// Stop recording and finalize the WAV file
+    /// Closes the PulseAudio stream to avoid buffer accumulation (like macOS/Windows)
     pub fn stopRecording(self: *AudioRecorder) !void {
         if (!self.recording) {
             return;
@@ -198,7 +203,7 @@ pub const AudioRecorder = struct {
 
         self.recording = false;
 
-        // Drain PulseAudio buffer
+        // Drain and close the PulseAudio stream (fresh stream for next recording)
         if (self.pa_stream) |stream| {
             var error_code: c_int = 0;
             _ = c.pa_simple_drain(stream, &error_code);

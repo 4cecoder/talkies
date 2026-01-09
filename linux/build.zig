@@ -24,6 +24,16 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    // Add C source files for GTK wrappers
+    exe.addCSourceFile(.{
+        .file = b.path("src/yap_window_gtk.c"),
+        .flags = &.{"-std=c11"},
+    });
+    exe.addCSourceFile(.{
+        .file = b.path("src/daemon_status_gtk.c"),
+        .flags = &.{"-std=c11"},
+    });
+
     // Add build options for runtime platform detection
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", has_x11);
@@ -57,6 +67,11 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("pulse-simple");
     exe.linkSystemLibrary("pulse");
     exe.linkSystemLibrary("whisper");
+    exe.linkSystemLibrary("sqlite3"); // For YAP session management
+
+    // Link libfvad (WebRTC VAD) - vendored static library
+    exe.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    exe.addIncludePath(b.path("vendor/libfvad/include"));
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
@@ -65,10 +80,22 @@ pub fn build(b: *std.Build) void {
 
     exe.linkSystemLibrary("dbus-1"); // For system tray
     exe.linkSystemLibrary("gtk-4"); // For settings UI
+    exe.linkSystemLibrary("glib-2.0"); // For GLib functions in GTK wrappers
+    exe.linkSystemLibrary("gobject-2.0"); // For GObject functions in GTK wrappers
     exe.linkLibC();
 
-    // Add include path for whisper.h
+    // Add include paths for whisper.h and GTK4
     exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
+    exe.addIncludePath(b.path("src")); // For yap_window_gtk.h
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
+    exe.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
 
     b.installArtifact(exe);
 
@@ -117,6 +144,11 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("pulse-simple");
     unit_tests.linkSystemLibrary("pulse");
     unit_tests.linkSystemLibrary("whisper");
+    unit_tests.linkSystemLibrary("sqlite3");
+
+    // Link libfvad for tests
+    unit_tests.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    unit_tests.addIncludePath(b.path("vendor/libfvad/include"));
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
@@ -127,6 +159,15 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("gtk-4");
     unit_tests.linkLibC();
     unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
+    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 

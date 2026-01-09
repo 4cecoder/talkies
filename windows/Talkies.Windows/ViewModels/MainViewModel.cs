@@ -54,6 +54,74 @@ namespace Talkies.Windows.ViewModels
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }
         private bool _filterEnabled = true;
 
+        // Audio quality settings
+        public AudioQualitySettings AudioQualitySettings { get => _audioQualitySettings; set { _audioQualitySettings = value; OnPropertyChanged(); OnPropertyChanged(nameof(EstimatedFileSize)); } }
+        private AudioQualitySettings _audioQualitySettings = AudioQualitySettings.FromPreset(AudioQualityPreset.High);
+
+        public ObservableCollection<string> AudioQualityPresets { get; } = new(new[] { "Low", "Medium", "High", "Studio", "Custom" });
+        public ObservableCollection<string> SampleRates { get; } = new(new[] { "16000", "22050", "44100", "48000" });
+        public ObservableCollection<string> BitDepths { get; } = new(new[] { "16", "24" });
+        public ObservableCollection<string> ChannelOptions { get; } = new(new[] { "Mono", "Stereo" });
+
+        public string SelectedQualityPreset
+        {
+            get => _audioQualitySettings.Preset.ToString();
+            set
+            {
+                if (Enum.TryParse<AudioQualityPreset>(value, out var preset))
+                {
+                    AudioQualitySettings = AudioQualitySettings.FromPreset(preset);
+                }
+            }
+        }
+
+        public string SelectedSampleRate
+        {
+            get => _audioQualitySettings.SampleRateHz.ToString();
+            set
+            {
+                if (int.TryParse(value, out var rate))
+                {
+                    _audioQualitySettings.SampleRate = (AudioSampleRate)rate;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(EstimatedFileSize));
+                    OnPropertyChanged(nameof(AudioQualitySettings));
+                }
+            }
+        }
+
+        public string SelectedBitDepth
+        {
+            get => _audioQualitySettings.BitsPerSample.ToString();
+            set
+            {
+                if (int.TryParse(value, out var depth))
+                {
+                    _audioQualitySettings.BitDepth = (AudioBitDepth)depth;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(EstimatedFileSize));
+                    OnPropertyChanged(nameof(AudioQualitySettings));
+                }
+            }
+        }
+
+        public string SelectedChannels
+        {
+            get => _audioQualitySettings.Channels.ToString();
+            set
+            {
+                if (Enum.TryParse<AudioChannels>(value, out var channels))
+                {
+                    _audioQualitySettings.Channels = channels;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(EstimatedFileSize));
+                    OnPropertyChanged(nameof(AudioQualitySettings));
+                }
+            }
+        }
+
+        public string EstimatedFileSize => _audioQualitySettings.GetEstimatedSizeDisplay();
+
         public bool IsFetchingModels { get => _isFetchingModels; set { _isFetchingModels = value; OnPropertyChanged(); } }
         private bool _isFetchingModels;
         public AudioDeviceInfo? SelectedMicrophone { get => _selectedMicrophone; set { _selectedMicrophone = value; OnPropertyChanged(); } }
@@ -293,7 +361,7 @@ namespace Talkies.Windows.ViewModels
             OnPropertyChanged(nameof(CanSave));
             _timer.Start();
             IsRecording = true;
-            _recorder.Start(SelectedMicrophone?.Id);
+            _recorder.Start(SelectedMicrophone?.Id, AudioQualitySettings);
         }
 
         private void StopRecording()
@@ -894,6 +962,9 @@ namespace Talkies.Windows.ViewModels
             VadEnabled = _settings.VadEnabled;
             FilterEnabled = _settings.FilterEnabled;
 
+            // Load audio quality settings
+            AudioQualitySettings = _settings.AudioQualitySettings;
+
             CustomPrompts.Clear();
             if (_settings.CustomPrompts != null)
             {
@@ -952,6 +1023,9 @@ namespace Talkies.Windows.ViewModels
             _settings.InsertEnabled = InsertEnabled;
             _settings.VadEnabled = VadEnabled;
             _settings.FilterEnabled = FilterEnabled;
+
+            // Save audio quality settings
+            _settings.AudioQualitySettings = AudioQualitySettings;
 
             // Save LLM provider settings
             _settings.SelectedLlmProvider = SelectedLlmProvider;
@@ -1114,7 +1188,11 @@ namespace Talkies.Windows.ViewModels
                 or nameof(SelectedEnhancementMode)
                 or nameof(CustomPrompts)
                 or nameof(NewPromptName)
-                or nameof(NewPromptText))
+                or nameof(NewPromptText)
+                or nameof(AudioQualitySettings)
+                or nameof(SelectedSampleRate)
+                or nameof(SelectedBitDepth)
+                or nameof(SelectedChannels))
             {
                 SaveSettings();
             }

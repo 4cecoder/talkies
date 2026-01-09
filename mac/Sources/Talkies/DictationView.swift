@@ -155,15 +155,28 @@ struct MainDictationContent: View {
 
             // Minimal bottom - fixed height to prevent shifting
             HStack(spacing: 6) {
-                if transcriptionService.isTranscribing {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.6)))
-                    Text("Processing...")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                } else if !transcriptionService.currentText.isEmpty {
-                    Text(transcriptionService.currentText)
+                // Show pipeline stage with icon when processing
+                if transcriptionService.pipelineStage != .idle && transcriptionService.pipelineStage != .recording {
+                    Image(systemName: transcriptionService.pipelineStage.icon)
+                        .font(.system(size: 8))
+                        .foregroundColor(transcriptionService.pipelineStage.color.opacity(0.8))
+
+                    if case .complete = transcriptionService.pipelineStage {
+                        // Show transcribed text briefly on completion
+                        Text(transcriptionService.currentText.prefix(50) + (transcriptionService.currentText.count > 50 ? "..." : ""))
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.6))
+                            .lineLimit(1)
+                    } else {
+                        ProgressView()
+                            .scaleEffect(0.4)
+                            .progressViewStyle(CircularProgressViewStyle(tint: transcriptionService.pipelineStage.color.opacity(0.8)))
+                        Text(transcriptionService.pipelineStage.displayText)
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                } else if !transcriptionService.currentText.isEmpty && transcriptionService.pipelineStage == .idle {
+                    Text(transcriptionService.currentText.prefix(60) + (transcriptionService.currentText.count > 60 ? "..." : ""))
                         .font(.system(size: 8))
                         .foregroundColor(.white.opacity(0.6))
                         .lineLimit(1)
@@ -180,23 +193,46 @@ struct MainDictationContent: View {
     }
 
     private var statusColor: Color {
-        if audioRecorder.isRecording {
+        // Use pipeline stage for more accurate status
+        switch transcriptionService.pipelineStage {
+        case .recording:
             return .red
-        } else if transcriptionService.isTranscribing {
+        case .transcribing:
             return .orange
-        } else {
+        case .enhancingOllama, .enhancingLMStudio:
+            return .purple
+        case .insertingText:
+            return .blue
+        case .complete:
             return .green
+        case .error:
+            return .red
+        case .idle:
+            return transcriptionService.isDownloadingModel ? .yellow : .green
         }
     }
 
     private var statusText: String {
-        if audioRecorder.isRecording {
+        // Use pipeline stage for more accurate status
+        switch transcriptionService.pipelineStage {
+        case .recording:
             return "Recording - \(audioRecorder.formattedDuration)"
-        } else if transcriptionService.isTranscribing {
+        case .transcribing:
             return "Transcribing..."
-        } else if transcriptionService.isDownloadingModel {
-            return "Downloading model..."
-        } else {
+        case .enhancingOllama:
+            return "Enhancing with Ollama..."
+        case .enhancingLMStudio:
+            return "Enhancing with LM Studio..."
+        case .insertingText:
+            return "Inserting text..."
+        case .complete:
+            return "Done!"
+        case .error(let msg):
+            return "Error: \(msg)"
+        case .idle:
+            if transcriptionService.isDownloadingModel {
+                return "Downloading model..."
+            }
             return "Press Right ⌥ to start"
         }
     }

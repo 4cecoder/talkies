@@ -1,7 +1,5 @@
-'use client';
-
 import { Card, CardHeader, CardTitle, CardDescription } from '../ui/Card';
-import { Globe, Shield, Zap } from 'lucide-react';
+import { Globe, Shield, Zap } from '../icons';
 
 const features = [
   {

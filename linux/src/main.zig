@@ -8,6 +8,12 @@ const utils = @import("utils.zig");
 const hotkey = @import("hotkey.zig");
 const websocket = @import("websocket.zig");
 const daemon_ws = @import("daemon_ws.zig");
+const yap_sandbox = @import("yap_sandbox.zig");
+const yap_sessions = @import("yap_sessions.zig");
+const yap_window = @import("yap_window.zig");
+const daemon_status_window = @import("daemon_status_window.zig");
+const vad = @import("vad.zig");
+const audio_processing = @import("audio_processing.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -28,6 +34,7 @@ const Command = enum {
 // Global state for daemon tray callbacks
 var daemon_should_quit = false;
 var daemon_show_settings = false;
+var daemon_status_win: ?*daemon_status_window.DaemonStatusWindow = null;
 
 // Tray callbacks
 fn onQuitCallback() void {
@@ -455,6 +462,33 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     defer cfg.deinit();
     try cfg.load();
 
+    // Create shared Io instance for HTTP client (YAP mode Ollama calls)
+    var io_threaded = std.Io.Threaded.init(allocator);
+    defer io_threaded.deinit();
+    const io = io_threaded.io();
+
+    // Initialize GTK and create daemon status window (if enabled)
+    // GTK init is handled in C layer when first window is created
+    if (cfg.show_status_gui) {
+        daemon_status_win = try daemon_status_window.DaemonStatusWindow.create(allocator);
+        errdefer if (daemon_status_win) |win| win.destroy();
+
+        if (daemon_status_win) |win| {
+            win.show();
+            win.setState("initializing");
+            win.addLog(.info, "Daemon starting...");
+        }
+    }
+
+    // Initialize GTK for YAP mode GUI (if enabled)
+    if (cfg.yap_mode_enabled) {
+        utils.log("YAP mode enabled - YAP window will be created when needed", .{});
+        if (daemon_status_win) |win| {
+            win.setYapEnabled(true);
+            win.addLog(.info, "YAP mode enabled");
+        }
+    }
+
     // TODO: Re-enable GTK settings UI after Ghostty bindings support Zig 0.16
     // Currently blocked: Ghostty's gobject bindings require Zig 0.15.2
     // We're on Zig 0.16.0, which removed @Type builtin
@@ -472,6 +506,13 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     // Get effective platform (resolve "auto")
     const platform = cfg.getEffectivePlatform();
     const is_wayland = std.mem.eql(u8, platform, "wayland");
+
+    if (daemon_status_win) |win| {
+        win.setPlatform(platform);
+        var platform_msg_buf: [128]u8 = undefined;
+        const platform_msg = try std.fmt.bufPrint(&platform_msg_buf, "Platform: {s}", .{platform});
+        win.addLog(.info, platform_msg);
+    }
 
     std.debug.print("Talkies daemon started\n", .{});
     std.debug.print("Platform: {s} (config: {s})\n", .{ platform, cfg.platform });
@@ -494,16 +535,36 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
     // Load whisper model once at startup
     std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+
+    if (daemon_status_win) |win| {
+        var model_msg_buf: [128]u8 = undefined;
+        const model_msg = try std.fmt.bufPrint(&model_msg_buf, "Loading model: {s}", .{cfg.model});
+        win.addLog(.info, model_msg);
+        win.setModel(cfg.model);
+    }
+
     try whisper_service.loadModel(cfg.model);
     std.debug.print("Model loaded. Ready!\n\n", .{});
 
+    if (daemon_status_win) |win| {
+        win.addLog(.info, "Model loaded successfully");
+        win.setState("idle");
+    }
+
     // In Wayland mode, use WebSocket for real-time communication
-    // External script (arecord) handles recording, daemon only processes
+    // Daemon handles recording internally (no external script needed)
     if (is_wayland) {
         std.debug.print("Wayland mode: Starting WebSocket daemon on ws://localhost:6789\n", .{});
         std.debug.print("Use the toggle script (Super+Alt+T) to trigger recordings\n\n", .{});
 
         const recording_file = "/tmp/talkies-recording.wav";
+
+        // Initialize audio recorder
+        var recorder = audio.AudioRecorder.init(allocator);
+        defer recorder.deinit();
+
+        // Get audio device from config (will be used on each recording)
+        const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
 
         // Initialize WebSocket server
         var ws_server = try websocket.Server.init(allocator, 6789);
@@ -534,27 +595,188 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
         // Set initial state to idle
         try daemon_state.setState(.idle);
+
+        // Clean up state file from previous run
+        std.fs.deleteFileAbsolute("/tmp/talkies-state") catch {};
+
         std.debug.print("WebSocket server ready!\n\n", .{});
 
         var last_state = daemon_ws.State.idle;
+
+        // YAP mode persistent state (outside main loop)
+        var yap_win: ?*yap_window.YapWindow = null;
+        var yap_sb: ?*yap_sandbox.Sandbox = null;
+        var yap_session_manager: ?*yap_sessions.SessionManager = null;
+        var yap_session_id: ?i64 = null;
+
+        defer {
+            if (yap_win) |win| win.destroy();
+            if (yap_sb) |sb| {
+                sb.deinit();
+                allocator.destroy(sb);
+            }
+            if (yap_session_manager) |sm| {
+                sm.deinit();
+                allocator.destroy(sm);
+            }
+        }
 
         // Event loop - handle recording/transcription based on state changes
         while (!daemon_should_quit) {
             const current_state = daemon_state.getState();
 
-            // Detect state change to processing (external script finished recording)
-            if (current_state == .processing and last_state != .processing) {
+            // Handle state: recording -> start recording
+            if (current_state == .recording and last_state != .recording) {
+                std.debug.print("🔴 STATE CHANGED TO RECORDING - Starting audio capture NOW\n", .{});
+
+                if (daemon_status_win) |win| {
+                    win.setState("recording");
+                    win.addLog(.info, "Recording started");
+                    win.setActivity("Recording audio...");
+                }
+
+                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const start_ms = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+
+                recorder.startRecording(recording_file, device) catch |err| {
+                    std.debug.print("Error starting recording: {}\n", .{err});
+
+                    if (daemon_status_win) |win| {
+                        var err_buf: [256]u8 = undefined;
+                        const err_msg = std.fmt.bufPrint(&err_buf, "Recording error: {}", .{err}) catch "Recording error";
+                        win.addLog(.err, err_msg);
+                        win.setState("idle");
+                        win.setActivity("Error");
+                    }
+
+                    daemon_state.broadcastError("Failed to start recording", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                    last_state = current_state;
+                    continue;
+                };
+
+                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const end_ms = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                std.debug.print("✅ RECORDING ACTIVE - took {d}ms to initialize PulseAudio\n", .{end_ms - start_ms});
+
+                // Play activation sound (2x speed for faster feedback)
+                const sound_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const sound_ms = @as(i64, sound_ts.sec) * 1000 + @divTrunc(sound_ts.nsec, std.time.ns_per_ms);
+                utils.playSound("assets/start-fast.wav");
+                std.debug.print("🔊 Sound triggered at +{d}ms from state change\n", .{sound_ms - start_ms});
+
+                std.debug.print("🎤 Recording started...\n", .{});
+            }
+
+            // Handle state: recording -> record audio chunks
+            if (current_state == .recording) {
+                _ = recorder.recordChunk() catch |err| {
+                    std.debug.print("Error recording chunk: {}\n", .{err});
+                    recorder.stopRecording() catch {};
+                    daemon_state.broadcastError("Recording failed", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                };
+            }
+
+            // Handle state: processing -> stop recording and transcribe
+            if (current_state == .processing and last_state == .recording) {
+                const stop_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const stop_start_ms = @as(i64, stop_start.sec) * 1000 + @divTrunc(stop_start.nsec, std.time.ns_per_ms);
+
+                std.debug.print("🔴 STOP COMMAND RECEIVED - Recording 350ms more to capture trailing words\n", .{});
+
+                // Keep recording for 350ms more to catch trailing speech
+                const extra_ms: i64 = 350;
+                const deadline = stop_start_ms + extra_ms;
+                while (true) {
+                    const now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const now_ms = @as(i64, now.sec) * 1000 + @divTrunc(now.nsec, std.time.ns_per_ms);
+                    if (now_ms >= deadline) break;
+
+                    // Continue recording chunks
+                    _ = recorder.recordChunk() catch break;
+                }
+
+                std.debug.print("✅ Extra buffer captured - now stopping\n", .{});
+                recorder.stopRecording() catch |err| {
+                    std.debug.print("Error stopping recording: {}\n", .{err});
+                    daemon_state.broadcastError("Failed to stop recording", "RECORDING_ERROR") catch {};
+                    daemon_state.setState(.idle) catch {};
+                    last_state = current_state;
+                    continue;
+                };
+
+                const stop_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const stop_end_ms = @as(i64, stop_end.sec) * 1000 + @divTrunc(stop_end.nsec, std.time.ns_per_ms);
+                std.debug.print("✅ STOPPED - took {d}ms to finalize recording\n", .{stop_end_ms - stop_start_ms});
+
+                // Play deactivation sound
+                utils.playSound("assets/stop.wav");
+
                 std.debug.print("⚙️  Processing transcription...\n", .{});
 
-                // Small delay for external arecord to finish writing file
-                std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                if (daemon_status_win) |win| {
+                    win.setState("processing");
+                    win.addLog(.info, "Transcribing audio...");
+                    win.setActivity("Running Whisper model...");
+                }
 
                 const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
                 const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
 
-                // Transcribe the recording
-                const transcription = whisper_service.transcribe(recording_file) catch |err| {
+                // Apply VAD to trim silence (if enabled in config)
+                var audio_file_to_transcribe: []const u8 = recording_file;
+                const vad_trimmed_file = "/tmp/talkies-recording-vad.wav";
+                if (cfg.vad_enabled) {
+                    const vad_mode: vad.VadMode = switch (cfg.vad_mode) {
+                        0 => .quality,
+                        1 => .low_bitrate,
+                        3 => .very_aggressive,
+                        else => .aggressive,
+                    };
+
+                    if (daemon_status_win) |win| {
+                        win.addLog(.info, "Applying VAD to trim silence...");
+                    }
+
+                    const has_voice = audio_processing.trimSilenceFromWav(
+                        allocator,
+                        recording_file,
+                        vad_trimmed_file,
+                        vad_mode,
+                    ) catch |err| blk: {
+                        utils.log("VAD processing failed: {}, continuing without VAD", .{err});
+                        break :blk false;
+                    };
+
+                    if (has_voice) {
+                        audio_file_to_transcribe = vad_trimmed_file;
+                        if (daemon_status_win) |win| {
+                            win.addLog(.info, "VAD complete - silence trimmed");
+                        }
+                    } else {
+                        utils.log("VAD: No voice detected, skipping transcription", .{});
+                        if (daemon_status_win) |win| {
+                            win.addLog(.warn, "No voice detected in recording");
+                            win.setState("idle");
+                        }
+                        daemon_state.setState(.idle) catch {};
+                        continue;
+                    }
+                }
+
+                // Transcribe the recording (possibly VAD-trimmed)
+                const transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
+
+                    if (daemon_status_win) |win| {
+                        var err_buf: [256]u8 = undefined;
+                        const err_msg = std.fmt.bufPrint(&err_buf, "Transcription error: {}", .{err}) catch "Transcription error";
+                        win.addLog(.err, err_msg);
+                        win.setState("idle");
+                        win.setActivity("Error");
+                    }
+
                     daemon_state.broadcastError("Transcription failed", "TRANSCRIPTION_ERROR") catch {};
                     daemon_state.setState(.idle) catch {};
                     continue;
@@ -567,25 +789,160 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 std.debug.print("📝 Transcription ({d} chars): {s}\n", .{ transcription.len, transcription });
 
+                if (daemon_status_win) |win| {
+                    var success_buf: [256]u8 = undefined;
+                    const success_msg = try std.fmt.bufPrint(&success_buf, "Transcribed: {d} chars in {d}ms", .{ transcription.len, duration_ms });
+                    win.addLog(.info, success_msg);
+                    win.setLastTranscription("Just now");
+                }
+
                 // Broadcast transcription result
                 try daemon_state.broadcastTranscription(transcription, duration_ms);
 
+                // Check if we're already in YAP mode - if so, append to existing sandbox
+                if (yap_sb) |sb| {
+                    std.debug.print("📎 YAP MODE: Appending {d} chars to existing sandbox\n", .{transcription.len});
+
+                    // Append to sandbox yapping with space separator
+                    const old_yapping = sb.yapping;
+                    const new_yapping = try std.fmt.allocPrint(
+                        allocator,
+                        "{s} {s}",
+                        .{ old_yapping, transcription },
+                    );
+                    allocator.free(old_yapping);
+                    sb.yapping = new_yapping;
+
+                    // Update window display
+                    if (yap_win) |win| {
+                        win.updateDisplay() catch {};
+                    }
+
+                    std.debug.print("📎 Sandbox now has {d} chars total\n", .{new_yapping.len});
+
+                    // Return to yap_refining state and continue
+                    try daemon_state.setState(.yap_refining);
+                    continue;
+                }
+
+                // YAP mode: Interactive refinement with session persistence
+                var final_text: []const u8 = transcription;
+
+                yap_block: {
+                    if (!cfg.yap_mode_enabled or transcription.len == 0) break :yap_block;
+
+                    utils.log("YAP MODE: Starting interactive refinement session", .{});
+                    std.debug.print("\n💬 YAP MODE: Refining your message with {s}...\n", .{cfg.yap_llm_model});
+
+                    // Step 1: Initialize SessionManager
+                    const sm_ptr = try allocator.create(yap_sessions.SessionManager);
+                    sm_ptr.* = yap_sessions.SessionManager.init(allocator) catch |err| {
+                        allocator.destroy(sm_ptr);
+                        utils.logError("Failed to initialize session manager: {}", .{err});
+                        std.debug.print("⚠️  YAP session manager failed: {}, using basic refinement\n", .{err});
+                        break :yap_block;
+                    };
+                    yap_session_manager = sm_ptr;
+
+                    // Step 2: Create a new session in database
+                    yap_session_id = yap_session_manager.?.createSession(
+                        transcription,
+                        null, // No initial context for now
+                        cfg.yap_llm_model,
+                        cfg.yap_ollama_url,
+                    ) catch |err| {
+                        utils.logError("Failed to create YAP session: {}", .{err});
+                        std.debug.print("⚠️  YAP session creation failed: {}, using basic refinement\n", .{err});
+                        break :yap_block;
+                    };
+
+                    utils.log("Created YAP session ID: {d}", .{yap_session_id.?});
+
+                    // Step 3: Create YAP Sandbox with the transcription
+                    const sb_ptr = try allocator.create(yap_sandbox.Sandbox);
+                    sb_ptr.* = yap_sandbox.Sandbox.init(
+                        allocator,
+                        transcription,
+                        null, // No initial context
+                        cfg.yap_ollama_url,
+                        cfg.yap_system_prompt,
+                        io,
+                    ) catch |err| {
+                        allocator.destroy(sb_ptr);
+                        utils.logError("Failed to create sandbox: {}", .{err});
+                        std.debug.print("⚠️  YAP sandbox creation failed: {}, using basic refinement\n", .{err});
+                        // Mark session as abandoned
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.abandonSession(sid) catch {};
+                        }
+                        break :yap_block;
+                    };
+                    yap_sb = sb_ptr;
+
+                    utils.log("Created YAP sandbox, requesting initial refinement...", .{});
+
+                    // Step 4: Call sandbox.refineInitial() to get first refinement
+                    const refined = yap_sb.?.refineInitial(cfg.yap_llm_model) catch |err| {
+                        utils.logError("Failed to refine with LLM: {}", .{err});
+                        std.debug.print("⚠️  YAP refinement failed: {}, using original transcription\n", .{err});
+                        // Mark session as abandoned
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.abandonSession(sid) catch {};
+                        }
+                        break :yap_block;
+                    };
+
+                    std.debug.print("✨ Refined ({d} chars): {s}\n\n", .{ refined.len, refined });
+
+                    // Step 5: Save sandbox to database (all revisions)
+                    yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch |err| {
+                        utils.logError("Failed to save sandbox to database: {}", .{err});
+                        std.debug.print("⚠️  YAP session save failed: {}, but continuing...\n", .{err});
+                    };
+
+                    utils.log("YAP session saved to database: {d} revision(s)", .{yap_sb.?.getRevisionCount()});
+
+                    // Step 6: Create and show YAP window for interactive refinement
+                    try daemon_state.setState(.yap_refining);
+
+                    yap_win = yap_window.YapWindow.create(
+                        allocator,
+                        yap_sb.?,
+                        &daemon_state,
+                    ) catch |err| {
+                        utils.logError("Failed to create YAP window: {}", .{err});
+                        std.debug.print("⚠️  YAP window creation failed: {}, auto-accepting\n", .{err});
+                        final_text = refined;
+                        if (yap_session_id) |sid| {
+                            yap_session_manager.?.completeSession(sid, final_text) catch {};
+                        }
+                        break :yap_block;
+                    };
+
+                    yap_win.?.show();
+
+                    std.debug.print("💬 YAP window displayed. Use main loop to handle commands...\n", .{});
+
+                    // Don't block - let main loop handle YAP commands
+                    // Window will be cleaned up when accept/cancel is pressed
+                }
+
                 // Handle output based on config
                 if (cfg.auto_paste) {
-                    if (transcription.len > 0) {
+                    if (final_text.len > 0) {
                         std.debug.print("✨ Inserting text at cursor...\n", .{});
-                        inserter.insertTextAtCursor(transcription, cfg.paste_keybind) catch |err| {
+                        inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch |err| {
                             std.debug.print("Error inserting text: {}\n", .{err});
                         };
                     } else {
-                        std.debug.print("⚠️  Skipping paste - transcription is empty\n", .{});
+                        std.debug.print("⚠️  Skipping paste - text is empty\n", .{});
                     }
                 } else {
                     var clip = clipboard.Clipboard.init(allocator);
                     defer clip.deinit();
 
                     std.debug.print("📋 Copying to clipboard...\n", .{});
-                    clip.copy(transcription) catch |err| {
+                    clip.copy(final_text) catch |err| {
                         std.debug.print("Error copying to clipboard: {}\n", .{err});
                     };
                 }
@@ -597,13 +954,250 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                 // Reset state to idle
                 try daemon_state.setState(.idle);
+
+                if (daemon_status_win) |win| {
+                    win.setState("idle");
+                    win.addLog(.info, "Ready for next recording");
+                    win.setActivity("Idle");
+                }
+            }
+
+            // Process YAP window events if active
+            if (yap_win) |win| {
+                yap_window.YapWindow.processEvents();
+
+                // Check for YAP commands
+                if (daemon_state.getYapCommand()) |cmd| {
+                    daemon_state.clearYapCommand();
+
+                    switch (cmd) {
+                        .accept => {
+                            const final_text = yap_sb.?.getCurrentRefinement();
+                            if (yap_session_id) |sid| {
+                                yap_session_manager.?.completeSession(sid, final_text) catch {};
+                            }
+                            std.debug.print("✅ YAP: Accepted refinement\n", .{});
+
+                            // Cleanup YAP session
+                            win.destroy();
+                            yap_win = null;
+                            if (yap_sb) |sb| {
+                                sb.deinit();
+                                allocator.destroy(sb);
+                                yap_sb = null;
+                            }
+                            if (yap_session_manager) |sm| {
+                                sm.deinit();
+                                allocator.destroy(sm);
+                                yap_session_manager = null;
+                            }
+                            yap_session_id = null;
+
+                            // Paste or copy the result
+                            if (cfg.auto_paste) {
+                                if (final_text.len > 0) {
+                                    std.debug.print("✨ Inserting text at cursor...\n", .{});
+                                    inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch |err| {
+                                        std.debug.print("Error inserting text: {}\n", .{err});
+                                    };
+                                }
+                            } else {
+                                var clip = clipboard.Clipboard.init(allocator);
+                                defer clip.deinit();
+                                clip.copy(final_text) catch |err| {
+                                    std.debug.print("Error copying to clipboard: {}\n", .{err});
+                                };
+                            }
+
+                            try daemon_state.setState(.idle);
+                        },
+
+                        .request_clarification => {
+                            std.debug.print("🤔 YAP: Generating clarification questions...\n", .{});
+
+                            // Generate questions using LLM
+                            const questions = yap_sb.?.generateClarificationQuestions(
+                                cfg.yap_llm_model,
+                            ) catch |err| {
+                                utils.logError("Clarification generation failed: {}", .{err});
+                                std.debug.print("⚠️  Clarification failed, falling back to direct refinement: {}\n", .{err});
+                                // Fallback: skip clarification and refine directly
+                                daemon_state.setYapCommand(.refine, null) catch {};
+                                continue;
+                            };
+
+                            std.debug.print("✅ Generated {d} questions\n", .{questions.len});
+
+                            // Store questions in daemon state
+                            daemon_state.setClarificationQuestions(questions) catch {};
+
+                            // Convert to C-compatible format for GTK
+                            const c_questions = allocator.alloc(yap_window.c.YapClarificationQuestion, questions.len) catch continue;
+                            defer allocator.free(c_questions);
+
+                            // Convert options to NULL-terminated arrays
+                            var options_arrays = allocator.alloc([*c]const [*c]const u8, questions.len) catch continue;
+                            defer allocator.free(options_arrays);
+
+                            for (questions, 0..) |q, i| {
+                                const opts = allocator.alloc([*c]const u8, q.options.len) catch continue;
+                                for (q.options, 0..) |opt, j| {
+                                    opts[j] = opt.ptr;
+                                }
+                                options_arrays[i] = opts.ptr;
+
+                                c_questions[i] = .{
+                                    .id = q.id.ptr,
+                                    .question_text = q.text.ptr,
+                                    .options = opts.ptr,
+                                    .option_count = @intCast(q.options.len),
+                                };
+                            }
+
+                            // Show in UI
+                            yap_window.c.yap_window_gtk_show_clarification(
+                                win.gtk_win,
+                                c_questions.ptr,
+                                @intCast(questions.len),
+                            );
+
+                            win.clarification_active = true;
+
+                            // Clean up options arrays
+                            for (options_arrays) |opts| {
+                                allocator.free(opts[0 .. questions[0].options.len]);
+                            }
+                        },
+
+                        .refine => {
+                            const ctx = daemon_state.getYapRefineContext();
+                            defer if (ctx) |c| allocator.free(c);
+
+                            // Check if this is first refinement
+                            const is_first = yap_sb.?.getRevisionCount() == 0;
+
+                            if (is_first) {
+                                // First refinement with clarification answers
+                                std.debug.print("🔄 YAP: Performing initial refinement with clarification...\n", .{});
+
+                                const clarification_answers = daemon_state.getClarificationAnswers() catch &[_]daemon_ws.ClarificationAnswer{};
+                                defer {
+                                    for (clarification_answers) |*item| {
+                                        var mutable_item = item.*;
+                                        mutable_item.deinit(allocator);
+                                    }
+                                    allocator.free(clarification_answers);
+                                }
+
+                                const new_refined = yap_sb.?.refineInitialWithClarification(
+                                    cfg.yap_llm_model,
+                                    if (clarification_answers.len > 0) clarification_answers else null,
+                                ) catch |err| {
+                                    utils.logError("Initial refinement failed: {}", .{err});
+                                    std.debug.print("⚠️  Initial refinement failed: {}\n", .{err});
+                                    continue;
+                                };
+
+                                std.debug.print("✨ Initial refinement complete: {s}\n", .{new_refined});
+
+                                // Clear clarification state after first refinement
+                                daemon_state.clearClarificationState();
+
+                                // Save updated sandbox
+                                yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+
+                                // Update window display
+                                win.updateDisplay() catch {};
+
+                                // Broadcast new refinement
+                                daemon_state.broadcastYapRefined(
+                                    new_refined,
+                                    @intCast(yap_sb.?.getRevisionCount()),
+                                    yap_sb.?.yapping.len,
+                                ) catch {};
+                            } else {
+                                // Subsequent refinement
+                                std.debug.print("🔄 YAP: Requesting another refinement (context and yapping updated)...\n", .{});
+
+                                const new_refined = yap_sb.?.refineAgain(
+                                    cfg.yap_llm_model,
+                                    ctx,
+                                ) catch |err| {
+                                    utils.logError("Refinement failed: {}", .{err});
+                                    std.debug.print("⚠️  Refinement failed: {}\n", .{err});
+                                    continue;
+                                };
+
+                                std.debug.print("✨ New refinement: {s}\n", .{new_refined});
+
+                                // Save updated sandbox
+                                yap_session_manager.?.saveSandbox(yap_session_id.?, yap_sb.?) catch {};
+
+                                // Update window display
+                                win.updateDisplay() catch {};
+
+                                // Broadcast new refinement
+                                daemon_state.broadcastYapRefined(
+                                    new_refined,
+                                    @intCast(yap_sb.?.getRevisionCount()),
+                                    yap_sb.?.yapping.len,
+                                ) catch {};
+                            }
+                        },
+
+                        .cancel => {
+                            const final_text = yap_sb.?.yapping;
+                            if (yap_session_id) |sid| {
+                                yap_session_manager.?.abandonSession(sid) catch {};
+                            }
+                            std.debug.print("❌ YAP: Cancelled, using original\n", .{});
+
+                            // Cleanup
+                            win.destroy();
+                            yap_win = null;
+                            if (yap_sb) |sb| {
+                                sb.deinit();
+                                allocator.destroy(sb);
+                                yap_sb = null;
+                            }
+                            if (yap_session_manager) |sm| {
+                                sm.deinit();
+                                allocator.destroy(sm);
+                                yap_session_manager = null;
+                            }
+                            yap_session_id = null;
+
+                            // Paste or copy the original
+                            if (cfg.auto_paste) {
+                                if (final_text.len > 0) {
+                                    inserter.insertTextAtCursor(final_text, cfg.paste_keybind) catch {};
+                                }
+                            } else {
+                                var clip = clipboard.Clipboard.init(allocator);
+                                defer clip.deinit();
+                                clip.copy(final_text) catch {};
+                            }
+
+                            try daemon_state.setState(.idle);
+                        },
+
+                        .append_transcription => {
+                            // Handled earlier in transcription processing
+                        },
+                    }
+                }
+            }
+
+            // Process GTK events to keep status window responsive
+            if (daemon_status_win) |_| {
+                daemon_status_window.DaemonStatusWindow.processEvents();
             }
 
             // Update last state
             last_state = current_state;
 
-            // Sleep to avoid busy-wait
-            std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
+            // Sleep to avoid busy-wait (0.5ms for ultra-fast response)
+            std.posix.nanosleep(0, 500 * std.time.ns_per_us);
         }
 
         utils.log("Daemon shutting down...", .{});

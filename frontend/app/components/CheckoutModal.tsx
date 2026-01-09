@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Shield, Check, Lock, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Shield, Check, Lock, Loader2 } from './icons';
 import { PLAN_PRICING } from '../lib/stripe';
 
 interface CheckoutModalProps {
@@ -14,6 +14,64 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Handle Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  // Focus trap
+  useEffect(() => {
+    if (!isOpen || !modalRef.current) return;
+
+    const focusableElements = modalRef.current.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+    );
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTab);
+
+    // Auto-focus close button
+    setTimeout(() => {
+      firstElement?.focus();
+    }, 100);
+
+    return () => {
+      document.removeEventListener('keydown', handleTab);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -57,7 +115,7 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      console.error('Checkout error:', err);
+      // Error is displayed to user via setError
       setError(err instanceof Error ? err.message : 'An error occurred');
       setLoading(false);
     }
@@ -72,7 +130,7 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
       ></div>
 
       {/* Modal */}
-      <div className="relative w-full max-w-2xl my-8">
+      <div ref={modalRef} className="relative w-full max-w-2xl my-8" role="dialog" aria-modal="true" aria-labelledby="checkout-modal-title">
         <div className="relative rounded-3xl overflow-hidden">
           {/* Animated gradient border */}
           <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 animate-gradient"></div>
@@ -88,7 +146,7 @@ export default function CheckoutModal({ isOpen, onClose, plan }: CheckoutModalPr
             </button>
 
             <div className="mb-8">
-              <h2 className="text-3xl font-bold mb-2">
+              <h2 id="checkout-modal-title" className="text-3xl font-bold mb-2">
                 <span className="bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
                   Complete Your Purchase
                 </span>

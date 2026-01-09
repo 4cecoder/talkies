@@ -69,4 +69,49 @@ function SkeletonAvatar({ size = 40 }: { size?: number }) {
   return <Skeleton variant="circular" width={size} height={size} />;
 }
 
-export { Skeleton, SkeletonCard, SkeletonButton, SkeletonAvatar };
+function StatsSkeleton() {
+  return (
+    <section className="relative py-20 px-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-4 gap-8">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} height="160px" variant="rectangular" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TestimonialsSkeleton() {
+  return (
+    <section className="relative py-20 px-6">
+      <div className="max-w-6xl mx-auto">
+        <Skeleton height="48px" width="384px" className="mx-auto mb-4" />
+        <Skeleton height="24px" width="512px" className="mx-auto mb-16" />
+        <div className="grid md:grid-cols-3 gap-8">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} height="256px" variant="rectangular" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FAQSkeleton() {
+  return (
+    <section className="relative py-20 px-6">
+      <div className="max-w-3xl mx-auto">
+        <Skeleton height="48px" width="384px" className="mx-auto mb-16" />
+        <div className="space-y-6">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} height="96px" variant="rectangular" />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export { Skeleton, SkeletonCard, SkeletonButton, SkeletonAvatar, StatsSkeleton, TestimonialsSkeleton, FAQSkeleton };
