@@ -47,4 +47,7 @@ void daemon_status_window_set_stats(DaemonStatusWindow *win, int sessions, int e
 // Callbacks
 void daemon_status_window_set_settings_callback(DaemonStatusWindow *win, void (*callback)(void*), void *user_data);
 
+// Settings dialog
+void daemon_status_window_show_settings_dialog(DaemonStatusWindow *win, const char *config_path);
+
 #endif // DAEMON_STATUS_GTK_H
