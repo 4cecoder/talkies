@@ -14,7 +14,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   
   # Audio Recording & Transcription
-  record: ^5.0.0  # Cross-platform audio recording
+  record: ^6.2.0  # Cross-platform audio recording
   path_provider: ^2.1.0  # File system paths
   permission_handler: ^11.0.0  # Microphone permissions
   
