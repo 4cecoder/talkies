@@ -26,7 +26,7 @@ dependencies:
   
   # File handling
   file_picker: ^10.3.8  # For export functionality
-  share_plus: ^7.2.0  # For sharing transcripts
+  share_plus: ^12.0.2  # For sharing transcripts
   
   # HTTP client for LLM integration
   http: ^1.1.0
