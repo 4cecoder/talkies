@@ -6,17 +6,19 @@ const bundleAnalyzer = withBundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  // Static export for GitHub Pages (no Node server / API routes available at runtime)
+  output: 'export',
+
   // Production optimizations
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
 
   // Image optimization
+  // Static export doesn't support the default Next.js image optimization
+  // loader (it requires a running server), so it must be disabled.
   images: {
-    formats: ['image/avif', 'image/webp'],
-    dangerouslyAllowSVG: true,
-    contentDispositionType: 'attachment',
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    unoptimized: true,
   },
 
   // Bundle optimization

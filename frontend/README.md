@@ -1,6 +1,9 @@
-# Talkies Frontend - Production-Ready SaaS Website
+# Talkies Frontend
 
-A stunning, conversion-focused SaaS landing page built with Next.js 16, featuring cutting-edge 2026 UI/UX design patterns inspired by top SaaS companies like ghostrep.ai and fastbreak.ai.
+The project website for Talkies — a free, open-source, on-device voice transcription app. This
+Next.js site is the homepage, a live in-browser transcription demo, and a platform-picker FAQ to
+help visitors figure out which build (macOS / Windows / Linux / mobile) they want and how to get
+it running. There's no billing, no checkout, and no pricing tiers here — the app is free.
 
 ## Features
 
@@ -11,28 +14,22 @@ A stunning, conversion-focused SaaS landing page built with Next.js 16, featurin
 - **Responsive Design**: Mobile-first approach, fully responsive across all devices
 - **Micro-interactions**: Smooth hover states, scale animations, and transitions
 
-### SaaS Subscription Flow
-- **Authentication System**: Login/Signup modal with social auth (Google, GitHub)
-- **Checkout Flow**: Beautiful payment modal with monthly/yearly toggle
-- **User Dashboard**: Complete dashboard with stats, subscription management, and activity tracking
-- **Stripe-Ready**: Payment UI designed for easy Stripe integration
-
-### Conversion Elements
-- **Social Proof Stats**: 500K+ users, 87% faster writing, 4.9/5 rating
-- **Testimonials Section**: 3 featured testimonials with 5-star ratings
-- **Multiple CTAs**: Strategic placement throughout the page
-- **Sticky Header**: Sign In + Get Started buttons always accessible
-- **Final CTA Section**: High-converting pre-FAQ conversion section
+### Content
+- **Platform Picker**: Direct links to GitHub Releases for macOS, Windows, Linux, and mobile,
+  each labeled with its current readiness (ready / available / in progress)
+- **Live Browser Demo**: A real transcription demo running client-side in the browser — no
+  signup, no cloud, nothing uploaded
+- **FAQ**: Onboarding-focused questions (which platform to pick, whether it's free, whether data
+  ever leaves your device, how to build from source, where to file bugs/contribute, and license
+  status)
 
 ### Sections
-1. **Hero**: Gradient text, platform download buttons (Mac, Windows, Linux)
-2. **Features**: 3-card grid with gradient hover effects
-3. **Social Proof**: Key metrics and statistics
-4. **Testimonials**: Customer reviews with avatars and roles
-5. **Pricing**: Free vs Pro tiers with interactive buttons
-6. **Final CTA**: Last conversion opportunity before FAQ
-7. **FAQ**: Accordion-style questions with gradient styling
-8. **Footer**: Links with gradient hover effects
+1. **Hero**: What the app does, plus the platform picker (macOS, Windows, Linux, mobile)
+2. **Live Demo**: In-browser transcription demo
+3. **Features**: 3-card grid with gradient hover effects
+4. **Final CTA**: Link to the GitHub repo and back to the platform picker
+5. **FAQ**: Accordion-style onboarding questions
+6. **Footer**: Privacy/Terms/Contact/GitHub links
 
 ## Tech Stack
 
@@ -46,17 +43,16 @@ A stunning, conversion-focused SaaS landing page built with Next.js 16, featurin
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Run development server
-npm run dev
+bun run dev
 
-# Build for production
-npm run build
-
-# Start production server
-npm start
+# Build static export (outputs to ./out)
+bun run build
 ```
+
+This app is built with `output: 'export'` and deployed as a static site (GitHub Pages), so there is no production server to start — preview the exported site by serving the `out/` directory with any static file server (e.g. `bunx serve out`).
 
 Open [http://localhost:3000](http://localhost:3000) to view the site.
 
@@ -66,35 +62,17 @@ Open [http://localhost:3000](http://localhost:3000) to view the site.
 frontend/
 ├── app/
 │   ├── components/
-│   │   ├── AuthModal.tsx        # Login/Signup modal
-│   │   └── CheckoutModal.tsx    # Payment/subscription modal
+│   │   ├── sections/             # Header, FAQ, Features, etc.
+│   │   ├── demo/                 # Live in-browser transcription demo
+│   │   └── AuthModal.tsx         # Login/signup modal used by the optional dashboard
 │   ├── dashboard/
-│   │   └── page.tsx             # User dashboard
-│   ├── globals.css              # Custom animations & styles
-│   ├── layout.tsx               # Root layout
-│   └── page.tsx                 # Landing page
+│   │   └── page.tsx              # Optional usage-stats dashboard (not required to use the app)
+│   ├── legal/                    # Privacy & Terms pages
+│   ├── globals.css               # Custom animations & styles
+│   ├── layout.tsx                # Root layout
+│   └── page.tsx                  # Homepage
 └── package.json
 ```
-
-## Components
-
-### AuthModal
-- Toggle between login/signup modes
-- Social authentication (Google, GitHub)
-- Form validation-ready
-- Glassmorphism design with gradient border
-
-### CheckoutModal
-- Monthly/yearly billing toggle (20% annual discount)
-- Order summary with discount display
-- Stripe-ready payment form
-- Trust badges (secure, money-back, cancel anytime)
-
-### Dashboard
-- Usage statistics (transcriptions, minutes, languages)
-- Subscription management card
-- Recent activity list
-- Upgrade/downgrade options
 
 ## Custom Animations
 
@@ -103,36 +81,8 @@ frontend/
 - `glow-pulse`: 3s pulsing glow effects
 - `gradient-border`: Animated border gradients
 
-## Next Steps for Production
+## Deploy on GitHub Pages
 
-1. **Backend Integration**
-   - Connect authentication provider (Supabase, Auth0, Clerk)
-   - Integrate Stripe for payments
-   - Set up user database
+This app builds to a static export (`output: 'export'`) and deploys to GitHub Pages via `.github/workflows/deploy-pages.yml`, which runs on every push to `master` that touches `frontend/**` (or can be triggered manually). The workflow installs dependencies and builds with bun, then publishes the `frontend/out/` directory using the official `actions/upload-pages-artifact` / `actions/deploy-pages` actions.
 
-2. **Analytics**
-   - Add Google Analytics or Plausible
-   - Track conversion funnel
-   - A/B test CTAs
-
-3. **SEO**
-   - Add meta tags and Open Graph images
-   - Create sitemap
-   - Optimize for Core Web Vitals
-
-4. **Additional Features**
-   - Email capture for waitlist
-   - Live chat support (Intercom, Crisp)
-   - Blog section
-   - Help center
-
-## Design Inspiration
-
-- [ghostrep.ai](https://ghostrep.ai) - Dark theme, cyan accents, enterprise positioning
-- [fastbreak.ai](https://fastbreak.ai) - Professional sports-tech aesthetic, smooth interactions
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new).
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Check out the [Next.js static export documentation](https://nextjs.org/docs/app/building-your-application/deploying/static-exports) for more details.

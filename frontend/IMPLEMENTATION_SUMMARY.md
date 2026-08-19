@@ -143,15 +143,6 @@ Created professional, reusable section components:
 - Interactive cards with hover effects
 - Keyboard accessible
 
-#### Pricing
-**File**: `app/components/sections/Pricing.tsx` (NEW)
-
-- 2-tier pricing display (Free/Pro)
-- "Most Popular" badge
-- Feature lists with checkmarks
-- Gradient border emphasis
-- CTA buttons per plan
-
 #### Footer
 **File**: `app/components/sections/Footer.tsx` (NEW)
 
@@ -176,8 +167,7 @@ Created professional, reusable section components:
 8. `app/components/sections/Header.tsx` - Header section
 9. `app/components/sections/Hero.tsx` - Hero section
 10. `app/components/sections/Features.tsx` - Features section
-11. `app/components/sections/Pricing.tsx` - Pricing section
-12. `app/components/sections/Footer.tsx` - Footer section
+11. `app/components/sections/Footer.tsx` - Footer section
 
 ### Updated Files (2 total)
 
@@ -266,7 +256,7 @@ To adopt these improvements in your existing code:
 
 ### For Developers
 
-1. ✅ Install dependencies: `npm install clsx tailwind-merge`
+1. ✅ Install dependencies: `bun add clsx tailwind-merge`
 2. ✅ Import components from `@/app/components/ui`
 3. ✅ Replace inline className strings with component variants
 4. ✅ Use design tokens instead of hardcoded colors
@@ -293,10 +283,9 @@ To adopt these improvements in your existing code:
 
 ### Immediate (Can be done now)
 1. Update remaining pages to use new components
-2. Replace CheckoutModal with new Input/Button components
-3. Update Dashboard with new Card components
-4. Add unit tests for UI components
-5. Add Storybook for component documentation
+2. Update Dashboard with new Card components
+3. Add unit tests for UI components
+4. Add Storybook for component documentation
 
 ### Short-term
 1. Create additional components (Badge, Alert, Modal base)
@@ -329,11 +318,11 @@ To adopt these improvements in your existing code:
 ### Automated Testing
 ```bash
 # Lighthouse CI
-npm run build
-npx lighthouse-ci autorun
+bun run build
+bunx lighthouse-ci autorun
 
 # Accessibility testing
-npm install -D @axe-core/playwright
+bun add -D @axe-core/playwright
 # Add tests in e2e/accessibility.spec.ts
 ```
 
@@ -388,7 +377,7 @@ All components are versioned and documented. To update:
 To update design tokens:
 
 1. Edit `tailwind.config.ts`
-2. Rebuild: `npm run dev`
+2. Rebuild: `bun run dev`
 3. Verify changes across all components
 4. Update documentation if needed
 

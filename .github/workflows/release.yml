@@ -71,9 +71,115 @@ jobs:
           path: windows/Talkies.Windows/Talkies-Windows-${{ github.ref_name }}.zip
           retention-days: 1
 
+  build-mobile:
+    name: Build Mobile Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: mobile/.flutter-version
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      # iOS release packaging is skipped: it requires an Apple signing
+      # certificate/provisioning profile and App Store Connect credentials
+      # that aren't available as CI secrets in this repo. Only the Android
+      # APK is built and shipped here; add an `ios` job with signing secrets
+      # if/when Apple distribution is set up.
+      - name: Build release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Package Android APK
+        working-directory: mobile
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/Talkies-Mobile-Android-${{ github.ref_name }}.apk
+
+      - name: Upload mobile artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: mobile-release
+          path: mobile/dist/Talkies-Mobile-Android-${{ github.ref_name }}.apk
+          retention-days: 1
+
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          # Matches minimum_zig_version in linux/build.zig.zon
+          version: '0.16.0-dev.1484+d0ba6642b'
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libpulse-dev \
+            libsqlite3-dev \
+            libx11-dev \
+            libdbus-1-dev \
+            libgtk-4-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev
+
+      - name: Workaround Ubuntu multiarch include paths
+        # See matching step in ci.yml: linux/build.zig hardcodes
+        # /usr/lib64/<pkg>/include paths that only exist on Gentoo/Fedora.
+        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
+
+      - name: Build whisper.cpp
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
+          cd /tmp/whisper.cpp
+          make
+          sudo cp libwhisper.so /usr/local/lib/
+          sudo cp whisper.h /usr/local/include/
+          sudo ldconfig
+
+      - name: Build Linux release binary
+        working-directory: linux
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Package Linux binary
+        working-directory: linux
+        run: |
+          mkdir -p dist/talkies-linux
+          cp zig-out/bin/talkies dist/talkies-linux/
+          cp talkies-overlay-gtk dist/talkies-linux/
+          cd dist/talkies-linux
+          tar -czf ../Talkies-Linux-${{ github.ref_name }}.tar.gz .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-release
+          path: linux/dist/Talkies-Linux-${{ github.ref_name }}.tar.gz
+          retention-days: 1
+
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-mobile, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -94,6 +200,18 @@ jobs:
           name: windows-release
           path: artifacts
 
+      - name: Download mobile artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: mobile-release
+          path: artifacts
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: linux-release
+          path: artifacts
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,5 +222,7 @@ jobs:
           files: |
             artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
             artifacts/Talkies-Windows-${{ github.ref_name }}.zip
+            artifacts/Talkies-Mobile-Android-${{ github.ref_name }}.apk
+            artifacts/Talkies-Linux-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

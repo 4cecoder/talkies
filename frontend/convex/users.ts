@@ -85,16 +85,6 @@ export const deleteUser = mutation({
       await ctx.db.delete(account._id);
     }
 
-    // Delete user's subscriptions
-    const subscriptions = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .collect();
-
-    for (const subscription of subscriptions) {
-      await ctx.db.delete(subscription._id);
-    }
-
     // Delete user
     await ctx.db.delete(userId);
   },

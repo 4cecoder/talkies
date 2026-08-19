@@ -44,21 +44,6 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_provider_and_providerAccountId", ["provider", "providerAccountId"]),
 
-  // Subscriptions table (Stripe)
-  subscriptions: defineTable({
-    userId: v.id("users"),
-    stripeCustomerId: v.string(),
-    stripeSubscriptionId: v.string(),
-    stripePriceId: v.string(),
-    status: v.string(), // "active" | "canceled" | "incomplete" | "past_due" etc.
-    currentPeriodEnd: v.number(), // timestamp
-    createdAt: v.number(), // timestamp
-    updatedAt: v.number(), // timestamp
-  })
-    .index("by_userId", ["userId"])
-    .index("by_stripeCustomerId", ["stripeCustomerId"])
-    .index("by_stripeSubscriptionId", ["stripeSubscriptionId"]),
-
   // Verification tokens (email verification, password reset)
   verificationTokens: defineTable({
     identifier: v.string(), // email or user ID

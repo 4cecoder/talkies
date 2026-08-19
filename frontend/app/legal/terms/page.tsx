@@ -5,10 +5,8 @@ import { LegalSection } from '@/app/components/legal/LegalSection';
 import {
   FileText,
   UserPlus,
-  CreditCard,
   Shield,
   AlertTriangle,
-  RefreshCcw,
   Scale,
   Edit
 } from 'lucide-react';
@@ -57,24 +55,8 @@ export default function TermsOfServicePage() {
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-white font-medium">Cancel anytime</p>
-                  <p className="text-sm text-neutral-400">No questions, no hassle</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-white font-medium">14-day money-back</p>
-                  <p className="text-sm text-neutral-400">Full refund guarantee</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-white font-medium">Free tier forever</p>
-                  <p className="text-sm text-neutral-400">No expiration on free plan</p>
+                  <p className="text-white font-medium">Free, forever</p>
+                  <p className="text-sm text-neutral-400">No subscriptions, no hidden costs</p>
                 </div>
               </div>
 
@@ -130,28 +112,6 @@ export default function TermsOfServicePage() {
             </LegalSection>
 
             <LegalSection
-              icon={CreditCard}
-              title="3. Billing & Payments"
-              tldr="Free tier is free forever. Pro plan is $10/month or $96/year. Payments via Stripe. Cancel anytime."
-            >
-              <p>
-                <strong>Free Plan:</strong> Our free tier includes up to 10 minutes of transcription per month and is available forever at no cost.
-              </p>
-              <p>
-                <strong>Pro Plan:</strong> $10/month or $96/year (20% savings). Includes unlimited transcription, 100+ languages, and advanced features.
-              </p>
-              <p>
-                <strong>Payment Processing:</strong> All payments are processed securely through Stripe. We never store your credit card information.
-              </p>
-              <p>
-                <strong>Billing Cycle:</strong> You will be charged on the same day each billing period (monthly or yearly) until you cancel.
-              </p>
-              <p>
-                <strong>Price Changes:</strong> We'll notify you 30 days before any price increases. You can cancel before the change takes effect.
-              </p>
-            </LegalSection>
-
-            <LegalSection
               icon={Shield}
               title="4. Privacy & Data"
               tldr="Voice recordings stay on YOUR device. We only collect email for login. See our Privacy Policy for details."
@@ -192,27 +152,8 @@ export default function TermsOfServicePage() {
             </LegalSection>
 
             <LegalSection
-              icon={RefreshCcw}
-              title="6. Refunds & Cancellations"
-              tldr="14-day money-back guarantee. Cancel anytime from your dashboard. No hidden fees."
-            >
-              <p>
-                <strong>Money-Back Guarantee:</strong> If you're not satisfied within 14 days of your initial purchase, we'll refund your payment in full, no questions asked.
-              </p>
-              <p>
-                <strong>Cancellation:</strong> You can cancel your subscription at any time from your account dashboard. You'll retain access until the end of your current billing period.
-              </p>
-              <p>
-                <strong>No Partial Refunds:</strong> Except for the 14-day guarantee, refunds are not provided for partial billing periods.
-              </p>
-              <p>
-                <strong>Free Tier:</strong> Downgrading to the free tier keeps your account active with limited features. No cancellation needed.
-              </p>
-            </LegalSection>
-
-            <LegalSection
               icon={Scale}
-              title="7. Limitation of Liability"
+              title="6. Limitation of Liability"
               tldr="We provide the service 'as is'. We're not liable for data loss or service interruptions. Use at your own risk."
             >
               <p>
@@ -234,7 +175,7 @@ export default function TermsOfServicePage() {
 
             <LegalSection
               icon={Edit}
-              title="8. Changes to Terms"
+              title="7. Changes to Terms"
               tldr="We may update these terms. We'll notify you by email 30 days before major changes take effect."
             >
               <p>

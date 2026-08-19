@@ -267,9 +267,9 @@ Adding Talkies to a new platform? Use this checklist:
 
 ## 📚 Additional Resources
 
-- **Complete Brand Kit:** See `/BRAND_KIT.md` for full guidelines
+- **Complete Brand Kit:** See `/docs/BRAND_KIT.md` for full guidelines
 - **Typography:** Geist Sans (primary), Geist Mono (code)
-- **Design Tokens:** Border radius, shadows, animations in `/BRAND_KIT.md`
+- **Design Tokens:** Border radius, shadows, animations in `/docs/BRAND_KIT.md`
 - **Accessibility:** All colors meet WCAG AA standards on specified backgrounds
 
 ## 🤝 Contributing
@@ -289,4 +289,4 @@ When contributing brand assets:
 
 ---
 
-**Questions?** See `/BRAND_KIT.md` for complete brand guidelines or open an issue.
+**Questions?** See `/docs/BRAND_KIT.md` for complete brand guidelines or open an issue.

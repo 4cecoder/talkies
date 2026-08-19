@@ -27,6 +27,13 @@ export {
   Download,
   Star,
 
+  // Platforms
+  Apple,
+  Monitor,
+  Terminal,
+  Smartphone,
+  Github,
+
   // Stats & Analytics
   TrendingUp,
   Users,

@@ -1,21 +1,79 @@
+const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
+
 const faqs = [
   {
-    question: "How does the voice transcription work?",
-    answer: "Our app uses advanced speech recognition technology that runs directly on your device, ensuring privacy and offline functionality.",
+    question: "Which platform should I use?",
+    answer: (
+      <>
+        macOS and Windows have the most complete, ready-to-use builds today — macOS needs
+        Apple Silicon and macOS 15+, Windows needs 10/11 (64-bit). Linux has a working native
+        build (X11 &amp; Wayland) but is newer and less polished. Mobile (Android &amp; iOS) is
+        still in progress — the Flutter app&apos;s UI is built, but on-device transcription is
+        still being wired up. See the platform picker above, or check{' '}
+        <a href={`${GITHUB_REPO_URL}/blob/main/docs/ROADMAP.md`} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
+          docs/ROADMAP.md
+        </a>{' '}
+        for the latest status.
+      </>
+    ),
     gradient: "from-green-300 to-emerald-300",
     hoverColor: "green-500"
   },
   {
-    question: "Is my data secure?",
-    answer: "Yes! Everything stays on your device. We never upload your voice recordings or transcriptions to the cloud.",
+    question: "Is this free?",
+    answer: "Yes. Talkies is a free, open-source project with no subscriptions, no paywalls, and no in-app purchases. There's no account required to use the desktop or mobile apps.",
     gradient: "from-blue-300 to-cyan-300",
     hoverColor: "blue-500"
   },
   {
-    question: "Can I use it offline?",
-    answer: "Absolutely! The app works completely offline once installed. No internet connection required.",
+    question: "Does my data leave my device?",
+    answer: "No. Transcription runs locally using WhisperKit (macOS), Whisper.net (Windows), or whisper.cpp (Linux) — your audio and transcripts are never uploaded to a server. The in-browser demo on this site works the same way: it runs a small model client-side in your browser.",
     gradient: "from-purple-300 to-pink-300",
     hoverColor: "purple-500"
+  },
+  {
+    question: "Can I use it offline?",
+    answer: "Yes, once a build is installed and its model is downloaded, the desktop apps work completely offline. No internet connection is required for transcription.",
+    gradient: "from-orange-300 to-amber-300",
+    hoverColor: "pink-500"
+  },
+  {
+    question: "How do I build it from source?",
+    answer: (
+      <>
+        Each platform has its own build commands — see the {' '}
+        <a href={`${GITHUB_REPO_URL}/blob/main/AGENTS.md`} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
+          AGENTS.md
+        </a>{' '}
+        reference and each platform&apos;s own README (<code className="text-neutral-400">mac/</code>,{' '}
+        <code className="text-neutral-400">windows/</code>, <code className="text-neutral-400">linux/</code>,{' '}
+        <code className="text-neutral-400">mobile/</code>, <code className="text-neutral-400">frontend/</code>) for
+        the exact steps.
+      </>
+    ),
+    gradient: "from-cyan-300 to-blue-300",
+    hoverColor: "blue-500"
+  },
+  {
+    question: "Where do I report bugs or contribute?",
+    answer: (
+      <>
+        Open an issue or pull request on{' '}
+        <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
+          GitHub
+        </a>
+        . See <code className="text-neutral-400">CONTRIBUTING.md</code> at the repo root for how to get
+        started, and <code className="text-neutral-400">docs/ROADMAP.md</code> for open work items.
+      </>
+    ),
+    gradient: "from-pink-300 to-fuchsia-300",
+    hoverColor: "purple-500"
+  },
+  {
+    question: "What's the license?",
+    answer: "This repository does not currently include a published LICENSE file. Check the repository directly for the latest licensing status before reusing the code.",
+    gradient: "from-yellow-300 to-orange-300",
+    hoverColor: "green-500"
   }
 ];
 
