@@ -27,14 +27,15 @@ pub const Targets = struct {
 /// .github/workflows/ci.yml and release.yml for the same class of
 /// distro-layout assumption elsewhere in this build).
 pub fn targets(b: *std.Build) Targets {
-    _ = b;
     return .{
-        .x11 = headerExists("/usr/include/gtk-4.0/gdk/x11/gdkx.h"),
-        .wayland = headerExists("/usr/include/gtk-4.0/gdk/wayland/gdkwayland.h"),
+        .x11 = headerExists(b, "/usr/include/gtk-4.0/gdk/x11/gdkx.h"),
+        .wayland = headerExists(b, "/usr/include/gtk-4.0/gdk/wayland/gdkwayland.h"),
     };
 }
 
-fn headerExists(path: []const u8) bool {
-    std.fs.accessAbsolute(path, .{}) catch return false;
+fn headerExists(b: *std.Build, path: []const u8) bool {
+    // std.fs.accessAbsolute was removed; filesystem ops now live under
+    // std.Io.Dir and take an explicit Io implementation (b.graph.io).
+    std.Io.Dir.accessAbsolute(b.graph.io, path, .{}) catch return false;
     return true;
 }
