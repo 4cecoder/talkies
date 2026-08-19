@@ -1,4 +1,10 @@
-# Talkies Mobile
+# Talkies Mobile (Deprecated)
+
+> **This platform is deprecated and no longer actively developed.** It's kept here for reference,
+> but it isn't built or shipped in CI/releases anymore, and there's no guarantee it still builds
+> against current Flutter/Dart. If you want voice transcription on a phone, please open an issue
+> to discuss interest before building on top of this — active platforms are macOS, Windows, and
+> Linux (see the [root README](../README.md)).
 
 A Flutter mobile application for voice transcription that combines the best features from macOS and Windows versions.
 

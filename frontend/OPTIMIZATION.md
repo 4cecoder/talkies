@@ -43,7 +43,7 @@ This document outlines the comprehensive UI/UX optimization work completed to ac
 - **Impact**: Critical mobile UX gap fixed
 
 #### 3.2 Keyboard Navigation
-- Focus traps in AuthModal and CheckoutModal
+- Focus traps in AuthModal
 - Escape key closes modals
 - Auto-focus on first interactive element
 - Tab cycling within modals
@@ -61,8 +61,6 @@ This document outlines the comprehensive UI/UX optimization work completed to ac
 Route (app)
 ┌ ○ /          - Static (server-rendered)
 ├ ○ /_not-found
-├ ƒ /api/create-checkout-session
-├ ƒ /api/webhook
 └ ○ /dashboard - Static (server-rendered)
 
 Compile time: ~2.4s consistently
@@ -121,14 +119,14 @@ Automated checks on push/PR:
 ### Server vs Client Components
 
 **Server Components** (default, static):
-- Features, Hero, Pricing, Footer sections
-- Stats, Testimonials, FAQ (lazy-loaded)
+- Features, Hero, Footer sections
+- FAQ (lazy-loaded)
 - Main page layout
 
 **Client Components** (interactive):
 - Header (mobile menu, scroll effects)
-- ModalManager (handles auth/checkout modals)
-- AuthButton, CheckoutButton (modal triggers)
+- ModalManager (handles the auth modal)
+- AuthButton (modal trigger)
 - Toast system
 
 ### Code Splitting Strategy
@@ -138,11 +136,8 @@ Initial Bundle:
   - Header (client)
   - Hero (server)
   - Features (server)
-  - Pricing (server)
 
 Lazy-Loaded:
-  - Stats (dynamic import + Suspense)
-  - Testimonials (dynamic import + Suspense)
   - FAQ (dynamic import + Suspense)
   - Modals (lazy via ModalManager)
 ```
@@ -159,13 +154,10 @@ showToast('Success!', 'success', 5000);
 
 ### Modal System
 ```typescript
-import { openAuthModal, openCheckoutModal } from '@/app/components/ModalManager';
+import { openAuthModal } from '@/app/components/ModalManager';
 
 // Open auth modal
 openAuthModal('login'); // or 'signup'
-
-// Open checkout modal
-openCheckoutModal('pro'); // or 'free'
 ```
 
 ### Error Boundaries
@@ -218,17 +210,12 @@ frontend/
 │   │   ├── icons.ts              # Centralized icon imports
 │   │   ├── ModalManager.tsx      # Modal state management
 │   │   ├── AuthButton.tsx        # Modal trigger wrapper
-│   │   ├── CheckoutButton.tsx    # Modal trigger wrapper
 │   │   ├── AuthModal.tsx         # Auth form modal
-│   │   ├── CheckoutModal.tsx     # Stripe checkout modal
 │   │   ├── ErrorBoundary.tsx     # Error handler component
 │   │   ├── sections/
 │   │   │   ├── Header.tsx        # Nav + mobile menu
 │   │   │   ├── Hero.tsx          # Landing hero
 │   │   │   ├── Features.tsx      # Feature cards
-│   │   │   ├── Pricing.tsx       # Pricing tiers
-│   │   │   ├── Stats.tsx         # Social proof
-│   │   │   ├── Testimonials.tsx  # User reviews
 │   │   │   ├── FAQ.tsx           # FAQ accordion
 │   │   │   └── Footer.tsx        # Site footer
 │   │   ├── Toast/

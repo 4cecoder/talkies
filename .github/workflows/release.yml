@@ -17,7 +17,8 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.0'
+          # Matches the toolchain pin in ci.yml — see comment there.
+          swift-version: '6.2.3'
 
       - name: Build macOS release binary
         working-directory: mac
@@ -71,9 +72,84 @@ jobs:
           path: windows/Talkies.Windows/Talkies-Windows-${{ github.ref_name }}.zip
           retention-days: 1
 
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Track Zig master intentionally — see matching comment in ci.yml.
+          version: master
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libpulse-dev \
+            libsqlite3-dev \
+            libx11-dev \
+            libdbus-1-dev \
+            libgtk-4-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev
+
+      - name: Workaround Ubuntu multiarch include paths
+        # See matching step in ci.yml: linux/build.zig hardcodes
+        # /usr/lib64/<pkg>/include paths that only exist on Gentoo/Fedora.
+        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
+
+      - name: Build whisper.cpp
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
+          cd /tmp/whisper.cpp
+          make
+          # See matching comment in ci.yml: whisper.cpp's shared libs now
+          # land under build/, not the repo root, and depend on multiple
+          # libggml*.so backend libs — install whatever it actually built.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
+          sudo ldconfig
+
+      - name: Build Linux release binary
+        working-directory: linux
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Package Linux binary
+        working-directory: linux
+        run: |
+          mkdir -p dist/talkies-linux/lib
+          cp zig-out/bin/talkies dist/talkies-linux/
+          cp talkies-overlay-gtk dist/talkies-linux/
+          # Bundle libwhisper/libggml — the one runtime dependency no Linux
+          # distro packages (see linux/docs/DEPENDENCIES.md), so the release
+          # works without building whisper.cpp from source first. The
+          # binary's $ORIGIN/lib rpath (see build.zig) finds them here.
+          # Everything else it links (GTK4, glib, dbus, pulse, sqlite3, X11)
+          # is a standard distro package, so it's left to the system.
+          find /tmp/whisper.cpp/build -name 'lib*.so*' -exec cp -P {} dist/talkies-linux/lib/ \;
+          cd dist/talkies-linux
+          tar -czf ../Talkies-Linux-${{ github.ref_name }}.tar.gz .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-release
+          path: linux/dist/Talkies-Linux-${{ github.ref_name }}.tar.gz
+          retention-days: 1
+
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -94,6 +170,12 @@ jobs:
           name: windows-release
           path: artifacts
 
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: linux-release
+          path: artifacts
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -104,5 +186,6 @@ jobs:
           files: |
             artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
             artifacts/Talkies-Windows-${{ github.ref_name }}.zip
+            artifacts/Talkies-Linux-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

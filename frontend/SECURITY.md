@@ -1,6 +1,8 @@
 # Security Policy - Talkies Frontend
 
 This document outlines the security measures implemented in the Talkies frontend application.
+Talkies is free and open source with no billing or checkout flow — this doc covers the
+authentication/dashboard layer only, not payments.
 
 ## Security Stack
 
@@ -30,7 +32,6 @@ This document outlines the security measures implemented in the Talkies frontend
 - **Server Actions**: Sensitive operations run server-side only
 - **Authentication Required**: All mutations require valid session
 - **Input Sanitization**: XSS protection via Zod transformations
-- **Stripe Integration**: Webhook signature verification
 
 ### Data Fetching
 - **TanStack Query** v5.90.12 - Server state management with caching
@@ -48,7 +49,7 @@ X-Frame-Options: SAMEORIGIN
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
 Permissions-Policy: camera=(), microphone=(), geolocation=()
-Content-Security-Policy: [configured for Stripe + Convex]
+Content-Security-Policy: [configured for Convex]
 ```
 
 ## OWASP Top 10 Mitigation
@@ -62,7 +63,7 @@ Content-Security-Policy: [configured for Stripe + Convex]
 | **A05: Security Misconfiguration** | Security headers, CSP, X-Frame-Options, proper error handling |
 | **A06: Vulnerable Components** | Regular dependency updates, minimal dependencies, Bun lockfile |
 | **A07: Authentication Failures** | BetterAuth, session management, password requirements, rate limiting planned |
-| **A08: Software & Data Integrity** | Stripe webhook signature verification, Convex schema validation |
+| **A08: Software & Data Integrity** | Convex schema validation |
 | **A09: Logging & Monitoring** | Convex logs, error boundaries, webhook event logging |
 | **A10: SSRF** | URL whitelist validation, trusted origins only |
 
@@ -90,21 +91,6 @@ Content-Security-Policy: [configured for Stripe + Convex]
 3. User ID attached to request
 4. Protected routes require valid session
 
-## Stripe Integration Security
-
-### Checkout
-1. **Authentication Required**: Users must be logged in
-2. **Input Validation**: Zod schema validates `priceId` and `billingCycle`
-3. **Price Whitelist**: Only allowed price IDs accepted (prevents arbitrary pricing)
-4. **Server-Side Only**: Stripe API calls happen in Convex actions
-5. **Customer Linking**: Stripe customer ID linked to authenticated user
-
-### Webhooks
-1. **Signature Verification**: Stripe webhook signature verified
-2. **Event Validation**: Zod schema validates event structure
-3. **Idempotency**: Database upserts handle duplicate events
-4. **Error Handling**: Failed webhooks logged and return error response
-
 ## Environment Variables
 
 ### Required Variables
@@ -116,13 +102,6 @@ BETTER_AUTH_URL=                 # http://localhost:3000 in development
 # Convex
 NEXT_PUBLIC_CONVEX_URL=          # https://[deployment].convex.cloud
 CONVEX_DEPLOYMENT=               # dev:[deployment-name]
-
-# Stripe
-NEXT_PUBLIC_STRIPE_KEY=          # pk_test_...
-STRIPE_SECRET_KEY=               # sk_test_...
-STRIPE_WEBHOOK_SECRET=           # whsec_...
-STRIPE_PRICE_ID_PRO_MONTHLY=     # price_...
-STRIPE_PRICE_ID_PRO_ANNUAL=      # price_...
 
 # App
 NEXT_PUBLIC_APP_URL=             # http://localhost:3000 in development
@@ -138,7 +117,7 @@ NEXT_PUBLIC_APP_URL=             # http://localhost:3000 in development
 
 ### Code
 - ✅ TypeScript strict mode enabled
-- ✅ No `any` types (except necessary Stripe type assertions)
+- ✅ No `any` types
 - ✅ Input validation on client AND server
 - ✅ Error boundaries prevent information leakage
 - ✅ Security headers prevent common attacks
@@ -182,7 +161,7 @@ NEXT_PUBLIC_APP_URL=             # http://localhost:3000 in development
 ## Incident Response
 
 ### Compromised Secrets
-1. Immediately rotate affected secrets in Stripe/Vercel/Convex dashboards
+1. Immediately rotate affected secrets in the hosting/Convex dashboards
 2. Update `.env.local` with new secrets
 3. Deploy to production
 4. Invalidate all sessions (force re-login)
@@ -196,9 +175,8 @@ NEXT_PUBLIC_APP_URL=             # http://localhost:3000 in development
 
 ### Suspicious Activity
 1. Review Convex logs for unusual patterns
-2. Check Stripe dashboard for fraudulent transactions
-3. Review user activity logs
-4. Temporarily disable affected accounts if necessary
+2. Review user activity logs
+3. Temporarily disable affected accounts if necessary
 
 ## Reporting Security Issues
 
@@ -237,7 +215,6 @@ We will respond within 48 hours and provide a fix timeline.
 - Added Zod validation across all inputs
 - Migrated to Zustand for type-safe state
 - Added security headers middleware
-- Implemented Stripe webhook verification
 - Documented security practices
 
 ---

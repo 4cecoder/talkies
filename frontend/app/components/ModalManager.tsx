@@ -8,12 +8,8 @@ const AuthModal = dynamic(() => import('./AuthModal'), {
   ssr: false,
 });
 
-const CheckoutModal = dynamic(() => import('./CheckoutModal'), {
-  ssr: false,
-});
-
 export function ModalManager() {
-  const { activeModal, authMode, pricingTier, closeModal } = useModalStore();
+  const { activeModal, authMode, closeModal } = useModalStore();
 
   return (
     <>
@@ -22,13 +18,6 @@ export function ModalManager() {
           isOpen={true}
           onClose={closeModal}
           initialMode={authMode}
-        />
-      )}
-      {activeModal === 'checkout' && (
-        <CheckoutModal
-          isOpen={true}
-          onClose={closeModal}
-          plan={pricingTier}
         />
       )}
     </>

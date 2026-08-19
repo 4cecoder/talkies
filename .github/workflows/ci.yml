@@ -6,12 +6,14 @@ on:
     paths:
       - 'mac/**'
       - 'windows/**'
+      - 'linux/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ master ]
     paths:
       - 'mac/**'
       - 'windows/**'
+      - 'linux/**'
       - '.github/workflows/ci.yml'
 
 jobs:
@@ -22,6 +24,7 @@ jobs:
     outputs:
       macos: ${{ steps.filter.outputs.macos }}
       windows: ${{ steps.filter.outputs.windows }}
+      linux: ${{ steps.filter.outputs.linux }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -33,6 +36,9 @@ jobs:
               - '.github/workflows/ci.yml'
             windows:
               - 'windows/**'
+              - '.github/workflows/ci.yml'
+            linux:
+              - 'linux/**'
               - '.github/workflows/ci.yml'
 
   macos:
@@ -48,7 +54,10 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.0'
+          # 6.0's Objective-C interop can't build against the current macOS
+          # SDK on the CI image (fails on _Builtin_float). Matches the
+          # 6.2.3 toolchain mac/run.sh uses locally.
+          swift-version: '6.2.3'
 
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -118,3 +127,70 @@ jobs:
       - name: Run Windows tests
         working-directory: windows/Talkies.Windows
         run: dotnet test --configuration Debug --no-build --verbosity normal
+
+  linux:
+    name: Linux Build & Test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.linux == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Track Zig master intentionally (bleeding edge, not the 0.16
+          # stable release) — a fixed dev-nightly commit gets pruned from
+          # the build mirrors within weeks and starts hard-failing CI.
+          version: master
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libpulse-dev \
+            libsqlite3-dev \
+            libx11-dev \
+            libdbus-1-dev \
+            libgtk-4-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev
+
+      - name: Workaround Ubuntu multiarch include paths
+        # linux/build.zig hardcodes Gentoo/Fedora-style /usr/lib64/<pkg>/include
+        # paths (e.g. for glibconfig.h, graphene-config.h) that don't exist on
+        # Debian/Ubuntu, which install those generated headers under
+        # /usr/lib/<multiarch-triplet>/<pkg>/include instead. Symlinking
+        # /usr/lib64 to the multiarch lib dir lets the hardcoded paths resolve.
+        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
+
+      - name: Build whisper.cpp
+        # whisper.cpp is not packaged for Ubuntu/Debian; build and install it
+        # from source per linux/docs/DEPENDENCIES.md and linux/SHIPPING.md.
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
+          cd /tmp/whisper.cpp
+          make
+          # whisper.cpp's CMake layout has shifted upstream: shared libs
+          # (libwhisper.so + several libggml*.so backend libs) now land
+          # under build/, not the repo root. Locate and install whatever
+          # got produced instead of hardcoding a path that goes stale on
+          # every upstream change.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
+          sudo ldconfig
+
+      - name: Build
+        working-directory: linux
+        run: zig build
+
+      - name: Run tests
+        working-directory: linux
+        run: zig build test

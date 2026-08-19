@@ -24,8 +24,11 @@
     // modify the field.
     .fingerprint = 0x9211474f1c30f485, // Changing this has security and trust implications.
     // Tracks the earliest Zig version that the package considers to be a
-    // supported use case.
-    .minimum_zig_version = "0.16.0-dev.1484+d0ba6642b",
+    // supported use case. CI intentionally tracks Zig master (bleeding
+    // edge), not a stable release — see .github/workflows/ci.yml. Bump
+    // this whenever master introduces a breaking change build.zig needs
+    // to account for.
+    .minimum_zig_version = "0.17.0-dev.1778+767d25269",
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
     // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
@@ -33,8 +36,12 @@
     // internet connectivity.
     .dependencies = .{
         .websocket = .{
-            .url = "https://github.com/karlseguin/websocket.zig/archive/refs/heads/master.tar.gz",
-            .hash = "websocket-0.1.0-ZPISdRNzAwAGszh62EpRtoQxu8wb1MSMVI6Ow0o2dmyJ",
+            // Pinned to a commit rather than refs/heads/master: the branch
+            // tip moved past the previously-recorded hash and broke CI with
+            // a "hash mismatch" fetch error. Update both url and hash
+            // together when intentionally bumping this dependency.
+            .url = "https://github.com/karlseguin/websocket.zig/archive/99e1eccc71d07d82b80e2cc0fe0d35cb11d5570d.tar.gz",
+            .hash = "websocket-0.1.0-ZPISdZQTBQAl1txC6YpQUusqYc4vGvYxaqvPcniCjwUZ",
         },
     },
     .paths = .{

@@ -13,6 +13,24 @@ Zig-based voice transcription application for Linux with global hotkey support f
 
 ## Quick Start
 
+### Option A: Download a release
+
+Grab `Talkies-Linux-*.tar.gz` from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest)
+and extract it. The tarball bundles `libwhisper`/`libggml` (built from source at release time,
+since no Linux distro packages them — see [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md)) in a
+`lib/` folder next to the `talkies` binary, so you don't need to build whisper.cpp yourself. You
+do still need PulseAudio, GTK4, D-Bus, sqlite3, and (on X11) libX11 installed — these are standard
+packages on any desktop Linux distro; see `docs/DEPENDENCIES.md` for exact package names per
+distro if any are missing.
+
+```bash
+tar -xzf Talkies-Linux-*.tar.gz
+cd talkies-linux
+./talkies audio-list
+```
+
+### Option B: Build from source
+
 ```bash
 # Build
 ./run.sh build

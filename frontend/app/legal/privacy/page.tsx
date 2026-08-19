@@ -106,14 +106,6 @@ export default function PrivacyPolicyPage() {
                   </div>
 
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <span className="text-2xl">💳</span>
-                    <div>
-                      <p className="font-medium text-white">Payment Info</p>
-                      <p className="text-xs text-neutral-400">Via Stripe only (we never see it)</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
                     <span className="text-2xl">📊</span>
                     <div>
                       <p className="font-medium text-white">Usage Stats</p>
@@ -144,7 +136,7 @@ export default function PrivacyPolicyPage() {
             <LegalSection
               icon={Database}
               title="1. Information We Collect"
-              tldr="We collect minimal data: email for login, payment info via Stripe, and basic usage stats."
+              tldr="We collect minimal data: email for login and basic usage stats."
             >
               <p>
                 <strong>Account Information:</strong>
@@ -153,15 +145,6 @@ export default function PrivacyPolicyPage() {
                 <li>Email address (required for account creation and login)</li>
                 <li>Name (optional, for personalization)</li>
                 <li>Password (encrypted with bcrypt, we can't see it)</li>
-              </ul>
-
-              <p className="mt-4">
-                <strong>Payment Information:</strong>
-              </p>
-              <ul className="list-disc list-inside space-y-2 ml-4">
-                <li>Processed entirely through Stripe (PCI-DSS compliant)</li>
-                <li>We only store your Stripe customer ID, not your card details</li>
-                <li>We never have access to your full credit card number</li>
               </ul>
 
               <p className="mt-4">
@@ -189,7 +172,6 @@ export default function PrivacyPolicyPage() {
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li><strong>Authentication:</strong> Email and password to securely log you in</li>
-                <li><strong>Billing:</strong> Process payments and send receipts via Stripe</li>
                 <li><strong>Customer Support:</strong> Respond to your questions and troubleshoot issues</li>
                 <li><strong>Service Updates:</strong> Notify you about important changes, new features, or security alerts</li>
                 <li><strong>Product Improvement:</strong> Anonymized usage stats to prioritize features</li>
@@ -216,9 +198,6 @@ export default function PrivacyPolicyPage() {
               </p>
               <p>
                 <strong>Deleted Accounts:</strong> When you delete your account, we immediately remove your email, name, and account data. Some anonymized usage stats may be retained for analytics.
-              </p>
-              <p>
-                <strong>Payment Records:</strong> Stripe retains transaction records for 7 years (required by law for tax/fraud purposes).
               </p>
               <p>
                 <strong>Local Data:</strong> Transcriptions stored on your device are under your control. Uninstalling the app deletes all local data.
@@ -339,7 +318,6 @@ export default function PrivacyPolicyPage() {
                 <li><strong>Encryption:</strong> All data transmitted over HTTPS (TLS 1.3)</li>
                 <li><strong>Password Security:</strong> Bcrypt hashing with per-user salts</li>
                 <li><strong>Database:</strong> Hosted on Convex with built-in encryption at rest</li>
-                <li><strong>Payment Security:</strong> Stripe handles all payment processing (PCI-DSS Level 1 certified)</li>
                 <li><strong>Infrastructure:</strong> Hosted on secure, SOC 2 compliant cloud providers</li>
               </ul>
 

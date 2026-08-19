@@ -280,7 +280,8 @@ All brand assets are centralized in the `/branding` directory for use across all
 
 ```
 talkies/
-├── BRAND_KIT.md                        # This file - complete brand guidelines
+├── docs/
+│   └── BRAND_KIT.md                    # This file - complete brand guidelines
 ├── branding/                            # Centralized brand assets (single source of truth)
 │   ├── README.md                       # Platform integration guide
 │   ├── logos/                          # Logo variations

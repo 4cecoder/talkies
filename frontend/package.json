@@ -6,16 +6,13 @@
     "dev": "bun --bun next dev",
     "build": "bun --bun next build",
     "analyze": "ANALYZE=true bun --bun next build",
-    "start": "bun --bun next start",
+    "start": "bunx serve@latest out",
     "lint": "bun eslint",
-    "vercel": "./scripts/vercel-wrapper.sh",
     "lighthouse": "lhci autorun",
-    "test:a11y": "bun run build && npm run lighthouse"
+    "test:a11y": "bun run build && bun run lighthouse"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@stripe/react-stripe-js": "^5.4.1",
-    "@stripe/stripe-js": "^8.6.0",
     "@tanstack/react-query": "^5.90.16",
     "@xenova/transformers": "^2.17.2",
     "better-auth": "^1.4.10",
@@ -39,7 +36,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
-    "stripe": "^20.1.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

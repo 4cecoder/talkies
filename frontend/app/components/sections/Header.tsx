@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Button } from '../ui/Button';
-import { Menu, X } from '../icons';
-import { useModalStore } from '@/app/store/modal-store';
+import { Menu, X, Github, Download } from '../icons';
+
+const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
+const RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
 
 export function Header() {
-  const { openAuthModal, openCheckoutModal } = useModalStore();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -121,18 +121,6 @@ export function Header() {
               Features
             </button>
             <button
-              onClick={() => scrollToSection('pricing')}
-              className="text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
-            >
-              Pricing
-            </button>
-            <button
-              onClick={() => scrollToSection('testimonials')}
-              className="text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
-            >
-              Testimonials
-            </button>
-            <button
               onClick={() => scrollToSection('faq')}
               className="text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
             >
@@ -147,12 +135,24 @@ export function Header() {
           </div>
 
           <div className="hidden md:flex items-center gap-4">
-            <Button variant="ghost" onClick={() => openAuthModal('login')}>
-              Sign In
-            </Button>
-            <Button variant="gradient" onClick={() => openCheckoutModal('pro')}>
-              Get Started
-            </Button>
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
+            >
+              <Github className="w-4 h-4" aria-hidden="true" />
+              GitHub
+            </a>
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-white bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+            >
+              <Download className="w-4 h-4" aria-hidden="true" />
+              Download
+            </a>
           </div>
 
           {/* Mobile Menu Button */}
@@ -211,18 +211,6 @@ export function Header() {
                     Features
                   </button>
                   <button
-                    onClick={() => scrollToSection('pricing')}
-                    className="text-left text-lg text-neutral-300 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-4 py-3 hover:bg-white/5"
-                  >
-                    Pricing
-                  </button>
-                  <button
-                    onClick={() => scrollToSection('testimonials')}
-                    className="text-left text-lg text-neutral-300 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-4 py-3 hover:bg-white/5"
-                  >
-                    Testimonials
-                  </button>
-                  <button
                     onClick={() => scrollToSection('faq')}
                     className="text-left text-lg text-neutral-300 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-4 py-3 hover:bg-white/5"
                   >
@@ -236,28 +224,28 @@ export function Header() {
                   </a>
                 </nav>
 
-                {/* Auth Buttons */}
+                {/* Links */}
                 <div className="mt-auto flex flex-col gap-3">
-                  <Button
-                    variant="ghost"
-                    fullWidth
-                    onClick={() => {
-                      openAuthModal('login');
-                      setMobileMenuOpen(false);
-                    }}
+                  <a
+                    href={GITHUB_REPO_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-full font-semibold text-neutral-300 border border-white/10 hover:bg-white/5 transition-colors"
                   >
-                    Sign In
-                  </Button>
-                  <Button
-                    variant="gradient"
-                    fullWidth
-                    onClick={() => {
-                      openCheckoutModal('pro');
-                      setMobileMenuOpen(false);
-                    }}
+                    <Github className="w-4 h-4" aria-hidden="true" />
+                    GitHub
+                  </a>
+                  <a
+                    href={RELEASES_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-full font-semibold text-white bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 hover:opacity-90 transition-opacity"
                   >
-                    Get Started
-                  </Button>
+                    <Download className="w-4 h-4" aria-hidden="true" />
+                    Download
+                  </a>
                 </div>
               </div>
             </div>

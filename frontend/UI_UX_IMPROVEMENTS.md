@@ -195,12 +195,6 @@ Broke down monolithic landing page into reusable sections:
 - Hover effects
 - Interactive cards with keyboard support
 
-#### Pricing (`Pricing.tsx`)
-- 2-tier pricing display
-- "Most Popular" badge
-- Feature lists with checkmarks
-- Gradient borders for emphasis
-
 #### Footer (`Footer.tsx`)
 - Links with proper navigation
 - Copyright with dynamic year
@@ -333,10 +327,8 @@ app/
 │   │   ├── Header.tsx
 │   │   ├── Hero.tsx
 │   │   ├── Features.tsx
-│   │   ├── Pricing.tsx
 │   │   └── Footer.tsx
-│   ├── AuthModal.tsx
-│   └── CheckoutModal.tsx
+│   └── AuthModal.tsx
 ├── lib/
 │   └── utils.ts         # Utility functions
 └── globals.css          # Global styles
@@ -418,7 +410,7 @@ import { Mail } from 'lucide-react';
 ### Using Section Components
 
 ```tsx
-import { Header, Hero, Features, Pricing, Footer } from '@/app/components/sections';
+import { Header, Hero, Features, Footer } from '@/app/components/sections';
 
 export default function LandingPage() {
   return (
@@ -426,7 +418,6 @@ export default function LandingPage() {
       <Header onSignInClick={...} onGetStartedClick={...} />
       <Hero />
       <Features />
-      <Pricing />
       <Footer />
     </>
   );
