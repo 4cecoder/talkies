@@ -1,7 +1,7 @@
 # Talkies
 
 Talkies is a free, open-source voice transcription app. Say something, get text back — on
-macOS, Windows, Linux, or mobile, with the actual speech-to-text model running on your own
+macOS, Windows, or Linux, with the actual speech-to-text model running on your own
 device. Nothing you say is ever uploaded anywhere, there's no account to create, and there's
 no subscription: it's a hobby project built because privacy-first, on-device transcription
 should just be a normal thing to have.
@@ -21,7 +21,7 @@ should just be a normal thing to have.
 talkies/
 ├── mac/        # macOS native app (Swift/SwiftUI + WhisperKit)
 ├── windows/    # Windows native app (.NET WPF + WhisperNet)
-├── mobile/     # Mobile app (Flutter for iOS & Android)
+├── mobile/     # Mobile app (Flutter, deprecated — see mobile/README.md)
 ├── linux/      # Linux native app (Zig + whisper.cpp)
 ├── frontend/   # Web app (Next.js) — project site, live browser demo, and docs
 └── archive/    # Experimental Python CLI (deprecated)
@@ -39,10 +39,8 @@ Native Windows application built with .NET WPF and WhisperNet. Features real-tim
 
 See [windows/README.md](windows/README.md) for detailed documentation.
 
-### Mobile (`mobile/`)
-Flutter mobile application for iOS and Android. Combines the best features from macOS and Windows versions with audio recording, transcription display, LLM enhancement, and multi-format export (SRT, VTT, TXT). Still in progress — see [`docs/ROADMAP.md`](docs/ROADMAP.md) for current status.
-
-See [mobile/README.md](mobile/README.md) for detailed documentation.
+### Mobile (`mobile/`) — Deprecated
+The Flutter mobile app is no longer actively developed and isn't built or shipped in CI/releases. See [mobile/README.md](mobile/README.md) for details.
 
 ### Linux (`linux/`)
 Native Linux application built with Zig and whisper.cpp, with global hotkey support on both X11 and Wayland. Newer and less polished than the macOS/Windows apps.

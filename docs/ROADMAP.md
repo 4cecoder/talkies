@@ -4,8 +4,11 @@ This project used to track work items in an internal issue-tracker tool (Beads, 
 
 ## In Progress
 
-- **[R6/Mobile] Flutter Feature Parity & CI/CD Plan** — SuperWhisper-inspired UI redesign complete with glassmorphic design, live waveform visualization, and mobile CI/CD pipeline; remaining work covers Whisper integration, local transcription, and platform-specific features (type: epic, priority: high)
 - **[R3/Windows] Dark Mode Improvements** (type: feature, priority: medium)
+
+## Deprecated
+
+- **[R6/Mobile] Flutter Feature Parity & CI/CD Plan** — the Flutter mobile app is deprecated and no longer actively developed; it's been dropped from CI and release builds. See `mobile/README.md`.
 
 ## Open
 

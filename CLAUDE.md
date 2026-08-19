@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Talkies is a free, open-source, privacy-first voice transcription app with native clients for macOS, Windows, Linux, and mobile (Flutter), plus a Next.js web frontend. Transcription runs on-device — nothing is uploaded — and there's no account or subscription.
+Talkies is a free, open-source, privacy-first voice transcription app with native clients for macOS, Windows, and Linux, plus a Next.js web frontend. Transcription runs on-device — nothing is uploaded — and there's no account or subscription. There was previously a Flutter mobile client (`mobile/`); it's deprecated and no longer built or maintained.
 
 ## Build Commands
 

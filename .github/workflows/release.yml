@@ -71,47 +71,6 @@ jobs:
           path: windows/Talkies.Windows/Talkies-Windows-${{ github.ref_name }}.zip
           retention-days: 1
 
-  build-mobile:
-    name: Build Mobile Release
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version-file: mobile/.flutter-version
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        working-directory: mobile
-        run: flutter pub get
-
-      # iOS release packaging is skipped: it requires an Apple signing
-      # certificate/provisioning profile and App Store Connect credentials
-      # that aren't available as CI secrets in this repo. Only the Android
-      # APK is built and shipped here; add an `ios` job with signing secrets
-      # if/when Apple distribution is set up.
-      - name: Build release APK
-        working-directory: mobile
-        run: flutter build apk --release
-
-      - name: Package Android APK
-        working-directory: mobile
-        run: |
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Talkies-Mobile-Android-${{ github.ref_name }}.apk
-
-      - name: Upload mobile artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: mobile-release
-          path: mobile/dist/Talkies-Mobile-Android-${{ github.ref_name }}.apk
-          retention-days: 1
-
   build-linux:
     name: Build Linux Release
     runs-on: ubuntu-latest
@@ -179,7 +138,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows, build-mobile, build-linux]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -200,12 +159,6 @@ jobs:
           name: windows-release
           path: artifacts
 
-      - name: Download mobile artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: mobile-release
-          path: artifacts
-
       - name: Download Linux artifact
         uses: actions/download-artifact@v7
         with:
@@ -222,7 +175,6 @@ jobs:
           files: |
             artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
             artifacts/Talkies-Windows-${{ github.ref_name }}.zip
-            artifacts/Talkies-Mobile-Android-${{ github.ref_name }}.apk
             artifacts/Talkies-Linux-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

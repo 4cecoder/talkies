@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { Header } from './components/sections/Header';
 import { FAQSkeleton } from './components/ui/Skeleton';
-import { Globe, Shield, Zap, Sparkles, Download, Apple, Monitor, Terminal, Smartphone, Github } from './components/icons';
+import { Globe, Shield, Zap, Sparkles, Download, Apple, Monitor, Terminal, Github } from './components/icons';
 import { LiveTranscriptionDemo } from './components/demo/LiveTranscriptionDemo';
 
 const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
@@ -35,15 +35,6 @@ const platforms = [
     description: 'X11 & Wayland, GPU accelerated (Zig + whisper.cpp). Newer and less polished than mac/Windows.',
     href: RELEASES_URL,
     cta: 'Get the .tar.gz',
-  },
-  {
-    name: 'Mobile',
-    icon: Smartphone,
-    status: 'In progress',
-    statusColor: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10',
-    description: 'Flutter app for Android & iOS. UI is built; on-device transcription is still being wired up.',
-    href: RELEASES_URL,
-    cta: 'Get the Android APK',
   },
 ];
 

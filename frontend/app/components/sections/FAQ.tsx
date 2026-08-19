@@ -7,9 +7,9 @@ const faqs = [
       <>
         macOS and Windows have the most complete, ready-to-use builds today — macOS needs
         Apple Silicon and macOS 15+, Windows needs 10/11 (64-bit). Linux has a working native
-        build (X11 &amp; Wayland) but is newer and less polished. Mobile (Android &amp; iOS) is
-        still in progress — the Flutter app&apos;s UI is built, but on-device transcription is
-        still being wired up. See the platform picker above, or check{' '}
+        build (X11 &amp; Wayland) but is newer and less polished. There was a Flutter mobile
+        app in <code className="text-neutral-400">mobile/</code>, but it&apos;s deprecated and
+        no longer built or maintained. See the platform picker above, or check{' '}
         <a href={`${GITHUB_REPO_URL}/blob/main/docs/ROADMAP.md`} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
           docs/ROADMAP.md
         </a>{' '}
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     question: "Is this free?",
-    answer: "Yes. Talkies is a free, open-source project with no subscriptions, no paywalls, and no in-app purchases. There's no account required to use the desktop or mobile apps.",
+    answer: "Yes. Talkies is a free, open-source project with no subscriptions, no paywalls, and no in-app purchases. There's no account required to use the desktop apps.",
     gradient: "from-blue-300 to-cyan-300",
     hoverColor: "blue-500"
   },
@@ -47,8 +47,7 @@ const faqs = [
         </a>{' '}
         reference and each platform&apos;s own README (<code className="text-neutral-400">mac/</code>,{' '}
         <code className="text-neutral-400">windows/</code>, <code className="text-neutral-400">linux/</code>,{' '}
-        <code className="text-neutral-400">mobile/</code>, <code className="text-neutral-400">frontend/</code>) for
-        the exact steps.
+        <code className="text-neutral-400">frontend/</code>) for the exact steps.
       </>
     ),
     gradient: "from-cyan-300 to-blue-300",
@@ -71,7 +70,7 @@ const faqs = [
   },
   {
     question: "What's the license?",
-    answer: "This repository does not currently include a published LICENSE file. Check the repository directly for the latest licensing status before reusing the code.",
+    answer: "MIT. See the LICENSE file at the repository root.",
     gradient: "from-yellow-300 to-orange-300",
     hoverColor: "green-500"
   }

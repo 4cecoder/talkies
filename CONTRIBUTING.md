@@ -11,7 +11,7 @@ Talkies is multi-platform, so pick whichever stack you're comfortable in (or wan
 - **macOS** (`mac/`) — Swift 6 + SwiftUI, WhisperKit for on-device transcription.
 - **Windows** (`windows/`) — .NET 8 WPF, Whisper.net for transcription.
 - **Linux** (`linux/`) — Zig + whisper.cpp, X11/Wayland global hotkeys.
-- **Mobile** (`mobile/`) — Flutter, targeting iOS & Android.
+- **Mobile** (`mobile/`) — Flutter, deprecated. Not actively developed and not built in CI; see `mobile/README.md` before starting work here.
 - **Frontend** (`frontend/`) — Next.js site (this project's homepage, the live browser demo,
   and onboarding docs).
 
