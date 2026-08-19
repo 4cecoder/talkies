@@ -36,8 +36,12 @@
     // internet connectivity.
     .dependencies = .{
         .websocket = .{
-            .url = "https://github.com/karlseguin/websocket.zig/archive/refs/heads/master.tar.gz",
-            .hash = "websocket-0.1.0-ZPISdRNzAwAGszh62EpRtoQxu8wb1MSMVI6Ow0o2dmyJ",
+            // Pinned to a commit rather than refs/heads/master: the branch
+            // tip moved past the previously-recorded hash and broke CI with
+            // a "hash mismatch" fetch error. Update both url and hash
+            // together when intentionally bumping this dependency.
+            .url = "https://github.com/karlseguin/websocket.zig/archive/99e1eccc71d07d82b80e2cc0fe0d35cb11d5570d.tar.gz",
+            .hash = "websocket-0.1.0-ZPISdZQTBQAl1txC6YpQUusqYc4vGvYxaqvPcniCjwUZ",
         },
     },
     .paths = .{

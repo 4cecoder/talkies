@@ -127,9 +127,16 @@ jobs:
       - name: Package Linux binary
         working-directory: linux
         run: |
-          mkdir -p dist/talkies-linux
+          mkdir -p dist/talkies-linux/lib
           cp zig-out/bin/talkies dist/talkies-linux/
           cp talkies-overlay-gtk dist/talkies-linux/
+          # Bundle libwhisper/libggml — the one runtime dependency no Linux
+          # distro packages (see linux/docs/DEPENDENCIES.md), so the release
+          # works without building whisper.cpp from source first. The
+          # binary's $ORIGIN/lib rpath (see build.zig) finds them here.
+          # Everything else it links (GTK4, glib, dbus, pulse, sqlite3, X11)
+          # is a standard distro package, so it's left to the system.
+          find /tmp/whisper.cpp/build -name 'lib*.so*' -exec cp -P {} dist/talkies-linux/lib/ \;
           cd dist/talkies-linux
           tar -czf ../Talkies-Linux-${{ github.ref_name }}.tar.gz .
 

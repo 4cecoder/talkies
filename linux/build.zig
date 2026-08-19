@@ -84,6 +84,15 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("gobject-2.0"); // For GObject functions in GTK wrappers
     exe.linkLibC();
 
+    // libwhisper/libggml aren't packaged by any Linux distro (see
+    // linux/docs/DEPENDENCIES.md — every distro builds them from source).
+    // Release packaging bundles those .so files next to the binary in a
+    // lib/ directory; this rpath lets the dynamic linker find them there
+    // without needing them installed system-wide. $ORIGIN is a literal
+    // linker token (resolved at runtime, relative to the binary's own
+    // location), not a build-time filesystem path.
+    exe.addRPath(.{ .cwd_relative = "$ORIGIN/lib" });
+
     // Add include paths for whisper.h and GTK4
     exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
     exe.addIncludePath(b.path("src")); // For yap_window_gtk.h
