@@ -178,8 +178,13 @@ jobs:
           git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
           cd /tmp/whisper.cpp
           make
-          sudo cp libwhisper.so /usr/local/lib/
-          sudo cp whisper.h /usr/local/include/
+          # whisper.cpp's CMake layout has shifted upstream: shared libs
+          # (libwhisper.so + several libggml*.so backend libs) now land
+          # under build/, not the repo root. Locate and install whatever
+          # got produced instead of hardcoding a path that goes stale on
+          # every upstream change.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
           sudo ldconfig
 
       - name: Build

@@ -113,8 +113,11 @@ jobs:
           git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
           cd /tmp/whisper.cpp
           make
-          sudo cp libwhisper.so /usr/local/lib/
-          sudo cp whisper.h /usr/local/include/
+          # See matching comment in ci.yml: whisper.cpp's shared libs now
+          # land under build/, not the repo root, and depend on multiple
+          # libggml*.so backend libs — install whatever it actually built.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
           sudo ldconfig
 
       - name: Build Linux release binary
