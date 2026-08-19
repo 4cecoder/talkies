@@ -54,7 +54,10 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.0'
+          # 6.0's Objective-C interop can't build against the current macOS
+          # SDK on the CI image (fails on _Builtin_float). Matches the
+          # 6.2.3 toolchain mac/run.sh uses locally.
+          swift-version: '6.2.3'
 
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -136,10 +139,12 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
-          # Matches minimum_zig_version in linux/build.zig.zon
-          version: '0.16.0-dev.1484+d0ba6642b'
+          # Track Zig master intentionally (bleeding edge, not the 0.16
+          # stable release) — a fixed dev-nightly commit gets pruned from
+          # the build mirrors within weeks and starts hard-failing CI.
+          version: master
 
       - name: Install system build dependencies
         run: |
