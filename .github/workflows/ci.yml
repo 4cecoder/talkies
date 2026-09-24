@@ -167,9 +167,8 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          # Match the documented Linux minimum and avoid incompatible Zig
-          # development snapshots that remove @cImport before this code migrates.
-          version: 0.16.0
+          # Track master while Linux integration migrates to each current compiler change.
+          version: master
 
       - name: Install system build dependencies
         run: |

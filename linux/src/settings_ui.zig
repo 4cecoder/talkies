@@ -2,9 +2,7 @@ const std = @import("std");
 const config = @import("config.zig");
 
 // GTK4 C bindings (fallback until Ghostty bindings support Zig 0.16)
-const c = @cImport({
-    @cInclude("gtk/gtk.h");
-});
+const c = @import("c_gtk");
 
 const log = std.log.scoped(.settings_ui);
 
@@ -166,11 +164,11 @@ pub const SettingsWindow = struct {
 
         const adjustment = gtk.Adjustment.new(
             @floatFromInt(priv.cfg.threads), // value
-            1.0,  // lower
+            1.0, // lower
             16.0, // upper
-            1.0,  // step_increment
-            4.0,  // page_increment
-            0.0,  // page_size
+            1.0, // step_increment
+            4.0, // page_increment
+            0.0, // page_size
         );
 
         const spin = gtk.SpinButton.new(adjustment, 1.0, 0);

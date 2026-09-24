@@ -2,9 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 // C FFI bindings for whisper.cpp
-const c = @cImport({
-    @cInclude("whisper.h");
-});
+const c = @import("c_whisper");
 
 /// Whisper model URLs from Hugging Face
 const ModelUrls = std.StaticStringMap([]const u8).initComptime(.{

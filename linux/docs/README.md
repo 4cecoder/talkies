@@ -40,7 +40,7 @@ See `./run.sh help` for all available commands.
 ### Manual Installation
 
 **Requirements:**
-- Zig 0.16.0+
+- Zig master (0.17.0-dev+)
 - PulseAudio development libraries
 - xclip (for X11) or wl-clipboard (for Wayland)
 - xdotool (for text insertion)

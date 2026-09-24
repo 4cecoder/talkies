@@ -14,8 +14,8 @@ pub const Targets = struct {
 /// subprocess (e.g. `pkg-config --variable=targets gtk4`, which is the
 /// more "official" way GTK4 exposes this) because std.process's API
 /// surface has been in flux across recent Zig releases (see the I/O
-/// interface work in 0.16), and Talkies pins its supported stable Zig
-/// toolchain — a stale process-spawning guess is a worse failure mode here
+/// interface work in 0.16), and Talkies intentionally tracks Zig master —
+/// a stale process-spawning guess is a worse failure mode here
 /// than a slightly more conservative header check.
 ///
 /// NOTE: this file did not exist anywhere in git history despite being

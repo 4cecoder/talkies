@@ -11,7 +11,7 @@ Quick reference for building and distributing Talkies Linux across different pla
 4. **xdotool** - Text insertion
 
 ### Build Dependencies
-1. **Zig 0.16.0+** - Compiler
+1. **Zig master (0.17.0-dev+)** - Compiler (release CI tracks master)
 
 ## Quick Install by Distribution
 

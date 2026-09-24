@@ -1,7 +1,5 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("sqlite3.h");
-});
+const c = @import("c_sqlite3");
 const utils = @import("utils.zig");
 const yap_sandbox = @import("yap_sandbox.zig");
 

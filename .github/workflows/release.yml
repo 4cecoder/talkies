@@ -82,8 +82,8 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          # Keep release artifacts on the tested stable Linux toolchain.
-          version: 0.16.0
+          # Keep Linux releases aligned with the compiler used by CI.
+          version: master
 
       - name: Install system build dependencies
         run: |

@@ -4,10 +4,7 @@ const Clipboard = @import("clipboard.zig").Clipboard;
 const linux = std.os.linux;
 
 // C imports for uinput
-const c = @cImport({
-    @cInclude("linux/uinput.h");
-    @cInclude("sys/ioctl.h");
-});
+const c = @import("c_input");
 
 /// Text insertion using native Linux uinput
 ///

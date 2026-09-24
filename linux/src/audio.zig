@@ -1,9 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
-const c = @cImport({
-    @cInclude("pulse/simple.h");
-    @cInclude("pulse/error.h");
-});
+const c = @import("c_audio");
 
 /// WAV file header structures
 /// IMPORTANT: extern struct for C-compatible memory layout (no padding)
@@ -88,7 +85,6 @@ pub const AudioRecorder = struct {
             self.output_path = null;
         }
     }
-
 
     /// Start recording audio to a WAV file
     /// device_name: PulseAudio device name (null or empty = use default)

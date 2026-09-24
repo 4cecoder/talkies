@@ -2,11 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 // X11 C bindings
-const c = @cImport({
-    @cInclude("X11/Xlib.h");
-    @cInclude("X11/keysym.h");
-    @cInclude("X11/XKBlib.h");
-});
+const c = @import("c_hotkey");
 
 /// X11 error handler that ignores errors (for graceful grab failures)
 fn ignoreErrorHandler(_: ?*c.Display, _: [*c]c.XErrorEvent) callconv(.c) c_int {

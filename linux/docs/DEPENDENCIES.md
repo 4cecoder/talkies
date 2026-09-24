@@ -5,7 +5,7 @@ Complete guide for installing all required dependencies across different Linux d
 ## Required Dependencies
 
 ### Core Dependencies (Required)
-1. **Zig 0.16.0+** - Compiler
+1. **Zig master (0.17.0-dev+)** - Compiler; the project uses current build-system C translation APIs
 2. **PulseAudio development libraries** - Audio recording
 3. **whisper.cpp** - Speech transcription (C library)
 
@@ -307,7 +307,7 @@ sudo pacman -S xdotool
 
 | Dependency | Minimum Version | Recommended |
 |------------|----------------|-------------|
-| Zig | 0.16.0 | Latest stable |
+| Zig | master | Current development toolchain (CI and release builds) |
 | PulseAudio | Any | Latest |
 | whisper.cpp | 1.0.0 | 1.8.2+ |
 | xclip | 0.12 | Latest |

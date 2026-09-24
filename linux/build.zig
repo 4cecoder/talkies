@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addCImports(b, target, optimize, exe_mod);
 
     const exe = b.addExecutable(.{
         .name = "talkies",
@@ -142,6 +143,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addCImports(b, target, optimize, test_mod);
 
     // Add build options to test module
     test_mod.addImport("build_options", build_options.createModule());
@@ -183,4 +185,46 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+}
+
+fn addCImports(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+    module: *std.Build.Module,
+) void {
+    addCImport(b, target, optimize, module, "c_audio", "audio.h", &.{ "pulse-simple", "pulse" });
+    addCImport(b, target, optimize, module, "c_daemon_status", "daemon_status.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
+    addCImport(b, target, optimize, module, "c_gtk", "gtk.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
+    addCImport(b, target, optimize, module, "c_hotkey", "hotkey.h", &.{"X11"});
+    addCImport(b, target, optimize, module, "c_input", "input.h", &.{});
+    addCImport(b, target, optimize, module, "c_sqlite3", "sqlite3.h", &.{"sqlite3"});
+    addCImport(b, target, optimize, module, "c_tray", "tray.h", &.{"dbus-1"});
+    addCImport(b, target, optimize, module, "c_vad", "vad.h", &.{});
+    addCImport(b, target, optimize, module, "c_whisper", "whisper.h", &.{});
+    addCImport(b, target, optimize, module, "c_yap_window", "yap_window.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
+}
+
+fn addCImport(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+    module: *std.Build.Module,
+    name: []const u8,
+    header: []const u8,
+    libraries: []const []const u8,
+) void {
+    const translation = b.addTranslateC(.{
+        .root_source_file = b.path(b.fmt("src/c_headers/{s}", .{header})),
+        .target = target,
+        .optimize = optimize,
+    });
+    translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+    translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    translation.addIncludePath(b.path("src"));
+    translation.addIncludePath(b.path("vendor/libfvad/include"));
+    for (libraries) |library| {
+        translation.linkSystemLibrary(library, .{});
+    }
+    module.addImport(name, translation.createModule());
 }

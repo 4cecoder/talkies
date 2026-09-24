@@ -184,7 +184,7 @@ talkies config              # Show current configuration
 
 ### Dependencies
 
-- **Zig 0.16.0+** - Systems programming language
+- **Zig master (0.17.0-dev or newer)** - The Linux build follows current Zig development and uses build-system C translation.
 - **PulseAudio** - Audio recording (`libpulse-simple`, `libpulse`)
 - **whisper.cpp** - Speech recognition (`libwhisper`)
 - **X11** (X11 only) - Global hotkeys (`libX11`)

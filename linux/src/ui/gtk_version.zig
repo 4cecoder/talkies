@@ -30,9 +30,7 @@
 const std = @import("std");
 
 // Direct C imports for GTK4
-const c = @cImport({
-    @cInclude("gtk/gtk.h");
-});
+const c = @import("c_gtk");
 
 const log = std.log.scoped(.gtk);
 

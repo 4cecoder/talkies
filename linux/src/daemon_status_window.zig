@@ -2,9 +2,7 @@ const std = @import("std");
 const daemon_ws = @import("daemon_ws.zig");
 
 // GTK C shim wrapper
-const c = @cImport({
-    @cInclude("daemon_status_gtk.h");
-});
+const c = @import("c_daemon_status");
 
 pub const LogLevel = enum {
     info,
