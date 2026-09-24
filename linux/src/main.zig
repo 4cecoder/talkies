@@ -465,7 +465,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     try cfg.load();
 
     // Create shared Io instance for HTTP client (YAP mode Ollama calls)
-    var io_threaded = std.Io.Threaded.init(allocator);
+    var io_threaded = std.Io.Threaded.init(allocator, .{});
     defer io_threaded.deinit();
     const io = io_threaded.io();
 
