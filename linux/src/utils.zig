@@ -31,6 +31,14 @@ pub fn sleepNanoseconds(nanoseconds: u64) void {
     io().sleep(.fromNanoseconds(@intCast(nanoseconds)), .awake) catch {};
 }
 
+pub fn monotonicMilliseconds() i64 {
+    return std.Io.Timestamp.now(io(), .awake).toMilliseconds();
+}
+
+pub fn realtimeSeconds() i64 {
+    return std.Io.Timestamp.now(io(), .real).toSeconds();
+}
+
 pub fn dupeZ(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
     return std.mem.concatWithSentinel(allocator, u8, &.{value}, 0);
 }

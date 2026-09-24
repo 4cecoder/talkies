@@ -1,8 +1,9 @@
 const std = @import("std");
 const ollama = @import("ollama.zig");
 const daemon_ws = @import("daemon_ws.zig");
+const utils = @import("utils.zig");
 
-/// YAP Sandbox: Interactive refinement session  
+/// YAP Sandbox: Interactive refinement session
 /// Workflow: User provides initial context → records yapping → LLM refines → final message
 pub const Sandbox = struct {
     allocator: std.mem.Allocator,
@@ -144,8 +145,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store as new revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
@@ -194,8 +195,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
@@ -288,7 +289,7 @@ pub const Sandbox = struct {
                 \\B) [Option 2]
                 \\
                 \\Keep questions concise and relevant. Focus on: purpose (explain/ask/share), audience (technical/casual), tone (formal/friendly), or key missing details.
-                ,
+            ,
                 .{ ctx, self.yapping },
             )
         else
@@ -310,7 +311,7 @@ pub const Sandbox = struct {
                 \\B) [Option 2]
                 \\
                 \\Keep questions concise and relevant. Focus on: purpose (explain/ask/share), audience (technical/casual), tone (formal/friendly), or key missing details.
-                ,
+            ,
                 .{self.yapping},
             );
         defer self.allocator.free(prompt);
@@ -369,7 +370,8 @@ pub const Sandbox = struct {
             }
         }
 
-        try prompt_parts.append(self.allocator, try self.allocator.dupe(u8,
+        try prompt_parts.append(self.allocator, try self.allocator.dupe(
+            u8,
             "Refine these thoughts into a clear, cohesive message. Keep technical terms precise " ++
                 "and business language natural. Remove filler words and redundancy while preserving " ++
                 "key details. Use the clarification context to better match the user's intent.",
@@ -397,8 +399,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store as new revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,

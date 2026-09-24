@@ -637,8 +637,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     win.setActivity("Recording audio...");
                 }
 
-                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const start_ms = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+                const start_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const start_ms = start_ts.toMilliseconds();
 
                 recorder.startRecording(recording_file, device) catch |err| {
                     std.debug.print("Error starting recording: {}\n", .{err});
@@ -657,13 +657,13 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     continue;
                 };
 
-                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const end_ms = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                const end_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const end_ms = end_ts.toMilliseconds();
                 std.debug.print("✅ RECORDING ACTIVE - took {d}ms to initialize PulseAudio\n", .{end_ms - start_ms});
 
                 // Play activation sound (2x speed for faster feedback)
-                const sound_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const sound_ms = @as(i64, sound_ts.sec) * 1000 + @divTrunc(sound_ts.nsec, std.time.ns_per_ms);
+                const sound_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const sound_ms = sound_ts.toMilliseconds();
                 utils.playSound("assets/start-fast.wav");
                 std.debug.print("🔊 Sound triggered at +{d}ms from state change\n", .{sound_ms - start_ms});
 
@@ -682,8 +682,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
             // Handle state: processing -> stop recording and transcribe
             if (current_state == .processing and last_state == .recording) {
-                const stop_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const stop_start_ms = @as(i64, stop_start.sec) * 1000 + @divTrunc(stop_start.nsec, std.time.ns_per_ms);
+                const stop_start = std.Io.Timestamp.now(utils.io(), .awake);
+                const stop_start_ms = stop_start.toMilliseconds();
 
                 std.debug.print("🔴 STOP COMMAND RECEIVED - Recording 350ms more to capture trailing words\n", .{});
 
@@ -691,8 +691,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 const extra_ms: i64 = 350;
                 const deadline = stop_start_ms + extra_ms;
                 while (true) {
-                    const now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                    const now_ms = @as(i64, now.sec) * 1000 + @divTrunc(now.nsec, std.time.ns_per_ms);
+                    const now = std.Io.Timestamp.now(utils.io(), .awake);
+                    const now_ms = now.toMilliseconds();
                     if (now_ms >= deadline) break;
 
                     // Continue recording chunks
@@ -708,8 +708,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     continue;
                 };
 
-                const stop_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const stop_end_ms = @as(i64, stop_end.sec) * 1000 + @divTrunc(stop_end.nsec, std.time.ns_per_ms);
+                const stop_end = std.Io.Timestamp.now(utils.io(), .awake);
+                const stop_end_ms = stop_end.toMilliseconds();
                 std.debug.print("✅ STOPPED - took {d}ms to finalize recording\n", .{stop_end_ms - stop_start_ms});
 
                 // Play deactivation sound
@@ -723,8 +723,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     win.setActivity("Running Whisper model...");
                 }
 
-                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+                const start_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const start_time = start_ts.toMilliseconds();
 
                 // Apply VAD to trim silence (if enabled in config)
                 var audio_file_to_transcribe: []const u8 = recording_file;
@@ -785,8 +785,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 };
                 defer allocator.free(transcription);
 
-                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const end_time = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                const end_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const end_time = end_ts.toMilliseconds();
                 const duration_ms = end_time - start_time;
 
                 std.debug.print("📝 Transcription ({d} chars): {s}\n", .{ transcription.len, transcription });

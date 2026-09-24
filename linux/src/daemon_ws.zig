@@ -112,7 +112,7 @@ pub const DaemonState = struct {
             .yap_append_text = null,
             .yap_mutex = std.Io.Mutex.init,
             .clarification_questions = null,
-            .clarification_answers = .{},
+            .clarification_answers = .empty,
             .clarification_mutex = std.Io.Mutex.init,
         };
     }
@@ -128,8 +128,8 @@ pub const DaemonState = struct {
         std.debug.print("State changed: {s}\n", .{new_state.toString()});
 
         // Broadcast state change
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"state_changed\",\"data\":{{\"state\":\"{s}\",\"timestamp\":{d}}}}}",
@@ -142,8 +142,8 @@ pub const DaemonState = struct {
 
     /// Broadcast audio level to all clients
     pub fn broadcastAudioLevel(self: *DaemonState, level: f32) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"audio_level\",\"data\":{{\"level\":{d:.2},\"timestamp\":{d}}}}}",
@@ -167,8 +167,8 @@ pub const DaemonState = struct {
             try json.writer().print("{d:.2}", .{level});
         }
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         try json.writer().print("],\"timestamp\":{d}}}}}", .{timestamp_ms});
 
         try self.ws_server.broadcast(json.items);
@@ -191,8 +191,8 @@ pub const DaemonState = struct {
             }
         }
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"transcription_complete\",\"data\":{{\"text\":\"{s}\",\"duration_ms\":{d},\"timestamp\":{d}}}}}",
@@ -244,8 +244,8 @@ pub const DaemonState = struct {
         else
             1.0;
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
 
         const message = try std.fmt.allocPrint(
             self.allocator,
@@ -454,8 +454,8 @@ pub fn handleMessage(
         const after_type = message[type_start + 6 ..]; // Skip "type"
 
         if (std.mem.indexOf(u8, after_type, "\"start_recording\"")) |_| {
-            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-            const ts_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+            const ts = std.Io.Timestamp.now(utils.io(), .awake);
+            const ts_ms = ts.toMilliseconds();
             std.debug.print("[{d}ms] WebSocket: Received start_recording command\n", .{ts_ms});
             try daemon_state.setState(.recording);
         } else if (std.mem.indexOf(u8, after_type, "\"stop_recording\"")) |_| {

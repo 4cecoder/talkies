@@ -78,8 +78,8 @@ pub const SessionManager = struct {
         model: []const u8,
         ollama_url: []const u8,
     ) !i64 {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
 
         const sql =
             \\INSERT INTO sessions (created_at, updated_at, status, yapping, initial_context, llm_model, ollama_url)
@@ -123,8 +123,8 @@ pub const SessionManager = struct {
         trigger_type: []const u8,
         trigger_context: ?[]const u8,
     ) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const char_count = text.len;
 
         const sql =
@@ -156,8 +156,8 @@ pub const SessionManager = struct {
 
     /// Complete a session (mark as completed and store final message)
     pub fn completeSession(self: *SessionManager, session_id: i64, final_message: []const u8) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
 
         const sql =
             \\UPDATE sessions
@@ -180,8 +180,8 @@ pub const SessionManager = struct {
 
     /// Abandon a session (interrupted/cancelled)
     pub fn abandonSession(self: *SessionManager, session_id: i64) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
 
         const sql =
             \\UPDATE sessions
