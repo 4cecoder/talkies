@@ -36,9 +36,6 @@ jobs:
 
       - name: Build static export
         working-directory: frontend
-        env:
-          NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
         run: bun run build
 
       - name: Setup Pages

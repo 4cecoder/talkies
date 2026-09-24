@@ -39,7 +39,7 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 - The latest completed cross-platform CI passed Linux, Windows, macOS, frontend, and Claude review checks. Revalidate those checks on the current commit before merge.
 - The `Vercel` status is red from an account-level integration even though deployment moved to GitHub Pages.
-- The PR body says Pages needs `NEXT_PUBLIC_CONVEX_URL` and `NEXT_PUBLIC_APP_URL` Actions configuration. The repository currently exposes neither through `gh variable list` nor the secret list. Resolve whether the static site should be independent of Convex before enabling deployment.
 - GitHub reports `REVIEW_REQUIRED`; the existing review is a comment, not an approval.
+- GitHub Pages still needs to be enabled with Actions as the source after merge.
 
-Do not mark this PR ready to merge until the Pages build is secret-independent or configured, the stale Vercel status is handled, and an independent maintainer approval is recorded.
+Do not mark this PR ready to merge until the stale Vercel status is handled and an independent maintainer approval is recorded. Enable GitHub Pages after merge.

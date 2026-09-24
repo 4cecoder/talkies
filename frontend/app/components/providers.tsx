@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { ReactNode, useState } from 'react';
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL || '');
+// A local endpoint keeps the static export buildable without backend secrets.
+// The open-source landing site has no hosted Convex deployment by default.
+const convex = new ConvexReactClient(
+  process.env.NEXT_PUBLIC_CONVEX_URL || 'http://127.0.0.1:3210'
+);
 
 export function Providers({ children }: { children: ReactNode }) {
   // Create QueryClient inside component to avoid sharing state between requests

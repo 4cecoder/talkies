@@ -4,7 +4,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Header } from '@/app/components/sections/Header';
 import { Copy, Share2, Mail, CheckCircle, Trophy, Gift } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // Mock user ID for now - replace with actual auth
 const MOCK_USER_ID = 'mock_user_id' as any;
@@ -19,9 +19,9 @@ export default function ReferralsPage() {
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
   // Generate referral code on mount
-  useState(() => {
+  useEffect(() => {
     generateCode({ userId: MOCK_USER_ID }).then((code) => setReferralCode(code));
-  });
+  }, [generateCode]);
 
   const copyReferralLink = async () => {
     if (!referralCode) return;

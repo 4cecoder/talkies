@@ -9,6 +9,7 @@ on:
       - 'linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy-pages.yml'
   pull_request:
     branches: [ master ]
     paths:
@@ -17,6 +18,7 @@ on:
       - 'linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy-pages.yml'
 
 jobs:
   # Determine which jobs need to run based on changed files
@@ -46,6 +48,7 @@ jobs:
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-pages.yml'
 
   macos:
     name: macOS Build & Test
@@ -143,6 +146,10 @@ jobs:
       - name: Lint
         working-directory: frontend
         run: bun run lint
+
+      - name: Build static export without backend secrets
+        working-directory: frontend
+        run: bun run build
 
   linux:
     name: Linux Build & Test
