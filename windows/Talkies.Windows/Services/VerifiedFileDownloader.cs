@@ -32,20 +32,23 @@ public sealed class VerifiedFileDownloader
             response.EnsureSuccessStatusCode();
             var total = response.Content.Headers.ContentLength;
             await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true);
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             var buffer = new byte[128 * 1024];
             long written = 0;
-            int read;
-            while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            await using (var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, useAsync: true))
             {
-                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                hash.AppendData(buffer, 0, read);
-                written += read;
-                if (total is > 0) progress?.Report((double)written / total.Value);
+                int read;
+                while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    hash.AppendData(buffer, 0, read);
+                    written += read;
+                    if (total is > 0) progress?.Report((double)written / total.Value);
+                }
+
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
             if (expectedSize.HasValue && written != expectedSize.Value)
                 throw new InvalidDataException($"Downloaded file size mismatch: expected {expectedSize.Value} bytes, received {written}.");
 
