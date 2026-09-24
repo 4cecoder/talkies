@@ -174,7 +174,7 @@ pub const Server = struct {
         return Server{
             .allocator = allocator,
             .socket_fd = sock,
-            .clients = .{},
+            .clients = std.ArrayList(*Client).empty,
             .running = false,
         };
     }
