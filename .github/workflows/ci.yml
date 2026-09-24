@@ -5,20 +5,24 @@ on:
     branches: [ master ]
     paths:
       - 'mac/**'
+      - 'packaging/macos/**'
       - 'windows/**'
       - 'linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/deploy-pages.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     branches: [ master ]
     paths:
       - 'mac/**'
+      - 'packaging/macos/**'
       - 'windows/**'
       - 'linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/deploy-pages.yml'
+      - '.github/workflows/release.yml'
 
 jobs:
   # Determine which jobs need to run based on changed files
@@ -38,7 +42,9 @@ jobs:
           filters: |
             macos:
               - 'mac/**'
+              - 'packaging/macos/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
             windows:
               - 'windows/**'
               - '.github/workflows/ci.yml'
@@ -80,6 +86,12 @@ jobs:
       - name: Run Swift package tests
         working-directory: mac
         run: swift test
+
+      - name: Smoke-test distributable app bundle
+        env:
+          VERSION: 0.0.0
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-package
+        run: packaging/macos/package-app.sh
 
       - name: Download pinned S1-mini and verify CPU cleanup
         working-directory: mac

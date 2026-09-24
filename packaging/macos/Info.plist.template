@@ -26,7 +26,5 @@
     <string>Talkies needs access to your microphone for voice transcription.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Talkies needs to control other applications to insert transcribed text.</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon.icns</string>
 </dict>
 </plist>

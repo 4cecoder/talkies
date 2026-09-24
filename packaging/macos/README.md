@@ -24,6 +24,14 @@ macOS applications can be distributed in two primary formats:
 
 For Talkies, we recommend DMG distribution as it provides the best user experience for a menu bar application.
 
+The GitHub versioned release currently publishes an unsigned `.app` zip. Build it locally with the same bundling and runtime-framework checks using:
+
+```bash
+VERSION=v1.2.3 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
+```
+
+The script embeds `llama.framework`, configures the app rpath, adds microphone and Apple Events usage descriptions, validates the bundle metadata, and zips `Talkies.app`. Signing and notarization require maintainer certificates and are not applied by the public CI workflow.
+
 ---
 
 ## Prerequisites
@@ -78,65 +86,15 @@ A DMG (Disk Image) is macOS's preferred format for distributing applications. Wh
 
 ### Step-by-Step DMG Creation
 
-#### 1. Build Your Application
+#### 1. Build the application bundle
 
 ```bash
-cd /home/fource/talkies/mac
-swift build -c release
+VERSION=1.2.3 OUTPUT_DIR="$PWD/packaging/macos/build" ./packaging/macos/package-app.sh
 ```
 
-The compiled binary will be at `.build/release/Talkies`. However, for macOS distribution, you need an `.app` bundle.
+This creates `Talkies.app` and `Talkies-macOS-1.2.3.zip` in the output directory. The bundle includes the linked `llama.framework`, its loader rpath, and the microphone and Apple Events usage descriptions. Do not package the Swift executable on its own.
 
-#### 2. Create Application Bundle
-
-Since we're using Swift Package Manager (not Xcode), we need to manually create the `.app` bundle structure:
-
-```bash
-# Create bundle structure
-mkdir -p "Talkies.app/Contents/MacOS"
-mkdir -p "Talkies.app/Contents/Resources"
-
-# Copy binary
-cp .build/release/Talkies "Talkies.app/Contents/MacOS/Talkies"
-
-# Make executable
-chmod +x "Talkies.app/Contents/MacOS/Talkies"
-```
-
-#### 3. Create Info.plist
-
-Create `Talkies.app/Contents/Info.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>Talkies</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.talkies.app</string>
-    <key>CFBundleName</key>
-    <string>Talkies</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Talkies needs access to your microphone for voice transcription.</string>
-</dict>
-</plist>
-```
-
-#### 4. Add Application Icon (Optional)
+#### 2. Add Application Icon (Optional)
 
 ```bash
 # If you have an .icns file
@@ -146,7 +104,7 @@ cp path/to/AppIcon.icns "Talkies.app/Contents/Resources/AppIcon.icns"
 # Add: <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 ```
 
-#### 5. Create DMG with create-dmg
+#### 3. Create DMG with create-dmg
 
 Using the `create-dmg` tool:
 

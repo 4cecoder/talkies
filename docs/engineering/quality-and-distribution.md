@@ -12,7 +12,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 
 | Surface | Pull-request gate |
 |---|---|
-| macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify real CPU inference. |
+| macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, package and inspect the `.app` zip, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify real CPU inference. |
 | Windows | Restore and build WPF app; run all .NET tests; package smoke test |
 | Linux | Pin or deliberately track a Zig toolchain only after source compiles on it; build and run unit tests; run headless integration tests under Xvfb where needed |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |
