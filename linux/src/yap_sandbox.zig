@@ -457,7 +457,7 @@ fn parseClarificationResponse(
                 current_question = .{
                     .id = id,
                     .text = text,
-                    .options = .{},
+                    .options = &.{},
                 };
             }
         }
