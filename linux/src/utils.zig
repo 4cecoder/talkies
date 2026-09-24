@@ -27,6 +27,13 @@ pub fn io() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
 }
 
+/// Configure the process-wide single-threaded I/O implementation. Zig's
+/// static default uses Allocator.failing, which breaks process spawning for
+/// curl-based model downloads unless the application supplies an allocator.
+pub fn setIoAllocator(allocator: std.mem.Allocator) void {
+    std.Io.Threaded.global_single_threaded.allocator = allocator;
+}
+
 pub fn sleepNanoseconds(nanoseconds: u64) void {
     io().sleep(.fromNanoseconds(@intCast(nanoseconds)), .awake) catch {};
 }

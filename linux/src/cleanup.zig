@@ -59,7 +59,7 @@ pub const ModelStore = struct {
         defer self.allocator.free(data_dir);
         const model_dir = try std.fmt.allocPrint(self.allocator, "{s}/models/s1-mini-{s}", .{ data_dir, model_revision });
         defer self.allocator.free(model_dir);
-        try utils.ensureDir(model_dir);
+        try std.Io.Dir.cwd().createDirPath(utils.io(), model_dir);
 
         const model_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ model_dir, model_filename });
         errdefer self.allocator.free(model_path);
@@ -93,7 +93,7 @@ pub const ModelStore = struct {
         if (!term.success()) return error.ModelDownloadFailed;
 
         if (size) |expected_size| {
-            const verified = try isVerifiedWith(destination, partial, expected_size, expected_hash.?);
+            const verified = try isVerifiedWith(partial, partial, expected_size, expected_hash.?);
             if (!verified) return error.ModelIntegrityCheckFailed;
         } else {
             const file = try std.Io.Dir.openFileAbsolute(utils.io(), partial, .{});
@@ -209,6 +209,8 @@ test "blank model output falls back to the original transcript" {
 
 test "pinned S1-mini model runs a cleanup on CPU" {
     if (utils.getEnv("TALKIES_TEST_S1_MINI") == null) return error.SkipZigTest;
+    utils.setIoAllocator(std.testing.allocator);
+    defer utils.setIoAllocator(.failing);
     var cleaner = Cleaner{ .allocator = std.testing.allocator };
     defer cleaner.deinit();
     const cleaned = try cleaner.clean("um i think we should uh send the email tomorrow", .{});

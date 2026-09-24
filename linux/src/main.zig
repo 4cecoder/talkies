@@ -52,6 +52,7 @@ fn onSettingsCallback() void {
 
 pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = std.heap.smp_allocator;
+    utils.setIoAllocator(allocator);
 
     var args_iterator = try std.process.Args.Iterator.initAllocator(init.args, allocator);
     defer args_iterator.deinit();
@@ -480,11 +481,6 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     var cfg = config.Config.init(allocator);
     defer cfg.deinit();
     try cfg.load();
-
-    // Create shared Io instance for HTTP client (YAP mode Ollama calls)
-    var io_threaded = std.Io.Threaded.init(allocator, .{});
-    defer io_threaded.deinit();
-    const io = io_threaded.io();
 
     // Initialize GTK and create daemon status window (if enabled)
     // GTK init is handled in C layer when first window is created
