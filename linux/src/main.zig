@@ -894,7 +894,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         null, // No initial context
                         cfg.yap_ollama_url,
                         cfg.yap_system_prompt,
-                        io,
+                        utils.io(),
                     ) catch |err| {
                         allocator.destroy(sb_ptr);
                         utils.logError("Failed to create sandbox: {}", .{err});
