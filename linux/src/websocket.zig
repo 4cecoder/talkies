@@ -74,7 +74,7 @@ pub const Server = struct {
 
         pub fn send(self: *Client, message: []const u8) !void {
             // Simple WebSocket frame: FIN=1, opcode=1 (text), no mask
-            var frame: std.ArrayList(u8) = .{};
+            var frame: std.ArrayList(u8) = .empty;
             defer frame.deinit(self.allocator);
 
             // Frame header

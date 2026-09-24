@@ -157,7 +157,7 @@ pub const DaemonState = struct {
     /// Broadcast waveform data (array of levels)
     pub fn broadcastWaveform(self: *DaemonState, levels: []const f32) !void {
         // Build JSON array
-        var json: std.ArrayList(u8) = .{};
+        var json: std.ArrayList(u8) = .empty;
         defer json.deinit(self.allocator);
 
         try json.appendSlice(self.allocator, "{\"type\":\"waveform_update\",\"data\":{\"levels\":[");
@@ -177,7 +177,7 @@ pub const DaemonState = struct {
     /// Broadcast transcription completion
     pub fn broadcastTranscription(self: *DaemonState, text: []const u8, duration_ms: i64) !void {
         // Escape JSON string
-        var escaped: std.ArrayList(u8) = .{};
+        var escaped: std.ArrayList(u8) = .empty;
         defer escaped.deinit(self.allocator);
 
         for (text) |c| {
@@ -223,7 +223,7 @@ pub const DaemonState = struct {
         original_chars: usize,
     ) !void {
         // Escape JSON string
-        var escaped: std.ArrayList(u8) = .{};
+        var escaped: std.ArrayList(u8) = .empty;
         defer escaped.deinit(self.allocator);
 
         for (text) |c| {
