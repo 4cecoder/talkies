@@ -36,6 +36,24 @@ public struct ClipboardSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// Normalizes local recognition vocabulary while preserving the user's first spelling of each term.
+public struct LocalVocabulary: Equatable, Sendable {
+    public let terms: [String]
+
+    public init(terms: [String]) {
+        var seen = Set<String>()
+        self.terms = terms.compactMap { term in
+            let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, seen.insert(normalized.lowercased()).inserted else { return nil }
+            return normalized
+        }
+    }
+
+    public var recognitionPrompt: String {
+        terms.joined(separator: ", ")
+    }
+}
+
 /// Represents a single segment of transcribed audio
 public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID

@@ -152,7 +152,8 @@ class TranscriptionService: ObservableObject {
         do {
             let recognizedSegments = try await recognizer.transcribe(
                 audioURL,
-                deleteAudioAfterProcessing: true
+                deleteAudioAfterProcessing: true,
+                vocabulary: SettingsService.shared.settings.vocabulary ?? []
             )
             print("✅ Transcription complete - \(recognizedSegments.count) segments")
 

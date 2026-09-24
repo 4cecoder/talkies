@@ -28,6 +28,13 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ClipboardSnapshot.self, from: encoded), snapshot)
     }
 
+    func testLocalVocabularyTrimsAndDeduplicatesCaseInsensitively() {
+        let vocabulary = LocalVocabulary(terms: ["  Talkies ", "talkies", "Qwen3", "", "  ", "S1-mini"])
+
+        XCTAssertEqual(vocabulary.terms, ["Talkies", "Qwen3", "S1-mini"])
+        XCTAssertEqual(vocabulary.recognitionPrompt, "Talkies, Qwen3, S1-mini")
+    }
+
     // MARK: - TranscriptSegment Init tests
 
     func testTranscriptSegment_DefaultInit() {

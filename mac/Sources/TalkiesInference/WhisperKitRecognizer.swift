@@ -27,7 +27,8 @@ public final class WhisperKitRecognizer {
     /// Transcribes a local audio file and returns framework-independent segments.
     public func transcribe(
         _ audioURL: URL,
-        deleteAudioAfterProcessing: Bool = false
+        deleteAudioAfterProcessing: Bool = false,
+        vocabulary: [String] = []
     ) async throws -> [TranscriptSegment] {
         defer {
             if deleteAudioAfterProcessing {
@@ -39,7 +40,7 @@ public final class WhisperKitRecognizer {
             throw WhisperKitRecognizerError.notInitialized
         }
 
-        let options = DecodingOptions(
+        var options = DecodingOptions(
             verbose: false,
             task: .transcribe,
             temperature: 0.0,
@@ -53,6 +54,12 @@ public final class WhisperKitRecognizer {
             withoutTimestamps: false,
             clipTimestamps: [0]
         )
+        let vocabularyPrompt = LocalVocabulary(terms: vocabulary).recognitionPrompt
+        if !vocabularyPrompt.isEmpty, let tokenizer = whisperKit.tokenizer {
+            let tokens = tokenizer.encode(text: " " + vocabularyPrompt)
+                .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+            options.promptTokens = Array(tokens.prefix(128))
+        }
         let results = try await whisperKit.transcribe(
             audioPath: audioURL.path,
             decodeOptions: options

@@ -186,6 +186,16 @@ struct GeneralSettingsView: View {
         )
     }
 
+    private var vocabularyText: Binding<String> {
+        Binding(
+            get: { (settingsService.settings.vocabulary ?? []).joined(separator: "\n") },
+            set: { text in
+                let terms = text.components(separatedBy: .newlines)
+                settingsService.settings.vocabulary = LocalVocabulary(terms: terms).terms
+            }
+        )
+    }
+
     private var launchAtLogin: Binding<Bool> {
         Binding(
             get: { settingsService.settings.launchAtLogin },
@@ -284,6 +294,17 @@ struct GeneralSettingsView: View {
 
                 Text("S1-mini by Superwhisper · English · Apache 2.0 with naming clause")
                     .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Personal Vocabulary")) {
+                TextEditor(text: vocabularyText)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 88, maxHeight: 140)
+                    .accessibilityLabel("Personal vocabulary, one term per line")
+
+                Text("Add names and uncommon terms, one per line. WhisperKit uses these as local recognition hints; terms stay in this Mac's settings file.")
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
 
