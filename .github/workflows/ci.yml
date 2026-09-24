@@ -285,8 +285,15 @@ jobs:
           path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
 
+      - name: Cache pinned Whisper tiny model
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/talkies/models/ggml-tiny.bin
+          key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+
       - name: Run tests
         working-directory: linux
         env:
           TALKIES_TEST_S1_MINI: "1"
+          TALKIES_TEST_WHISPER: "1"
         run: zig build test

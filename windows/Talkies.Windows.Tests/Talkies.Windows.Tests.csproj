@@ -23,6 +23,6 @@
     <ProjectReference Include="..\Talkies.Windows\Talkies.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Fixtures\jfk.wav" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tests\fixtures\jfk.wav" Link="Fixtures\jfk.wav" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
