@@ -41,6 +41,7 @@ htmlcov/
 # Zig build artifacts (linux/)
 linux/.zig-cache/
 linux/zig-out/
+linux/zig-pkg/
 
 # Large ML model files
 *.safetensors
