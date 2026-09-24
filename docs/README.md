@@ -16,10 +16,10 @@ Start at [the documentation index](index.md). It maps product goals, architectur
 
 ## Platform build guides
 
-Platform build details currently live beside their source. They will move into `docs/platforms/` as each guide is brought into the same structure.
+Platform build guides live here. Small README pointers beside the source link back to these pages.
 
-- [macOS](../mac/README.md)
-- [Windows](../windows/README.md)
-- [Linux](../linux/README.md)
-- [Mobile (deprecated)](../mobile/README.md)
-- [Website](../frontend/README.md)
+- [macOS](platforms/macos.md)
+- [Windows](platforms/windows.md)
+- [Linux](platforms/linux.md)
+- [Mobile (deprecated)](platforms/mobile.md)
+- [Website](platforms/website.md)

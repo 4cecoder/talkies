@@ -1,4 +1,5 @@
 import SwiftUI
+import TalkiesCore
 
 struct TranscriptView: View {
     @EnvironmentObject var transcriptionService: TranscriptionService

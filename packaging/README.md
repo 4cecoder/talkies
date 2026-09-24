@@ -168,7 +168,7 @@ See [`macos/README.md`](./macos/README.md) for detailed documentation on:
 
 ### Windows Packaging (`windows/`)
 
-See [`windows/README.md`](./windows/README.md) for detailed documentation on:
+See [the Windows guide](../docs/platforms/windows.md) for detailed documentation on:
 - MSIX, WiX (MSI), and Inno Setup installer options
 - Self-contained publishing with .NET 8 runtime
 - Code signing with traditional certificates or Azure Trusted Signing

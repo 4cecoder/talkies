@@ -3,6 +3,7 @@ import Foundation
 import Combine
 @preconcurrency import WhisperKit
 import AVFoundation
+import TalkiesCore
 
 /// Pipeline stages for status indication
 enum PipelineStage: Equatable {

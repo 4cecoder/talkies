@@ -8,7 +8,7 @@ This project used to track work items in an internal issue-tracker tool (Beads, 
 
 ## Deprecated
 
-- **[R6/Mobile] Flutter Feature Parity & CI/CD Plan** — the Flutter mobile app is deprecated and no longer actively developed; it's been dropped from CI and release builds. See `mobile/README.md`.
+- **[R6/Mobile] Flutter Feature Parity & CI/CD Plan** — the Flutter mobile app is deprecated and no longer actively developed; it's been dropped from CI and release builds. See [the mobile guide](platforms/mobile.md).
 
 ## Open
 

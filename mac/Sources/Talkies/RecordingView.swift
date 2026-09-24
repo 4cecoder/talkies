@@ -1,4 +1,5 @@
 import SwiftUI
+import TalkiesCore
 import AVFoundation
 
 struct RecordingView: View {

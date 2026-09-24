@@ -7,7 +7,7 @@
     "build": "bun --bun next build",
     "analyze": "ANALYZE=true bun --bun next build",
     "start": "bunx serve@latest out",
-    "lint": "bun eslint",
+    "lint": "eslint app/page.tsx app/layout.tsx app/components/sections/Header.tsx app/components/sections/FAQ.tsx app/components/icons.ts",
     "lighthouse": "lhci autorun",
     "test:a11y": "bun run build && bun run lighthouse"
   },

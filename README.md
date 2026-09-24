@@ -6,6 +6,9 @@ device. Nothing you say is ever uploaded anywhere, there's no account to create,
 no subscription: it's a hobby project built because privacy-first, on-device transcription
 should just be a normal thing to have.
 
+Talkies is released under the [MIT License](LICENSE). Bundled or downloaded models and other
+third-party components keep their own licenses; see their notices before redistributing them.
+
 ## Getting Started
 
 - Not sure which platform build is right for you, or what's ready today vs. still in progress?
@@ -21,7 +24,7 @@ should just be a normal thing to have.
 talkies/
 ├── mac/        # macOS native app (Swift/SwiftUI + WhisperKit)
 ├── windows/    # Windows native app (.NET WPF + WhisperNet)
-├── mobile/     # Mobile app (Flutter, deprecated — see mobile/README.md)
+├── mobile/     # Mobile app (Flutter, deprecated — see docs/platforms/mobile.md)
 ├── linux/      # Linux native app (Zig + whisper.cpp)
 ├── frontend/   # Web app (Next.js) — project site, live browser demo, and docs
 └── archive/    # Experimental Python CLI (deprecated)
@@ -32,22 +35,22 @@ talkies/
 ### macOS (`mac/`)
 Native macOS application built with Swift and SwiftUI, using WhisperKit for on-device transcription optimized for Apple Silicon.
 
-See [mac/README.md](mac/README.md) for detailed documentation.
+See [the macOS guide](docs/platforms/macos.md) for detailed documentation.
 
 ### Windows (`windows/`)
 Native Windows application built with .NET WPF and WhisperNet. Features real-time transcription, LLM enhancement (Ollama/LM Studio), and multi-format export (SRT, VTT, TXT).
 
-See [windows/README.md](windows/README.md) for detailed documentation.
+See [the Windows guide](docs/platforms/windows.md) for detailed documentation.
 
 ### Mobile (`mobile/`) — Deprecated
-The Flutter mobile app is no longer actively developed and isn't built or shipped in CI/releases. See [mobile/README.md](mobile/README.md) for details.
+The Flutter mobile app is no longer actively developed and isn't built or shipped in CI/releases. See [the mobile guide](docs/platforms/mobile.md) for details.
 
 ### Linux (`linux/`)
 Native Linux application built with Zig and whisper.cpp, with global hotkey support on both X11 and Wayland. Newer and less polished than the macOS/Windows apps.
 
-See [linux/README.md](linux/README.md) for detailed documentation.
+See [the Linux guide](docs/platforms/linux.md) for detailed documentation.
 
 ### Web (`frontend/`)
 Next.js site with the project homepage, a live in-browser transcription demo, and onboarding docs to help you pick a platform.
 
-See [frontend/README.md](frontend/README.md) for detailed documentation.
+See [the website guide](docs/platforms/website.md) for detailed documentation.

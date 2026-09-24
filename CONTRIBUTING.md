@@ -11,7 +11,7 @@ Talkies is multi-platform, so pick whichever stack you're comfortable in (or wan
 - **macOS** (`mac/`) — Swift 6 + SwiftUI, WhisperKit for on-device transcription.
 - **Windows** (`windows/`) — .NET 8 WPF, Whisper.net for transcription.
 - **Linux** (`linux/`) — Zig + whisper.cpp, X11/Wayland global hotkeys.
-- **Mobile** (`mobile/`) — Flutter, deprecated. Not actively developed and not built in CI; see `mobile/README.md` before starting work here.
+- **Mobile** (`mobile/`) — Flutter, deprecated. Not actively developed and not built in CI; see [`docs/platforms/mobile.md`](docs/platforms/mobile.md) before starting work here.
 - **Frontend** (`frontend/`) — Next.js site (this project's homepage, the live browser demo,
   and onboarding docs).
 
@@ -53,6 +53,10 @@ steps to reproduce if you have them. For crash logs or stack traces, paste the r
 rather than a screenshot when you can.
 
 ## License
+
+Talkies project code is released under the MIT License in [`LICENSE`](LICENSE). Contributions
+are submitted under that same license. Third-party dependencies and model weights retain their
+own licenses and notices.
 
 This repository does not currently include a published `LICENSE` file. Check the repository
 directly for the latest licensing status before reusing or redistributing the code.

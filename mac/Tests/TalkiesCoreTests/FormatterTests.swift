@@ -20,6 +20,14 @@ final class FormatterTests: XCTestCase {
         XCTAssertEqual(result, "00:00:12.345")
     }
 
+    func testFormatTimestamp_RoundsFloatingPointMilliseconds() {
+        XCTAssertEqual(formatTimestamp(time: 5.8), "00:00:05.800")
+    }
+
+    func testFormatTimestamp_CarriesRoundedMilliseconds() {
+        XCTAssertEqual(formatTimestamp(time: 1.9999), "00:00:02.000")
+    }
+
     func testFormatTimestamp_WithMinutes() {
         // Use exact representable value to avoid floating-point precision issues
         let result = formatTimestamp(time: 125.5)
@@ -52,6 +60,10 @@ final class FormatterTests: XCTestCase {
     func testFormatSRTTime_WithMilliseconds() {
         let result = formatSRTTime(time: 5.567)
         XCTAssertEqual(result, "00:00:05,567")
+    }
+
+    func testFormatSRTTime_RoundsFloatingPointMilliseconds() {
+        XCTAssertEqual(formatSRTTime(time: 9.1), "00:00:09,100")
     }
 
     func testFormatSRTTime_WithMinutes() {
