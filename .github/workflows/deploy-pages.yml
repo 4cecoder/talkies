@@ -50,4 +50,4 @@ jobs:
           publish_branch: gh-pages
           publish_dir: frontend/out
           force_orphan: true
-          commit_message: "Deploy Talkies website from ${GITHUB_SHA}"
+          commit_message: "Deploy Talkies website from ${{ github.sha }}"
