@@ -6,6 +6,7 @@ import TalkiesCore
 struct AppSettings: Codable {
     // MARK: - General Settings
     var pushToTalkThreshold: Double = 0.15
+    var activationKey: ActivationKey? = .rightOption
     var launchAtLogin: Bool = false
     var voiceAssistantMode: Bool = false
     var insertTextInAssistantMode: Bool = false
@@ -21,6 +22,7 @@ struct AppSettings: Codable {
 
     enum CodingKeys: String, CodingKey {
         case pushToTalkThreshold
+        case activationKey
         case launchAtLogin
         case voiceAssistantMode
         case insertTextInAssistantMode

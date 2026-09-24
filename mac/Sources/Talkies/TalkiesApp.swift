@@ -27,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var transcriptionService = TranscriptionService()
     var eventMonitor: Any?
     var localEventMonitor: Any?
-    var rightOptionKeyWasPressed = false
+    var activationKeyWasPressed = false
 
     // Settings service
     var settingsService = SettingsService.shared
@@ -296,32 +296,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupKeyboardShortcut() {
-        // Handler for right option key - must dispatch to main actor
+        // Handler for the selected Option key - must dispatch to main actor.
         let handler: (NSEvent) -> Void = { [weak self] event in
-            // Right Option key (keyCode 61)
-            guard event.keyCode == 61 else { return }
-
+            let keyCode = event.keyCode
             let isPressed = event.modifierFlags.contains(.option)
 
             // Dispatch all main-actor-isolated property access to main thread
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                let selectedKeyCode = self.settingsService.settings.activationKey?.rawValue ?? ActivationKey.rightOption.rawValue
+                guard Int(keyCode) == selectedKeyCode else { return }
 
-                print("🔑 Right Option key event - isPressed: \(isPressed), wasPressed: \(self.rightOptionKeyWasPressed)")
+                print("🔑 Activation key event - isPressed: \(isPressed), wasPressed: \(self.activationKeyWasPressed)")
 
                 // Key pressed down
-                if isPressed && !self.rightOptionKeyWasPressed {
+                if isPressed && !self.activationKeyWasPressed {
                     print("⬇️ Key pressed DOWN")
                     self.handleKeyPressDown()
                 }
                 // Key released
-                else if !isPressed && self.rightOptionKeyWasPressed {
+                else if !isPressed && self.activationKeyWasPressed {
                     print("⬆️ Key released UP")
                     self.handleKeyRelease()
                 }
 
                 // Update state
-                self.rightOptionKeyWasPressed = isPressed
+                self.activationKeyWasPressed = isPressed
             }
         }
 
@@ -376,7 +376,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
 
             // If key is still held down after threshold, it's push-to-talk mode
-            if self.rightOptionKeyWasPressed && self.isWaitingForRelease {
+            if self.activationKeyWasPressed && self.isWaitingForRelease {
                 print("🎤 Switched to PUSH-TO-TALK mode (held > \(self.pushToTalkThreshold)s)")
                 self.isPushToTalkMode = true
             }

@@ -1,5 +1,21 @@
 import Foundation
 
+/// Supported single-key activation shortcuts for the macOS menu-bar app.
+/// These key codes match the hardware key codes reported by NSEvent.
+public enum ActivationKey: Int, CaseIterable, Codable, Sendable, Identifiable {
+    case leftOption = 58
+    case rightOption = 61
+
+    public var id: Int { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .leftOption: "Left Option (⌥)"
+        case .rightOption: "Right Option (⌥)"
+        }
+    }
+}
+
 /// Represents a single segment of transcribed audio
 public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID

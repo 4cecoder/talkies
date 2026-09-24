@@ -179,6 +179,13 @@ struct GeneralSettingsView: View {
         )
     }
 
+    private var activationKey: Binding<ActivationKey> {
+        Binding(
+            get: { settingsService.settings.activationKey ?? .rightOption },
+            set: { settingsService.settings.activationKey = $0 }
+        )
+    }
+
     private var launchAtLogin: Binding<Bool> {
         Binding(
             get: { settingsService.settings.launchAtLogin },
@@ -322,12 +329,14 @@ struct GeneralSettingsView: View {
             }
 
             Section(header: Text("Keyboard Shortcut")) {
-                HStack {
-                    Text("Activation Key:")
-                    Spacer()
-                    Text("Right Option (⌥)")
-                        .foregroundColor(.secondary)
+                Picker("Activation Key", selection: activationKey) {
+                    ForEach(ActivationKey.allCases) { key in
+                        Text(key.displayName).tag(key)
+                    }
                 }
+                Text("Tap the selected key to start or stop recording. Hold it to use push-to-talk.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Section(header: Text("About")) {

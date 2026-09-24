@@ -3,6 +3,18 @@ import XCTest
 
 final class ModelTests: XCTestCase {
 
+    func testActivationKeyHardwareCodesAndLabels() {
+        XCTAssertEqual(ActivationKey.leftOption.rawValue, 58)
+        XCTAssertEqual(ActivationKey.rightOption.rawValue, 61)
+        XCTAssertEqual(ActivationKey.leftOption.displayName, "Left Option (⌥)")
+        XCTAssertEqual(ActivationKey.rightOption.displayName, "Right Option (⌥)")
+    }
+
+    func testActivationKeyCodableRoundTrip() throws {
+        let data = try JSONEncoder().encode(ActivationKey.leftOption)
+        XCTAssertEqual(try JSONDecoder().decode(ActivationKey.self, from: data), .leftOption)
+    }
+
     // MARK: - TranscriptSegment Init tests
 
     func testTranscriptSegment_DefaultInit() {
