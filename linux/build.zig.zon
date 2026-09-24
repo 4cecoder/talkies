@@ -26,21 +26,6 @@
     // Minimum nightly supporting the current package metadata and build APIs.
     // CI/release intentionally follow master so compiler breakages are caught early.
     .minimum_zig_version = "0.17.0-dev.1778+767d25269",
-    // This field is optional.
-    // Each dependency must either provide a `url` and `hash`, or a `path`.
-    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
-    // Once all dependencies are fetched, `zig build` no longer requires
-    // internet connectivity.
-    .dependencies = .{
-        .websocket = .{
-            // Pinned to a commit rather than refs/heads/master: the branch
-            // tip moved past the previously-recorded hash and broke CI with
-            // a "hash mismatch" fetch error. Update both url and hash
-            // together when intentionally bumping this dependency.
-            .url = "https://github.com/karlseguin/websocket.zig/archive/efa879736bd438bea8b86a91f220ba408de57273.tar.gz",
-            .hash = "websocket-0.1.0-ZPISdWoTBQA8iviFsepUZiKrmT-oEyc-BwfbVzYwu7LO",
-        },
-    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

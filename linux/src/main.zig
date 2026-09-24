@@ -46,9 +46,7 @@ fn onSettingsCallback() void {
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.heap.smp_allocator;
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -1065,7 +1063,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                             // Clean up options arrays
                             for (options_arrays) |opts| {
-                                allocator.free(opts[0 .. questions[0].options.len]);
+                                allocator.free(opts[0..questions[0].options.len]);
                             }
                         },
 
