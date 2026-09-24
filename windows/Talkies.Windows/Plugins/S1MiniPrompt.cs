@@ -1,3 +1,5 @@
+using System;
+
 namespace Talkies.Windows.Plugins;
 
 /// <summary>Formats transcripts using the S1-mini Qwen3 chat template.</summary>
