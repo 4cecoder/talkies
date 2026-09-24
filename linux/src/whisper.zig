@@ -59,11 +59,12 @@ pub const WhisperService = struct {
         errdefer self.allocator.free(model_path);
 
         // Check if model file exists
-        const file = std.fs.openFileAbsolute(model_path, .{}) catch |err| {
+        const file_io = utils.io();
+        const file = std.Io.Dir.openFileAbsolute(file_io, model_path, .{}) catch |err| {
             self.allocator.free(model_path);
             return err;
         };
-        file.close();
+        file.close(file_io);
 
         // Free previous model if loaded
         if (self.ctx) |ctx| {
@@ -194,15 +195,14 @@ pub const WhisperService = struct {
         // 2. Verify it's 16kHz mono PCM
         // 3. Convert int16 samples to float32 normalized to [-1, 1]
 
-        const file = try std.fs.cwd().openFile(audio_path, .{});
-        defer file.close();
+        const file_io = utils.io();
+        const file = try std.Io.Dir.cwd().openFile(file_io, audio_path, .{});
+        defer file.close(file_io);
 
         // Read file size
-        const file_size = try file.getEndPos();
+        const file_size = try file.length(file_io);
 
         // Skip WAV header (44 bytes for standard PCM WAV)
-        try file.seekTo(44);
-
         const data_size = file_size - 44;
         const n_samples = data_size / 2; // 16-bit samples
 
@@ -211,12 +211,7 @@ pub const WhisperService = struct {
         defer self.allocator.free(int16_data);
 
         const buffer = std.mem.sliceAsBytes(int16_data);
-        var bytes_read: usize = 0;
-        while (bytes_read < buffer.len) {
-            const n = try file.read(buffer[bytes_read..]);
-            if (n == 0) return error.UnexpectedEndOfFile;
-            bytes_read += n;
-        }
+        _ = try file.readPositionalAll(file_io, buffer, 44);
 
         // Convert to float32
         const float_data = try self.allocator.alloc(f32, n_samples);
@@ -249,8 +244,9 @@ pub const WhisperService = struct {
         defer self.allocator.free(model_filename);
 
         // Check if already exists
-        if (std.fs.openFileAbsolute(model_filename, .{})) |file| {
-            file.close();
+        const file_io = utils.io();
+        if (std.Io.Dir.openFileAbsolute(file_io, model_filename, .{})) |file| {
+            file.close(file_io);
             utils.log("Model {s} already exists", .{model_name});
             return;
         } else |_| {

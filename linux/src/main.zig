@@ -186,7 +186,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     }
 
     // Cleanup temp file
-    std.fs.deleteFileAbsolute(temp_path) catch |err| {
+    std.Io.Dir.deleteFileAbsolute(utils.io(), temp_path) catch |err| {
         std.debug.print("Warning: Failed to delete temp file: {}\n", .{err});
     };
 
@@ -600,7 +600,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         try daemon_state.setState(.idle);
 
         // Clean up state file from previous run
-        std.fs.deleteFileAbsolute("/tmp/talkies-state") catch {};
+        std.Io.Dir.deleteFileAbsolute(utils.io(), "/tmp/talkies-state") catch {};
 
         std.debug.print("WebSocket server ready!\n\n", .{});
 
@@ -953,7 +953,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 std.debug.print("✅ Done!\n\n", .{});
 
                 // Cleanup recording file
-                std.fs.deleteFileAbsolute(recording_file) catch {};
+                std.Io.Dir.deleteFileAbsolute(utils.io(), recording_file) catch {};
 
                 // Reset state to idle
                 try daemon_state.setState(.idle);
@@ -1323,7 +1323,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         std.debug.print("✅ Done!\n\n", .{});
 
                         // Cleanup temp file
-                        std.fs.deleteFileAbsolute(temp_path) catch {};
+                        std.Io.Dir.deleteFileAbsolute(utils.io(), temp_path) catch {};
                     }
                 },
             }
