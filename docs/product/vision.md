@@ -34,4 +34,4 @@ People who dictate into many desktop apps, care where their audio goes, or want 
 
 ## Privacy acceptance check
 
-With all required models downloaded, disable networking and complete a dictation, cleanup, and insertion. Verify that no network request is attempted, temporary audio is removed on success and failure, and transcript storage follows the selected local history setting.
+With all required models downloaded, block external network access while leaving loopback available, then complete dictation, cleanup, and insertion. Verify that no external request is attempted, local inference may connect only to loopback, temporary audio is removed on success and failure, and transcript storage follows the selected local history setting.

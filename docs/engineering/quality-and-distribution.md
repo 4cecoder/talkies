@@ -37,7 +37,7 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge blockers for cleanup PR #145
 
-- The latest completed cross-platform CI passed Linux, Windows, macOS, frontend, and Claude review checks. Revalidate those checks on the current commit before merge.
+- Linux Zig-master, Windows, macOS (including the pinned S1-mini CPU inference test), frontend typecheck/lint/static export, and Claude review all pass on the current PR commit.
 - The `Vercel` status is red from an account-level integration even though deployment moved to GitHub Pages.
 - GitHub reports `REVIEW_REQUIRED`; the existing review is a comment, not an approval.
 - GitHub Pages still needs to be enabled with Actions as the source after merge.

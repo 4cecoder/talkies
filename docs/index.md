@@ -20,7 +20,7 @@ Talkies is a free, open-source dictation app for macOS, Windows, and Linux. The 
 ## Product promises
 
 - **Free and open source under MIT.** No subscription or paid tier; see the root [LICENSE](../LICENSE).
-- **Offline by default.** Recording, transcription, cleanup, and insertion use on-device code and models. Network access is limited to optional model downloads and app updates; after setup, dictation works without a connection.
+- **Offline by default.** Recording, transcription, cleanup, and insertion use on-device code and models. Internet access is limited to optional model downloads and app updates; local inference servers may use loopback connections on this device. After setup, dictation works without external network access.
 - **Private by design.** Audio and transcripts are not sent to hosted inference services.
 - **One product across desktop platforms.** macOS, Windows, and Linux get the same dictation workflow, with native platform interfaces.
 
