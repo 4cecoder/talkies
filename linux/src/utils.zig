@@ -23,6 +23,10 @@ pub fn getEnv(name: [:0]const u8) ?[]const u8 {
     return std.mem.span(value);
 }
 
+pub fn io() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 /// Get XDG config directory (~/.config/talkies)
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     const home = getEnv("HOME") orelse return error.NoHomeDir;

@@ -83,6 +83,7 @@ pub const Config = struct {
 
     /// Create default configuration file if it doesn't exist
     pub fn createDefaultConfig(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -96,15 +97,15 @@ pub const Config = struct {
         defer self.allocator.free(config_path);
 
         // Check if file already exists
-        if (std.fs.cwd().access(config_path, .{})) |_| {
+        if (std.Io.Dir.cwd().access(file_io, config_path, .{})) |_| {
             // File exists, don't overwrite
             return;
         } else |_| {
             // File doesn't exist, create it
         }
 
-        const file = try std.fs.cwd().createFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(file_io, config_path, .{});
+        defer file.close(file_io);
 
         const default_content =
             \\[audio]
@@ -149,12 +150,13 @@ pub const Config = struct {
             \\
         ;
 
-        try file.writeAll(default_content);
+        try file.writeStreamingAll(file_io, default_content);
         utils.log("Created default config at: {s}", .{config_path});
     }
 
     /// Load configuration from disk
     pub fn load(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -168,7 +170,7 @@ pub const Config = struct {
         defer self.allocator.free(config_path);
 
         // Try to open the file
-        const file = std.fs.cwd().openFile(config_path, .{}) catch |err| {
+        const file = std.Io.Dir.cwd().openFile(file_io, config_path, .{}) catch |err| {
             if (err == error.FileNotFound) {
                 // Create default config
                 try self.createDefaultConfig();
@@ -177,15 +179,15 @@ pub const Config = struct {
             }
             return err;
         };
-        defer file.close();
+        defer file.close(file_io);
 
         // Read file content
         const max_size = 1024 * 1024; // 1MB max
-        const stat = try file.stat();
+        const stat = try file.stat(file_io);
         const file_size = @min(stat.size, max_size);
         const content = try self.allocator.alloc(u8, file_size);
         defer self.allocator.free(content);
-        const bytes_read = try file.read(content[0..]);
+        const bytes_read = try file.readStreaming(file_io, &.{content[0..]});
 
         // Parse TOML content
         try self.parseToml(content[0..bytes_read]);
@@ -314,6 +316,7 @@ pub const Config = struct {
 
     /// Save configuration to disk
     pub fn save(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -327,8 +330,8 @@ pub const Config = struct {
         defer self.allocator.free(config_path);
 
         // Create/overwrite file
-        const file = try std.fs.cwd().createFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(file_io, config_path, .{});
+        defer file.close(file_io);
 
         // Serialize to TOML format
         const content = try std.fmt.allocPrint(
@@ -367,7 +370,7 @@ pub const Config = struct {
         );
         defer self.allocator.free(content);
 
-        try file.writeAll(content);
+        try file.writeStreamingAll(file_io, content);
         utils.log("Config saved to: {s}", .{config_path});
     }
 
