@@ -48,9 +48,11 @@ jobs:
             windows:
               - 'windows/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
             linux:
               - 'linux/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
@@ -233,7 +235,9 @@ jobs:
         # whisper.cpp is not packaged for Ubuntu/Debian; build and install it
         # from source per linux/docs/DEPENDENCIES.md and linux/SHIPPING.md.
         run: |
-          git clone --depth 1 https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
+          git init /tmp/whisper.cpp
+          git -C /tmp/whisper.cpp fetch --depth=1 https://github.com/ggml-org/whisper.cpp.git d09f61a708f3487afa956ff578e60eae5e7a233c
+          git -C /tmp/whisper.cpp checkout --detach FETCH_HEAD
           cd /tmp/whisper.cpp
           make
           # whisper.cpp's CMake layout has shifted upstream: shared libs

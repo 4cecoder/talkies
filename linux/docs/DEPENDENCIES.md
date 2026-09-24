@@ -71,13 +71,14 @@ sudo ldconfig
 sudo apt install xclip xdotool              # X11 tools
 sudo apt install wl-clipboard               # Wayland alternative
 
-# whisper.cpp (not in Ubuntu repos, build from source)
+# whisper.cpp (not in Ubuntu repos, build the pinned revision from source)
 cd /tmp
-git clone https://github.com/ggml-org/whisper.cpp
+git clone https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp
 cd whisper.cpp
+git checkout d09f61a708f3487afa956ff578e60eae5e7a233c
 make
-sudo cp libwhisper.so /usr/local/lib/
-sudo cp whisper.h /usr/local/include/
+sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
 sudo ldconfig
 ```
 
