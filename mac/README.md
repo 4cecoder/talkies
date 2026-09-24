@@ -38,44 +38,31 @@ A modern, native Swift macOS application for real-time voice transcription using
 
 ## Requirements
 
-- macOS 14.0 or later
-- Apple Silicon (M1/M2/M3/M4) recommended for MLX acceleration
-- Python 3.11+ with MLX Whisper installed
+- macOS 15+
+- Apple Silicon (M1/M2/M3/M4)
+- Swift 6.3 or newer
 - Microphone access permission
 
-## Installation
-
-### 1. Build the Swift App
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd talkies
-
-# Build the Swift app (no Xcode required)
-./build_swift_app.sh
+./run.sh          # Build and run
+./run.sh build    # Debug build only
+./run.sh release  # Release build
+./run.sh clean    # Clean build directory
 ```
 
-### 2. Install Python Dependencies
+## Manual Build
+
+Use Swift 6.3 or newer from your active toolchain:
 
 ```bash
-# Install using uv (recommended)
-cd src
-uv sync
-
-# Or install with pip
-pip install -r requirements.txt
+swift --version
+swift build
+swift run Talkies
 ```
 
-### 3. Run the App
-
-```bash
-# Run from the build directory
-open Talkies/Talkies.app
-
-# Or install to Applications
-cp -R Talkies/Talkies.app /Applications/
-```
+The package manifest requires Swift tools 6.3. CI and release builds use Swift 6.3.3.
 
 ## Usage
 
@@ -155,15 +142,15 @@ For better performance:
 ### Building from Source
 
 ```bash
-cd Talkies
-swift build
-swift run
+./run.sh build    # Debug build
+./run.sh          # Build and run
 ```
 
 ### Project Structure
 ```
-Talkies/
+mac/
 ├── Package.swift              # Swift package configuration
+├── run.sh                     # Build/run helper script
 ├── Sources/
 │   └── Talkies/
 │       ├── TalkiesApp.swift
@@ -173,7 +160,7 @@ Talkies/
 │       ├── RecordingView.swift
 │       ├── TranscriptView.swift
 │       └── SettingsView.swift
-└── build_swift_app.sh        # Build script
+└── README.md
 ```
 
 ## License

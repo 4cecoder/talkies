@@ -17,8 +17,7 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          # Matches the toolchain pin in ci.yml — see comment there.
-          swift-version: '6.2.3'
+          swift-version: '6.3.3'
 
       - name: Build macOS release binary
         working-directory: mac

@@ -7,6 +7,7 @@ on:
       - 'mac/**'
       - 'windows/**'
       - 'linux/**'
+      - 'frontend/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [ master ]
@@ -14,6 +15,7 @@ on:
       - 'mac/**'
       - 'windows/**'
       - 'linux/**'
+      - 'frontend/**'
       - '.github/workflows/ci.yml'
 
 jobs:
@@ -25,9 +27,10 @@ jobs:
       macos: ${{ steps.filter.outputs.macos }}
       windows: ${{ steps.filter.outputs.windows }}
       linux: ${{ steps.filter.outputs.linux }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -39,6 +42,9 @@ jobs:
               - '.github/workflows/ci.yml'
             linux:
               - 'linux/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
               - '.github/workflows/ci.yml'
 
   macos:
@@ -54,10 +60,7 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          # 6.0's Objective-C interop can't build against the current macOS
-          # SDK on the CI image (fails on _Builtin_float). Matches the
-          # 6.2.3 toolchain mac/run.sh uses locally.
-          swift-version: '6.2.3'
+          swift-version: '6.3.3'
 
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -67,13 +70,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Build and test TalkiesCore library
+      - name: Build macOS app
+        working-directory: mac
+        run: swift build --target Talkies
+
+      - name: Test TalkiesCore
         working-directory: mac
         run: |
-          # Create a minimal Package.swift for CI that excludes WhisperKit
-          # This avoids the Swift 6 + WhisperKit SIL verification compiler bug
+          # TalkiesCore tests currently use a small standalone package manifest.
+          # Build the actual app above before switching manifests for these tests.
           cat > Package.swift << 'EOF'
-          // swift-tools-version: 6.0
+          // swift-tools-version: 6.3
           import PackageDescription
           let package = Package(
               name: "Talkies",
@@ -85,13 +92,7 @@ jobs:
               ]
           )
           EOF
-          # Build the library
-          swift build -c debug --target TalkiesCore
-          # Run tests using xcodebuild which has better XCTest framework support
-          xcodebuild test -scheme TalkiesCore -destination 'platform=macOS' -skipPackagePluginValidation 2>&1 || {
-            # Fallback to swift test if xcodebuild fails (no scheme)
-            swift test --filter TalkiesCoreTests 2>&1 || echo "Tests skipped due to XCTest framework issues with Swift 6"
-          }
+          swift test --filter TalkiesCoreTests
 
   windows:
     name: Windows Build & Test
@@ -127,6 +128,31 @@ jobs:
       - name: Run Windows tests
         working-directory: windows/Talkies.Windows
         run: dotnet test --configuration Debug --no-build --verbosity normal
+
+  frontend:
+    name: Website Typecheck & Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
 
   linux:
     name: Linux Build & Test
