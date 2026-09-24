@@ -22,7 +22,7 @@ namespace Talkies.Windows.Models
         public bool FilterEnabled { get; set; } = true;
 
         // LLM Provider Settings
-        public string SelectedLlmProvider { get; set; } = "LM Studio";
+        public string SelectedLlmProvider { get; set; } = "S1-mini (on-device)";
         public string LlmEndpoint { get; set; } = "http://127.0.0.1:1234";
         public string? SelectedLlmModelName { get; set; } = "openai/gpt-oss-20b";
         public string SelectedEnhancementMode { get; set; } = "Grammar";

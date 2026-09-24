@@ -18,6 +18,7 @@ A professional-grade audio transcription application for Windows with real-time 
 
 ### 🧠 LLM Enhancement (Optional)
 - **Multi-Provider Support**:
+  - **S1-mini**: Embedded local CPU inference; no inference server or GPU required
   - 🦙 **Ollama**: Local LLM inference (http://localhost:11434)
   - 🤖 **LM Studio**: OpenAI-compatible endpoints (http://127.0.0.1:1234)
 - **Enhancement Modes**:
@@ -31,6 +32,15 @@ A professional-grade audio transcription application for Windows with real-time 
 Inference endpoints must resolve to `localhost` or a loopback IP address. Talkies rejects
 remote hosts and does not follow HTTP redirects, so transcript text stays with a local model
 server. First-time model downloads still require network access.
+
+S1-mini is the default provider for new installations. On first use, Talkies downloads the
+quantized English cleanup model (about 462 MiB), verifies its pinned SHA-256, and keeps the
+weights plus upstream `LICENSE` and `NOTICE` files in the current user's local application
+data. Later cleanup runs locally without network access. S1-mini is a post-processor: Whisper
+still performs speech recognition. The Talkies application is MIT-licensed; the S1-mini model
+weights have their own Apache-2.0 license with a required model naming clause. See the
+[upstream model repository](https://huggingface.co/superwhisper/s1-mini-GGUF) and retain its
+included notices when redistributing model weights.
 
 ### 📤 Professional Export
 Export your transcripts in multiple formats:
@@ -99,7 +109,7 @@ Export your transcripts in multiple formats:
    - Check "Enable LLM Enhancement"
 
 2. **Select Provider**
-   - Choose Ollama or LM Studio
+   - Choose S1-mini for on-device cleanup, or Ollama / LM Studio for another local model
    - Verify endpoint (auto-filled with defaults)
 
 3. **Fetch Models**
