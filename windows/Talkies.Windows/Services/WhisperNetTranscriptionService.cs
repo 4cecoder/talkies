@@ -86,6 +86,12 @@ namespace Talkies.Windows.Services
                     builder.WithLanguage(language);
                 }
 
+                if (!string.IsNullOrWhiteSpace(decodingOptions?.Prompt))
+                {
+                    builder.WithPrompt(decodingOptions.Prompt);
+                    builder.WithCarryInitialPrompt();
+                }
+
                 // Apply decoding options if provided
                 if (decodingOptions != null)
                 {

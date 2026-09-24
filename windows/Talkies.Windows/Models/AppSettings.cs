@@ -20,6 +20,7 @@ namespace Talkies.Windows.Models
         public bool InsertEnabled { get; set; }
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
+        public List<string> PersonalVocabulary { get; set; } = new();
 
         // LLM Provider Settings
         public string SelectedLlmProvider { get; set; } = "S1-mini (on-device)";

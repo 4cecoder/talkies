@@ -49,6 +49,15 @@ namespace Talkies.Windows.ViewModels
         private string _selectedModel = "base";
         public string SelectedLanguage { get => _selectedLanguage; set { _selectedLanguage = value; OnPropertyChanged(); } }
         private string _selectedLanguage = "auto";
+        public string VocabularyText
+        {
+            get => string.Join(Environment.NewLine, LocalVocabulary.Normalize(_settings.PersonalVocabulary));
+            set
+            {
+                _settings.PersonalVocabulary = LocalVocabulary.Normalize(value.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
+                OnPropertyChanged();
+            }
+        }
         public bool VadEnabled { get => _vadEnabled; set { _vadEnabled = value; OnPropertyChanged(); } }
         private bool _vadEnabled = true;
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }
@@ -603,7 +612,8 @@ namespace Talkies.Windows.ViewModels
                     UsePrefillCache = true,
                     SkipSpecialTokens = true,
                     WithoutTimestamps = false,
-                    Verbose = false
+                    Verbose = false,
+                    Prompt = LocalVocabulary.ToPrompt(_settings.PersonalVocabulary)
                 };
 
                 var result = await _transcriber.TranscribeAsync(
@@ -991,6 +1001,8 @@ namespace Talkies.Windows.ViewModels
             _settings = _settingsService.Load();
             SelectedModel = _settings.Model;
             SelectedLanguage = _settings.Language;
+            _settings.PersonalVocabulary ??= new List<string>();
+            OnPropertyChanged(nameof(VocabularyText));
             EnhanceEnabled = _settings.EnhanceEnabled;
             OllamaUrl = _settings.OllamaUrl;
             OllamaModel = _settings.OllamaModel;
@@ -1052,6 +1064,7 @@ namespace Talkies.Windows.ViewModels
         {
             _settings.Model = SelectedModel;
             _settings.Language = SelectedLanguage;
+            _settings.PersonalVocabulary = LocalVocabulary.Normalize(_settings.PersonalVocabulary);
             _settings.MicrophoneId = SelectedMicrophone?.Id;
             _settings.EnhanceEnabled = EnhanceEnabled;
             _settings.OllamaUrl = OllamaUrl;
