@@ -36,7 +36,7 @@ class AudioDeviceService: ObservableObject {
         #if os(macOS)
         // Get discovery session for audio devices
         let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .builtInMicrophone],
+            deviceTypes: [.microphone],
             mediaType: .audio,
             position: .unspecified
         )
@@ -81,7 +81,7 @@ class AudioDeviceService: ObservableObject {
 
         #if os(macOS)
         let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .builtInMicrophone],
+            deviceTypes: [.microphone],
             mediaType: .audio,
             position: .unspecified
         )

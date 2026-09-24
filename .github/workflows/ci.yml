@@ -74,25 +74,9 @@ jobs:
         working-directory: mac
         run: swift build --target Talkies
 
-      - name: Test TalkiesCore
+      - name: Run Swift package tests
         working-directory: mac
-        run: |
-          # TalkiesCore tests currently use a small standalone package manifest.
-          # Build the actual app above before switching manifests for these tests.
-          cat > Package.swift << 'EOF'
-          // swift-tools-version: 6.3
-          import PackageDescription
-          let package = Package(
-              name: "Talkies",
-              platforms: [.macOS(.v15)],
-              products: [.library(name: "TalkiesCore", targets: ["TalkiesCore"])],
-              targets: [
-                  .target(name: "TalkiesCore", dependencies: [], path: "Sources/TalkiesCore"),
-                  .testTarget(name: "TalkiesCoreTests", dependencies: ["TalkiesCore"], path: "Tests/TalkiesCoreTests"),
-              ]
-          )
-          EOF
-          swift test --filter TalkiesCoreTests
+        run: swift test
 
   windows:
     name: Windows Build & Test

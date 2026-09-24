@@ -199,7 +199,7 @@ struct MainDictationContent: View {
             return .red
         case .transcribing:
             return .orange
-        case .enhancingOllama, .enhancingLMStudio:
+        case .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini:
             return .purple
         case .insertingText:
             return .blue
@@ -223,6 +223,8 @@ struct MainDictationContent: View {
             return "Enhancing with Ollama..."
         case .enhancingLMStudio:
             return "Enhancing with LM Studio..."
+        case .cleaningS1Mini:
+            return "Cleaning with S1-mini..."
         case .insertingText:
             return "Inserting text..."
         case .complete:

@@ -2,15 +2,15 @@
 
 ## Why
 
-The current SwiftPM manifest has one executable target containing the app, WhisperKit integration, plugins, settings, and UI. A change to a fast-moving model runtime therefore rebuilds the whole app and makes the package boundary unclear. Metanoia keeps its stable reader and volatile native-AI companion as separate build products; Talkies can use the same volatility boundary while keeping its user experience in one app.
+The SwiftPM manifest now separates Foundation-only `TalkiesCore` from volatile `TalkiesInference`, which owns the embedded MLX S1-mini adapter. The executable still owns the SwiftUI/AppKit shell, audio capture, WhisperKit integration, settings, and plugins. The next extraction is `TalkiesAudio`, followed by moving the ASR adapter into `TalkiesInference`.
 
 ## Proposed products
 
 | Product/target | Change rate | Owns |
 |---|---|---|
 | `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
-| `TalkiesAudio` library | Medium | Microphone capture, device selection, VAD, temporary-file lifecycle |
-| `TalkiesInference` library | High | WhisperKit ASR adapter, S1-mini local cleanup adapter, model download/cache/eviction |
+| `TalkiesAudio` library | Medium | Microphone capture, device selection, VAD, temporary-file lifecycle; planned |
+| `TalkiesInference` library | High | Embedded MLX S1-mini cleanup adapter and its pinned model load; WhisperKit ASR adapter and model lifecycle remain to be moved here |
 | `TalkiesApp` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, paste integration |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
@@ -63,10 +63,10 @@ The ASR and cleanup stages receive local files/text only. Model downloads go thr
 
 ## Migration order
 
-1. Add `TalkiesCore` as a real target and move only Foundation-only domain code.
-2. Move `TranscriptionService` and WhisperKit-specific code to `TalkiesInference`; use an adapter protocol at the app boundary.
-3. Add `TalkiesAudio` and keep AVFoundation ownership out of domain types.
+1. `TalkiesCore` is a real target with Foundation-only transcript and cleanup contracts.
+2. Add `TalkiesAudio` and keep AVFoundation ownership out of domain types.
+3. Move `TranscriptionService` and WhisperKit-specific code to `TalkiesInference`; use a recognizer protocol at the app boundary.
 4. Move SwiftUI/AppKit code into `TalkiesApp` and add app-bundle packaging.
-5. Add S1-mini behind `TranscriptCleaner`; keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
+5. Add model progress, explicit download/delete controls, and model-backed test automation. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
 
 No migration step should silently delete or rewrite the user's uncommitted files.

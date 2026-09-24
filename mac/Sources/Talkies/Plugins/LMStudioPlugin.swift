@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import TalkiesCore
 
 // MARK: - LM Studio Plugin
 @MainActor
@@ -194,7 +195,8 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
             stream: false
         )
 
-        guard let url = URL(string: "\(endpoint)/v1/chat/completions") else {
+        guard let localEndpoint = LocalModelEndpoint.url(endpoint),
+              let url = URL(string: "/v1/chat/completions", relativeTo: localEndpoint)?.absoluteURL else {
             throw LMStudioError.invalidURL
         }
 
@@ -237,7 +239,8 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
         }
 
         // Try to connect to LM Studio
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        guard let localEndpoint = LocalModelEndpoint.url(endpoint),
+              let url = URL(string: "/v1/models", relativeTo: localEndpoint)?.absoluteURL else {
             await MainActor.run {
                 status = .notRunning
                 isCheckingStatus = false

@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import TalkiesCore
 
 // MARK: - Ollama Plugin
 @MainActor
@@ -236,7 +237,8 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
             stop: stopSequences.isEmpty ? nil : stopSequences.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }
         )
 
-        guard let url = URL(string: "\(ollamaHost)/api/generate") else {
+        guard let endpoint = LocalModelEndpoint.url(ollamaHost),
+              let url = URL(string: "/api/generate", relativeTo: endpoint)?.absoluteURL else {
             throw OllamaError.invalidURL
         }
 
@@ -273,7 +275,8 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         }
 
         // Try to connect to Ollama
-        guard let url = URL(string: "\(ollamaHost)/api/tags") else {
+        guard let endpoint = LocalModelEndpoint.url(ollamaHost),
+              let url = URL(string: "/api/tags", relativeTo: endpoint)?.absoluteURL else {
             await MainActor.run {
                 ollamaStatus = .notInstalled
                 isCheckingStatus = false

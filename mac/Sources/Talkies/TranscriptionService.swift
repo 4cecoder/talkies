@@ -12,6 +12,7 @@ enum PipelineStage: Equatable {
     case transcribing
     case enhancingOllama
     case enhancingLMStudio
+    case cleaningS1Mini
     case insertingText
     case complete
     case error(String)
@@ -23,6 +24,7 @@ enum PipelineStage: Equatable {
         case .transcribing: return "Transcribing..."
         case .enhancingOllama: return "Enhancing with Ollama..."
         case .enhancingLMStudio: return "Enhancing with LM Studio..."
+        case .cleaningS1Mini: return "Cleaning with S1-mini..."
         case .insertingText: return "Inserting text..."
         case .complete: return "Complete"
         case .error(let msg): return "Error: \(msg)"
@@ -34,7 +36,7 @@ enum PipelineStage: Equatable {
         case .idle: return .green
         case .recording: return .red
         case .transcribing: return .orange
-        case .enhancingOllama, .enhancingLMStudio: return .purple
+        case .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini: return .purple
         case .insertingText: return .blue
         case .complete: return .green
         case .error: return .red
@@ -46,7 +48,7 @@ enum PipelineStage: Equatable {
         case .idle: return "checkmark.circle.fill"
         case .recording: return "mic.fill"
         case .transcribing: return "waveform"
-        case .enhancingOllama, .enhancingLMStudio: return "sparkles"
+        case .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini: return "sparkles"
         case .insertingText: return "text.cursor"
         case .complete: return "checkmark.circle.fill"
         case .error: return "exclamationmark.triangle.fill"

@@ -95,7 +95,9 @@ class SettingsService: ObservableObject {
 
         // Schedule new save
         saveTimer = Timer.scheduledTimer(withTimeInterval: autoSaveDelay, repeats: false) { [weak self] _ in
-            self?.save()
+            Task { @MainActor [weak self] in
+                self?.save()
+            }
         }
     }
 

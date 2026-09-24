@@ -12,7 +12,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 
 | Surface | Pull-request gate |
 |---|---|
-| macOS Swift | Swift 6.3+, resolve package, build app/package, run all model-free Swift tests; launch/smoke test app bundle where runner permits |
+| macOS Swift | Swift 6.3+, resolve package, build app/package, run all model-free Swift tests; launch/smoke test app bundle where runner permits. Keep model downloads out of the required suite and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` in a separately provisioned inference job. |
 | Windows | Restore and build WPF app; run all .NET tests; package smoke test |
 | Linux | Pin or deliberately track a Zig toolchain only after source compiles on it; build and run unit tests; run headless integration tests under Xvfb where needed |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |

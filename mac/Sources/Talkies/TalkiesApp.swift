@@ -1,6 +1,8 @@
 import SwiftUI
 import AVFoundation
 import AppKit
+import TalkiesCore
+import TalkiesInference
 
 @main
 struct TalkiesApp: App {
@@ -15,6 +17,8 @@ struct TalkiesApp: App {
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private let s1MiniCleaner = S1MiniCleaner()
+    private let fallbackSpeechSynthesizer = AVSpeechSynthesizer()
     var statusItem: NSStatusItem?
     var floatingWindow: NSWindow?
     var settingsWindow: NSWindow?
@@ -63,12 +67,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Process through LLM if enabled
             Task {
                 var finalText = text
+                let s1MiniEnabled = self?.settingsService.settings.s1Mini?.isEnabled ?? false
+
+                if let cleanupSettings = self?.settingsService.settings.s1Mini, s1MiniEnabled {
+                    await MainActor.run {
+                        self?.transcriptionService.pipelineStage = .cleaningS1Mini
+                    }
+                    do {
+                        let options = TranscriptCleanupOptions(
+                            style: cleanupSettings.style,
+                            structure: cleanupSettings.structure,
+                            context: cleanupSettings.context
+                        )
+                        let cleanedText = try await self?.s1MiniCleaner.clean(text, options: options)
+                        if let cleanedText, !cleanedText.isEmpty {
+                            finalText = cleanedText
+                        }
+                    } catch {
+                        print("⚠️ S1-mini cleanup failed; using raw transcript: \(error.localizedDescription)")
+                    }
+                }
 
                 // Check for LLM enhancement (Ollama or LM Studio - only one can be active)
                 let ollamaEnabled = PluginManager.shared.ollamaPlugin?.isEnabled ?? false
                 let lmStudioEnabled = PluginManager.shared.lmStudioPlugin?.isEnabled ?? false
 
-                if ollamaEnabled && !lmStudioEnabled {
+                if !s1MiniEnabled && ollamaEnabled && !lmStudioEnabled {
                     await MainActor.run {
                         self?.transcriptionService.pipelineStage = .enhancingOllama
                     }
@@ -81,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             print("⚠️ Ollama enhancement failed: \(error.localizedDescription)")
                         }
                     }
-                } else if lmStudioEnabled && !ollamaEnabled {
+                } else if !s1MiniEnabled && lmStudioEnabled && !ollamaEnabled {
                     await MainActor.run {
                         self?.transcriptionService.pipelineStage = .enhancingLMStudio
                     }
@@ -125,8 +149,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             }
                         } else {
                             // TTS not enabled, use native speech
-                            let synthesizer = NSSpeechSynthesizer()
-                            synthesizer.startSpeaking(finalText)
+                            let utterance = AVSpeechUtterance(string: finalText)
+                            self?.fallbackSpeechSynthesizer.speak(utterance)
                         }
 
                         // Optionally also insert text
