@@ -58,7 +58,7 @@ namespace Talkies.Windows.Tests.Models
         }
 
         [Fact]
-        public void GetEstimatedSizePerMinuteMB_LowQuality_ReturnsSmallSize()
+        public void GetEstimatedSizePerMinuteMB_LowQuality_ReturnsPcmSize()
         {
             // Arrange
             var settings = AudioQualitySettings.FromPreset(AudioQualityPreset.Low);
@@ -67,7 +67,8 @@ namespace Talkies.Windows.Tests.Models
             var sizeMB = settings.GetEstimatedSizePerMinuteMB();
 
             // Assert
-            Assert.True(sizeMB < 1.0); // Should be less than 1 MB per minute
+            // 16 kHz mono, 16-bit PCM is about 1.83 MiB per minute.
+            Assert.Equal(1.8310546875, sizeMB, 8);
         }
 
         [Fact]
