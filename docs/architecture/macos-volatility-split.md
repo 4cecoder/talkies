@@ -2,19 +2,19 @@
 
 ## Why
 
-The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter and pinned GGUF model lifecycle. The executable owns the SwiftUI/AppKit shell, WhisperKit integration, settings, and plugins. The next extraction is moving the ASR adapter into `TalkiesInference`.
+The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter, WhisperKit ASR adapter, and their model lifecycles. The executable owns the SwiftUI/AppKit shell, status and transcript presentation, settings, and plugins.
 
-## Proposed products
+## Products and targets
 
 | Product/target | Change rate | Owns |
 |---|---|---|
 | `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
 | `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
-| `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter and its pinned GGUF lifecycle; WhisperKit ASR adapter and model lifecycle remain to be moved here |
+| `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |
 | `TalkiesApp` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, paste integration |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
-The first cut should split SwiftPM targets and keep all runtime work in-process. Make the model worker a separate binary only if profiling demonstrates a measurable stability or memory benefit; the app should not pay IPC complexity in advance.
+Keep inference in-process for now. Make the optional model worker a separate binary only if profiling demonstrates a measurable stability or memory benefit.
 
 ## Dependency direction
 
@@ -50,7 +50,7 @@ mac/
     TalkiesAppTests/
 ```
 
-The manifest should use Swift tools 6.3 and explicitly define separate library targets. Keep dependency versions isolated in the model runtime target. Add a small model-free `TalkiesCore` test target so formatters, mode configuration, cleanup prompt construction, and fallback rules run quickly on every macOS CI pass. Inference integration tests use tiny fixtures or a separately gated model-download job; never make the normal test suite download hundreds of megabytes.
+The manifest uses Swift tools 6.3 and defines separate core, audio, and inference libraries. Keep third-party inference APIs behind the runtime adapters. The model-free `TalkiesCore` test target covers formatters, cleanup prompt construction, and transcript contracts on every macOS CI pass. The model-backed cleanup integration test runs in a separate job that downloads the pinned weights.
 
 ## Offline and cleanup boundary
 
@@ -65,7 +65,7 @@ The ASR and cleanup stages receive local files/text only. Model downloads go thr
 
 1. `TalkiesCore` is a real target with Foundation-only transcript and cleanup contracts.
 2. `TalkiesAudio` owns microphone recording, device selection, level monitoring, and audio-file lifecycle.
-3. Move `TranscriptionService` and WhisperKit-specific code to `TalkiesInference`; use a recognizer protocol at the app boundary.
+3. Keep WhisperKit types behind `WhisperKitRecognizer`; add focused model-free adapter tests and isolate presentation state from inference.
 4. Move SwiftUI/AppKit code into `TalkiesApp` and add app-bundle packaging.
 5. Add model progress and explicit download/delete controls. The model-backed CPU golden test now runs in macOS CI. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
 

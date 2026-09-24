@@ -40,6 +40,7 @@ let package = Package(
             dependencies: [
                 "TalkiesCore",
                 .product(name: "LlamaSwift", package: "llama.swift"),
+                .product(name: "WhisperKit", package: "WhisperKit"),
             ],
             path: "Sources/TalkiesInference"
         ),
@@ -50,7 +51,6 @@ let package = Package(
         .executableTarget(
             name: "Talkies",
             dependencies: [
-                .product(name: "WhisperKit", package: "WhisperKit"),
                 "TalkiesCore",
                 "TalkiesInference",
                 "TalkiesAudio",

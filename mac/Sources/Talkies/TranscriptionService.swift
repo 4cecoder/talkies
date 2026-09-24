@@ -1,9 +1,8 @@
 import SwiftUI
 import Foundation
 import Combine
-@preconcurrency import WhisperKit
-import AVFoundation
 import TalkiesCore
+import TalkiesInference
 
 /// Pipeline stages for status indication
 enum PipelineStage: Equatable {
@@ -67,12 +66,9 @@ class TranscriptionService: ObservableObject {
     @Published var statusMessage: String = "Initializing..."
     @Published var pipelineStage: PipelineStage = .idle
 
-    private var whisperKit: WhisperKit?
-    private var audioBuffers: [AVAudioPCMBuffer] = []
+    private let recognizer = WhisperKitRecognizer(modelName: "openai_whisper-base")
     private var transcriptionTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
     private var isInitialized = false
-    private var modelName: String = "openai_whisper-base"
 
     var onTranscriptionComplete: ((String) -> Void)?
     
@@ -104,14 +100,8 @@ class TranscriptionService: ObservableObject {
         do {
             isDownloadingModel = true
             statusMessage = "Loading Whisper model..."
-            print("📥 Initializing WhisperKit with model: \(modelName)")
-
-            // Initialize WhisperKit - will download if needed
-            whisperKit = try await WhisperKit(
-                model: modelName,
-                verbose: true,
-                logLevel: .debug
-            )
+            print("📥 Initializing local WhisperKit recognizer")
+            try await recognizer.initialize()
 
             isInitialized = true
             isDownloadingModel = false
@@ -130,11 +120,11 @@ class TranscriptionService: ObservableObject {
     func startTranscription(model: String = "base", language: String? = nil) {
         print("      TranscriptionService.startTranscription() - START")
         print("         isInitialized: \(isInitialized)")
-        print("         whisperKit != nil: \(whisperKit != nil)")
+        print("         recognizer ready: \(recognizer.isReady)")
 
-        guard isInitialized, whisperKit != nil else {
-            print("         ❌ WhisperKit not initialized yet")
-            error = "WhisperKit not initialized yet. Please wait..."
+        guard isInitialized, recognizer.isReady else {
+            print("         ❌ Local speech recognizer not initialized yet")
+            error = "Speech recognizer not initialized yet. Please wait..."
             return
         }
 
@@ -151,9 +141,9 @@ class TranscriptionService: ObservableObject {
     }
 
     func transcribeAudioFile(_ audioURL: URL) async {
-        guard let whisperKit = whisperKit else {
+        guard recognizer.isReady else {
             await MainActor.run {
-                error = "WhisperKit not initialized"
+                error = "Local speech recognizer not initialized"
                 statusMessage = "Error: Not initialized"
             }
             return
@@ -168,31 +158,11 @@ class TranscriptionService: ObservableObject {
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
 
         do {
-            // Transcribe the audio file with options
-            let options = DecodingOptions(
-                verbose: false,
-                task: .transcribe,
-                temperature: 0.0,
-                temperatureIncrementOnFallback: 0.2,
-                temperatureFallbackCount: 5,
-                sampleLength: 224,
-                topK: 5,
-                usePrefillPrompt: true,
-                usePrefillCache: true,
-                skipSpecialTokens: true,
-                withoutTimestamps: false,
-                clipTimestamps: [0]
-            )
-
-            let results = try await whisperKit.transcribe(
-                audioPath: audioURL.path,
-                decodeOptions: options
-            )
-
-            print("✅ Transcription complete - \(results.count) results")
+            let recognizedSegments = try await recognizer.transcribe(audioURL)
+            print("✅ Transcription complete - \(recognizedSegments.count) segments")
 
             await MainActor.run {
-                self.processWhisperResults(results)
+                self.segments = recognizedSegments
                 self.statusMessage = "Transcription complete"
                 self.isTranscribing = false
 
@@ -213,23 +183,6 @@ class TranscriptionService: ObservableObject {
         }
     }
 
-    private func processWhisperResults(_ results: [TranscriptionResult]) {
-        // Clear previous segments
-        segments.removeAll()
-
-        for result in results {
-            for segment in result.segments {
-                let transcriptSegment = TranscriptSegment(
-                    timestamp: formatTimestamp(Double(segment.start)),
-                    text: segment.text,
-                    start: Double(segment.start),
-                    end: Double(segment.end)
-                )
-                segments.append(transcriptSegment)
-            }
-        }
-    }
-    
     private func formatTimestamp(_ time: Double) -> String {
         let hours = Int(time) / 3600
         let minutes = Int(time) % 3600 / 60

@@ -14,7 +14,7 @@ The macOS app has a menu-bar entry, a floating dictation window, Right Option ac
 |---|---|---|---|
 | Offline speech recognition | WhisperKit on macOS; different engines elsewhere | Documented local model catalog on all desktop platforms; downloadable and usable offline | P0 |
 | Transcript cleanup | Optional embedded S1-mini GGUF through llama.cpp on macOS; optional loopback Ollama/LM Studio; raw-ASR fallback | Built-in local cleanup across desktop platforms, tested controls and model lifecycle | P0 |
-| Swift implementation | SwiftUI shell, `TalkiesCore`, AVFoundation `TalkiesAudio`, llama.cpp `TalkiesInference`; WhisperKit ASR still in app | Move ASR into inference and add audio-target tests plus runtime integration coverage | P0 |
+| Swift implementation | SwiftUI shell, `TalkiesCore`, AVFoundation `TalkiesAudio`, and `TalkiesInference` adapters for WhisperKit and llama.cpp | Add focused audio and recognizer tests; keep framework types behind target APIs and verify the signed app bundle | P0 |
 | Global activation | Right Option and a threshold | User-configurable shortcuts, hold/toggle, cancel, silence stop, conflict checks | P0 |
 | Insertion | Accessibility-based text insertion | Pasteboard restore, permissions onboarding, app-specific insertion fallback, undo/recovery | P0 |
 | Modes and formatting | Simple plugin enhancement modes | Editable local modes for message, email, prose, lists, code, and translation when the selected ASR supports it | P1 |
