@@ -120,6 +120,9 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
 
+    var cleanup_service = cleanup.Cleaner{ .allocator = allocator, .threads = cfg.threads };
+    defer cleanup_service.deinit();
+
     var clip = clipboard.Clipboard.init(allocator);
     defer clip.deinit();
 
@@ -174,8 +177,17 @@ fn runQuick(allocator: std.mem.Allocator) !void {
 
     // Transcribe
     std.debug.print("Transcribing audio...\n", .{});
-    const transcription = try whisper_service.transcribe(temp_path);
-    defer allocator.free(transcription);
+    const raw_transcription = try whisper_service.transcribe(temp_path);
+    defer allocator.free(raw_transcription);
+    const cleaned_transcription = if (cfg.s1_cleanup_enabled)
+        cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
+            utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
+            break :blk null;
+        }
+    else
+        null;
+    defer if (cleaned_transcription) |cleaned| allocator.free(cleaned);
+    const transcription = cleaned_transcription orelse raw_transcription;
 
     std.debug.print("\nTranscription:\n{s}\n\n", .{transcription});
 
@@ -537,6 +549,9 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
 
+    var cleanup_service = cleanup.Cleaner{ .allocator = allocator, .threads = cfg.threads };
+    defer cleanup_service.deinit();
+
     var inserter = input.TextInserter.init(allocator);
     defer inserter.deinit();
 
@@ -773,7 +788,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 }
 
                 // Transcribe the recording (possibly VAD-trimmed)
-                const transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
+                const raw_transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
 
                     if (daemon_status_win) |win| {
@@ -788,7 +803,17 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     daemon_state.setState(.idle) catch {};
                     continue;
                 };
-                defer allocator.free(transcription);
+                defer allocator.free(raw_transcription);
+
+                const cleaned_transcription: ?[]u8 = if (cfg.s1_cleanup_enabled)
+                    cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
+                        utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
+                        break :blk null;
+                    }
+                else
+                    null;
+                defer if (cleaned_transcription) |cleaned| allocator.free(cleaned);
+                const transcription = cleaned_transcription orelse raw_transcription;
 
                 const end_ts = std.Io.Timestamp.now(utils.io(), .awake);
                 const end_time = end_ts.toMilliseconds();

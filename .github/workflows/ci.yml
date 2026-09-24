@@ -204,6 +204,31 @@ jobs:
         # /usr/lib64 to the multiarch lib dir lets the hardcoded paths resolve.
         run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
 
+      - name: Build pinned CPU-only llama.cpp
+        run: |
+          git init /tmp/llama.cpp
+          git -C /tmp/llama.cpp fetch --depth=1 https://github.com/ggml-org/llama.cpp.git 53ed051ce5e8193652e449f43216ca3859454f49
+          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
+          cd /tmp/llama.cpp
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=ON \
+            -DGGML_METAL=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DLLAMA_CURL=OFF \
+            -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_SERVER=OFF
+          cmake --build build --target llama -j2
+          sudo cmake --install build
+          sudo ldconfig
+
       - name: Build whisper.cpp
         # whisper.cpp is not packaged for Ubuntu/Debian; build and install it
         # from source per linux/docs/DEPENDENCIES.md and linux/SHIPPING.md.
@@ -224,6 +249,14 @@ jobs:
         working-directory: linux
         run: zig build
 
+      - name: Cache pinned S1-mini model
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
       - name: Run tests
         working-directory: linux
+        env:
+          TALKIES_TEST_S1_MINI: "1"
         run: zig build test

@@ -35,6 +35,10 @@ pub fn build(b: *std.Build) void {
         .file = b.path("src/daemon_status_gtk.c"),
         .flags = &.{"-std=c11"},
     });
+    exe_mod.addCSourceFile(.{
+        .file = b.path("src/s1_runtime.c"),
+        .flags = &.{"-std=c11"},
+    });
 
     // Add build options for runtime platform detection
     const build_options = b.addOptions();
@@ -72,6 +76,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("pulse-simple", .{});
     exe_mod.linkSystemLibrary("pulse", .{});
     exe_mod.linkSystemLibrary("whisper", .{});
+    exe_mod.linkSystemLibrary("llama", .{});
     exe_mod.linkSystemLibrary("sqlite3", .{}); // For YAP session management
 
     // Link libfvad (WebRTC VAD) - vendored static library
@@ -159,11 +164,16 @@ pub fn build(b: *std.Build) void {
     test_mod.linkSystemLibrary("pulse-simple", .{});
     test_mod.linkSystemLibrary("pulse", .{});
     test_mod.linkSystemLibrary("whisper", .{});
+    test_mod.linkSystemLibrary("llama", .{});
     test_mod.linkSystemLibrary("sqlite3", .{});
 
     // Link libfvad for tests
     test_mod.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
     test_mod.addIncludePath(b.path("vendor/libfvad/include"));
+    test_mod.addCSourceFile(.{
+        .file = b.path("src/s1_runtime.c"),
+        .flags = &.{"-std=c11"},
+    });
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
@@ -203,6 +213,7 @@ fn addCImports(
     addCImport(b, target, optimize, module, "c_hotkey", "hotkey.h", &.{"X11"});
     addCImport(b, target, optimize, module, "c_input", "input.h", &.{});
     addCImport(b, target, optimize, module, "c_sqlite3", "sqlite3.h", &.{"sqlite3"});
+    addCImport(b, target, optimize, module, "c_s1_runtime", "s1_runtime.h", &.{});
     addCImport(b, target, optimize, module, "c_tray", "tray.h", &.{"dbus-1"});
     addCImport(b, target, optimize, module, "c_vad", "vad.h", &.{});
     addCImport(b, target, optimize, module, "c_whisper", "whisper.h", &.{});

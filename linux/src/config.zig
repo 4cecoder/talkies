@@ -12,6 +12,7 @@ pub const Config = struct {
     model: []const u8 = "base",
     language: []const u8 = "en",
     threads: u8 = 4,
+    s1_cleanup_enabled: bool = true,
 
     // Output settings
     auto_paste: bool = true,
@@ -118,6 +119,9 @@ pub const Config = struct {
             \\model = "base"
             \\language = "en"
             \\threads = 4
+            \\
+            \\[cleanup]
+            \\s1_mini_enabled = true
             \\
             \\[output]
             \\auto_paste = true
@@ -271,6 +275,10 @@ pub const Config = struct {
                 self.paste_keybind = try self.allocator.dupe(u8, value);
                 self.paste_keybind_owned = true;
             }
+        } else if (std.mem.eql(u8, section, "cleanup")) {
+            if (std.mem.eql(u8, key, "s1_mini_enabled")) {
+                self.s1_cleanup_enabled = try parseBoolValue(value_raw);
+            }
         } else if (std.mem.eql(u8, section, "platform")) {
             if (std.mem.eql(u8, key, "mode")) {
                 const value = try parseStringValue(value_raw);
@@ -344,6 +352,9 @@ pub const Config = struct {
             \\language = "{s}"
             \\threads = {d}
             \\
+            \\[cleanup]
+            \\s1_mini_enabled = {s}
+            \\
             \\[output]
             \\auto_paste = {s}
             \\export_format = "{s}"
@@ -361,6 +372,7 @@ pub const Config = struct {
                 self.model,
                 self.language,
                 self.threads,
+                if (self.s1_cleanup_enabled) "true" else "false",
                 if (self.auto_paste) "true" else "false",
                 self.export_format,
                 self.platform,
@@ -426,6 +438,7 @@ pub const Config = struct {
         std.debug.print("  Model: {s}\n", .{self.model});
         std.debug.print("  Language: {s}\n", .{self.language});
         std.debug.print("  Threads: {d}\n", .{self.threads});
+        std.debug.print("  S1-mini cleanup: {}\n", .{self.s1_cleanup_enabled});
         std.debug.print("  Auto-paste: {}\n", .{self.auto_paste});
         std.debug.print("  Export format: {s}\n", .{self.export_format});
         std.debug.print("  Platform mode: {s}\n", .{self.platform});
@@ -480,6 +493,7 @@ test "config initialization" {
     try std.testing.expectEqualStrings("en", cfg.language);
     try std.testing.expect(cfg.threads == 4);
     try std.testing.expect(cfg.auto_paste == true);
+    try std.testing.expect(cfg.s1_cleanup_enabled);
 }
 
 test "parse string value" {
@@ -517,6 +531,9 @@ test "parse toml content" {
         \\language = "es"
         \\threads = 8
         \\
+        \\[cleanup]
+        \\s1_mini_enabled = false
+        \\
         \\[output]
         \\auto_paste = false
         \\export_format = "srt"
@@ -527,6 +544,7 @@ test "parse toml content" {
     try std.testing.expectEqualStrings("small", cfg.model);
     try std.testing.expectEqualStrings("es", cfg.language);
     try std.testing.expect(cfg.threads == 8);
+    try std.testing.expect(!cfg.s1_cleanup_enabled);
     try std.testing.expect(cfg.auto_paste == false);
     try std.testing.expectEqualStrings("srt", cfg.export_format);
 }
