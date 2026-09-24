@@ -27,6 +27,10 @@ pub fn io() std.Io {
     return std.Io.Threaded.global_single_threaded.io();
 }
 
+pub fn sleepNanoseconds(nanoseconds: u64) void {
+    io().sleep(.fromNanoseconds(@intCast(nanoseconds)), .awake) catch {};
+}
+
 /// Get XDG config directory (~/.config/talkies)
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     const home = getEnv("HOME") orelse return error.NoHomeDir;

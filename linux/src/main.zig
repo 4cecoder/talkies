@@ -154,7 +154,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -238,7 +238,7 @@ fn runRecord(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -326,7 +326,7 @@ fn runAudioTest(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -1200,7 +1200,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
             last_state = current_state;
 
             // Sleep to avoid busy-wait (0.5ms for ultra-fast response)
-            std.posix.nanosleep(0, 500 * std.time.ns_per_us);
+            utils.sleepNanoseconds(500 * std.time.ns_per_us);
         }
 
         utils.log("Daemon shutting down...", .{});
@@ -1262,7 +1262,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             };
 
                             // Small sleep to match chunk rate (100ms chunks at 16kHz = 4096 bytes)
-                            std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                            utils.sleepNanoseconds(100 * std.time.ns_per_ms);
 
                             // Check if there's a pending key release event
                             if (listener.hasPendingEvents()) {
