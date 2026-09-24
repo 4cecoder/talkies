@@ -31,6 +31,8 @@ pub const Client = struct {
         prompt: []const u8,
         system_prompt: ?[]const u8,
     ) ![]u8 {
+        if (!isLoopbackEndpoint(self.base_url)) return error.NonLocalEndpoint;
+
         // Escape JSON strings
         const escaped_prompt = try escapeJson(self.allocator, prompt);
         defer self.allocator.free(escaped_prompt);
@@ -66,6 +68,7 @@ pub const Client = struct {
 
         // Make request
         var req = try self.http_client.request(.POST, uri, .{
+            .redirect_behavior = .not_allowed,
             .extra_headers = &.{
                 .{ .name = "Content-Type", .value = "application/json" },
             },
@@ -97,6 +100,107 @@ pub const Client = struct {
         return try parseOllamaResponse(self.allocator, response_body);
     }
 };
+
+/// Ollama is a local inference server; transcript text must never be sent to a
+/// host outside this machine. Redirects are also disabled on the request.
+pub fn isLoopbackEndpoint(endpoint: []const u8) bool {
+    const scheme_end = std.mem.indexOf(u8, endpoint, "://") orelse return false;
+    const scheme = endpoint[0..scheme_end];
+    if (!std.ascii.eqlIgnoreCase(scheme, "http") and !std.ascii.eqlIgnoreCase(scheme, "https")) return false;
+
+    const authority_start = scheme_end + 3;
+    const remainder = endpoint[authority_start..];
+    const authority_end = std.mem.indexOfAny(u8, remainder, "/?#") orelse remainder.len;
+    if (std.mem.indexOfAny(u8, remainder[authority_end..], "?#") != null) return false;
+    const authority = remainder[0..authority_end];
+    if (authority.len == 0 or std.mem.indexOfAny(u8, authority, "@\\") != null) return false;
+
+    const host: []const u8 = if (authority[0] == '[') blk: {
+        const closing = std.mem.indexOfScalar(u8, authority, ']') orelse return false;
+        const ipv6 = authority[1..closing];
+        const suffix = authority[closing + 1 ..];
+        if (!isLoopbackIPv6(ipv6) or !isValidPortSuffix(suffix)) return false;
+        break :blk "[loopback-ipv6]";
+    } else blk: {
+        const colon = std.mem.indexOfScalar(u8, authority, ':');
+        const hostname = if (colon) |index| authority[0..index] else authority;
+        if (colon) |index| {
+            if (!isValidPortSuffix(authority[index..])) return false;
+        }
+        break :blk hostname;
+    };
+
+    if (std.mem.eql(u8, host, "[loopback-ipv6]")) return true;
+    const normalized_host = if (std.mem.endsWith(u8, host, ".")) host[0 .. host.len - 1] else host;
+    if (std.ascii.eqlIgnoreCase(normalized_host, "localhost")) return true;
+    return isLoopbackIPv4(normalized_host);
+}
+
+fn isValidPortSuffix(suffix: []const u8) bool {
+    if (suffix.len == 0) return true;
+    if (suffix[0] != ':' or suffix.len == 1) return false;
+    for (suffix[1..]) |character| {
+        if (!std.ascii.isDigit(character)) return false;
+    }
+    _ = std.fmt.parseInt(u16, suffix[1..], 10) catch return false;
+    return true;
+}
+
+fn isLoopbackIPv6(address: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(address, "::1") or
+        std.ascii.eqlIgnoreCase(address, "0:0:0:0:0:0:0:1");
+}
+
+fn isLoopbackIPv4(address: []const u8) bool {
+    var octets = std.mem.splitScalar(u8, address, '.');
+    const first = octets.next() orelse return false;
+    const second = octets.next() orelse return false;
+    const third = octets.next() orelse return false;
+    const fourth = octets.next() orelse return false;
+    if (octets.next() != null) return false;
+
+    const first_value = std.fmt.parseInt(u8, first, 10) catch return false;
+    _ = std.fmt.parseInt(u8, second, 10) catch return false;
+    _ = std.fmt.parseInt(u8, third, 10) catch return false;
+    _ = std.fmt.parseInt(u8, fourth, 10) catch return false;
+    return first_value == 127;
+}
+
+test "loopback endpoint validation only accepts local HTTP services" {
+    const accepted = [_][]const u8{
+        "http://localhost:11434",
+        "https://LOCALHOST.:11434/ollama",
+        "http://127.0.0.1:11434",
+        "http://127.42.1.9:1234",
+        "http://[::1]:11434",
+        "http://[0:0:0:0:0:0:0:1]:11434",
+    };
+    for (accepted) |endpoint| {
+        try std.testing.expect(isLoopbackEndpoint(endpoint));
+    }
+
+    const rejected = [_][]const u8{
+        "https://example.com:11434",
+        "http://192.168.1.5:11434",
+        "http://localhost.example.com:11434",
+        "http://user@localhost:11434",
+        "http://127.0.0.1:99999",
+        "ftp://localhost:11434",
+        "localhost:11434",
+    };
+    for (rejected) |endpoint| {
+        try std.testing.expect(!isLoopbackEndpoint(endpoint));
+    }
+}
+
+test "Ollama client rejects a remote endpoint before making a request" {
+    var client = Client.init(std.testing.allocator, "http://192.0.2.1:11434", utils.io());
+    defer client.deinit();
+    try std.testing.expectError(
+        error.NonLocalEndpoint,
+        client.generate("model", "transcript text", null),
+    );
+}
 
 /// Parse Ollama JSON response and extract the "response" field
 fn parseOllamaResponse(allocator: std.mem.Allocator, json: []const u8) ![]u8 {

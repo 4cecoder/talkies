@@ -77,7 +77,7 @@ namespace Talkies.Windows.Plugins
         {
             _endpoint = endpoint.TrimEnd('/');
             _model = model;
-            _http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            _http = LocalModelEndpoint.CreateClient(TimeSpan.FromSeconds(60));
         }
 
         /// <summary>
@@ -112,6 +112,12 @@ namespace Talkies.Windows.Plugins
 
         private async Task<string> EnhanceWithPromptInternalAsync(string text, string systemPrompt)
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(_endpoint, "/api/chat", out var requestUri))
+            {
+                Services.Logger.Error("Ollama endpoint must use localhost or a loopback IP address.");
+                return text;
+            }
+
             try
             {
                 var payload = new
@@ -131,8 +137,7 @@ namespace Talkies.Windows.Plugins
                     }
                 };
 
-                var url = $"{_endpoint}/api/chat";
-                var response = await _http.PostAsJsonAsync(url, payload);
+                var response = await _http.PostAsJsonAsync(requestUri, payload);
                 response.EnsureSuccessStatusCode();
 
                 var jsonString = await response.Content.ReadAsStringAsync();
@@ -159,9 +164,14 @@ namespace Talkies.Windows.Plugins
         /// </summary>
         public async System.Threading.Tasks.Task<bool> IsAvailableAsync()
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(_endpoint, "/api/tags", out var requestUri))
+            {
+                return false;
+            }
+
             try
             {
-                var response = await _http.GetAsync($"{_endpoint}/api/tags");
+                var response = await _http.GetAsync(requestUri);
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -175,9 +185,18 @@ namespace Talkies.Windows.Plugins
         /// </summary>
         public async System.Threading.Tasks.Task<bool> FetchModelsAsync(bool silent = false)
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(_endpoint, "/api/tags", out var requestUri))
+            {
+                if (!silent)
+                {
+                    Services.Logger.Error("Ollama endpoint must use localhost or a loopback IP address.");
+                }
+                return false;
+            }
+
             try
             {
-                var response = await _http.GetAsync($"{_endpoint}/api/tags");
+                var response = await _http.GetAsync(requestUri);
                 if (!response.IsSuccessStatusCode)
                 {
                     if (!silent)

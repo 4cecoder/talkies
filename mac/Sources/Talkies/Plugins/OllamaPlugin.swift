@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import TalkiesCore
+import TalkiesInference
 
 // MARK: - Ollama Plugin
 @MainActor
@@ -250,7 +251,7 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let (data, response) = try await LocalInferenceURLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OllamaError.invalidResponse
@@ -285,7 +286,7 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await LocalInferenceURLSession.shared.data(from: url)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

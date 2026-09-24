@@ -123,16 +123,16 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        working-directory: windows/Talkies.Windows
-        run: dotnet restore
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet restore Talkies.Windows.Tests.csproj
 
       - name: Build Windows app
         working-directory: windows/Talkies.Windows
         run: dotnet build --configuration Debug --no-restore
 
       - name: Run Windows tests
-        working-directory: windows/Talkies.Windows
-        run: dotnet test --configuration Debug --no-build --verbosity normal
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --verbosity normal
 
   frontend:
     name: Website Typecheck & Lint

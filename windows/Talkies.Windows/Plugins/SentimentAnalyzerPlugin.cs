@@ -14,7 +14,7 @@ namespace Talkies.Windows.Plugins
     public class SentimentAnalyzerPlugin : ITextEnhancer
     {
         private readonly SentimentAnalysisService _sentimentService = new();
-        private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+        private readonly HttpClient _http = LocalModelEndpoint.CreateClient(TimeSpan.FromSeconds(30));
         private string _endpoint = "http://127.0.0.1:1234";
 
         // Default model name updated to match SentimentSettings/AppSettings.cs for consistency.
@@ -91,6 +91,12 @@ Respond with the Result line only.
 
         private async Task<SentimentResult?> AnalyzeWithLmStudioAsync(string text)
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(Endpoint, "/v1/chat/completions", out var requestUri))
+            {
+                Logger.Error("LM Studio endpoint must use localhost or a loopback IP address.");
+                return null;
+            }
+
             try
             {
                 var payload = new
@@ -107,7 +113,7 @@ Respond with the Result line only.
                 };
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                var response = await _http.PostAsync($"{Endpoint}/v1/chat/completions", content);
+                var response = await _http.PostAsync(requestUri, content);
                 if (!response.IsSuccessStatusCode)
                 {
                     Logger.Warn($"LM Studio sentiment request failed: {response.StatusCode}");

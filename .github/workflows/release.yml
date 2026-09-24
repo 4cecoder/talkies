@@ -50,12 +50,12 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        working-directory: windows/Talkies.Windows
-        run: dotnet restore
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet restore Talkies.Windows.Tests.csproj
 
       - name: Run Windows tests
-        working-directory: windows/Talkies.Windows
-        run: dotnet test --configuration Release --no-restore
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore
 
       - name: Build Windows release binary
         working-directory: windows/Talkies.Windows
