@@ -1217,7 +1217,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
     // State tracking
     var is_recording = false;
-    var key_press_time: std.time.Instant = undefined;
+    var key_press_time: std.Io.Timestamp = undefined;
     const temp_path = "/tmp/talkies_daemon_recording.wav";
 
     // Main event loop
@@ -1239,7 +1239,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     if (!is_recording) {
                         // Start recording
                         is_recording = true;
-                        key_press_time = try std.time.Instant.now();
+                        key_press_time = utils.monotonicTimestamp();
 
                         const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
                         recorder.startRecording(temp_path, device) catch |err| {
@@ -1273,9 +1273,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 .release => {
                     if (is_recording) {
                         // Calculate hold duration
-                        const now = try std.time.Instant.now();
-                        const hold_duration_ns = now.since(key_press_time);
-                        const hold_duration = hold_duration_ns / std.time.ns_per_ms;
+                        const now = utils.monotonicTimestamp();
+                        const hold_duration = key_press_time.durationTo(now).toMilliseconds();
 
                         // Stop recording
                         recorder.stopRecording() catch |err| {

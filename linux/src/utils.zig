@@ -35,6 +35,10 @@ pub fn monotonicMilliseconds() i64 {
     return std.Io.Timestamp.now(io(), .awake).toMilliseconds();
 }
 
+pub fn monotonicTimestamp() std.Io.Timestamp {
+    return std.Io.Timestamp.now(io(), .awake);
+}
+
 pub fn realtimeSeconds() i64 {
     return std.Io.Timestamp.now(io(), .real).toSeconds();
 }
