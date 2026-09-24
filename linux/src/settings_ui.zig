@@ -1,9 +1,6 @@
 const std = @import("std");
 const config = @import("config.zig");
 
-// GTK4 C bindings (fallback until Ghostty bindings support Zig 0.16)
-const c = @import("c_gtk");
-
 const log = std.log.scoped(.settings_ui);
 
 /// Settings window using GTK4 C FFI

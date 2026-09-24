@@ -194,15 +194,14 @@ fn addCImports(
     module: *std.Build.Module,
 ) void {
     addCImport(b, target, optimize, module, "c_audio", "audio.h", &.{ "pulse-simple", "pulse" });
-    addCImport(b, target, optimize, module, "c_daemon_status", "daemon_status.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
-    addCImport(b, target, optimize, module, "c_gtk", "gtk.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
+    addCImport(b, target, optimize, module, "c_daemon_status", "daemon_status.h", &.{});
     addCImport(b, target, optimize, module, "c_hotkey", "hotkey.h", &.{"X11"});
     addCImport(b, target, optimize, module, "c_input", "input.h", &.{});
     addCImport(b, target, optimize, module, "c_sqlite3", "sqlite3.h", &.{"sqlite3"});
     addCImport(b, target, optimize, module, "c_tray", "tray.h", &.{"dbus-1"});
     addCImport(b, target, optimize, module, "c_vad", "vad.h", &.{});
     addCImport(b, target, optimize, module, "c_whisper", "whisper.h", &.{});
-    addCImport(b, target, optimize, module, "c_yap_window", "yap_window.h", &.{ "gtk-4", "glib-2.0", "gobject-2.0" });
+    addCImport(b, target, optimize, module, "c_yap_window", "yap_window.h", &.{});
 }
 
 fn addCImport(
@@ -221,21 +220,6 @@ fn addCImport(
     });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    const arch = @tagName(target.result.cpu.arch);
-    const include_paths = [_][]const u8{
-        "/usr/include/gtk-4.0",
-        "/usr/include/pango-1.0",
-        "/usr/include/harfbuzz",
-        "/usr/include/glib-2.0",
-        b.fmt("/usr/lib/{s}-linux-gnu/glib-2.0/include", .{arch}),
-        "/usr/include/cairo",
-        "/usr/include/gdk-pixbuf-2.0",
-        "/usr/include/graphene-1.0",
-        b.fmt("/usr/lib/{s}-linux-gnu/graphene-1.0/include", .{arch}),
-    };
-    for (include_paths) |include_path| {
-        translation.addIncludePath(.{ .cwd_relative = include_path });
-    }
     translation.addIncludePath(b.path("src"));
     translation.addIncludePath(b.path("vendor/libfvad/include"));
     for (libraries) |library| {
