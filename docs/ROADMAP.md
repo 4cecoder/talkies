@@ -10,9 +10,12 @@ This project used to track work items in an internal issue-tracker tool (Beads, 
 
 - **[R6/Mobile] Flutter Feature Parity & CI/CD Plan** — the Flutter mobile app is deprecated and no longer actively developed; it's been dropped from CI and release builds. See [the mobile guide](platforms/mobile.md).
 
+## Completed in current branch
+
+- **Zig master Linux build restored** — `linux/build.zig` now generates C bindings with `zig translate-c` and wires them into the modules. Current CI builds and tests successfully with Zig master; keep this toolchain tracking active and investigate regressions against the compiler revision reported by CI. The old blocker description in [#146](https://github.com/4cecoder/talkies/issues/146) predates the migration and passing CI evidence.
+
 ## Open
 
-- **Fix Linux `zig build` under Zig master: `@cImport` was removed** — CI now tracks Zig master intentionally (see `.github/workflows/ci.yml`), which surfaced that this Zig nightly line has removed `@cImport` as a language builtin entirely. It's used in 8 files for C interop (`src/audio.zig`, `src/daemon_status_window.zig`, `src/hotkey.zig`, `src/input.zig`, `src/vad.zig`, `src/whisper.zig`, `src/yap_sessions.zig`, `src/yap_window.zig`) and needs a real migration to whatever replaced it (likely `zig translate-c` wired through `build.zig`, or hand-written bindings), not a mechanical rename — see [#146](https://github.com/4cecoder/talkies/issues/146) for full details and current status. Two smaller, likely-quick companion issues found alongside it: a `graphene-config.h` header-not-found error in the GTK C wrappers (probably needs the CI include-path workaround extended, not a code change), and an "operator has whitespace on one side" parse error in `src/websocket.zig:122` on a `** ` array-repeat expression that looks like a new Zig-master syntax strictness rule. (type: bug, priority: high)
 - **Implement daemon status GUI with live logs and error indicators** — Create a GTK window showing daemon state, live log viewer with auto-scroll, error indicators, LLM activity, and a stats dashboard for easier debugging (type: feature, priority: high)
 - **Add log interception to route stdout/stderr to status GUI** (type: task, priority: high)
 - **Test Windows app performance and stability** — Comprehensive testing needed: long recording sessions (30+ minutes), large transcript handling (500+ segments), memory usage during transcription, GPU transcription stability, hotkey reliability from background, and settings persistence across restarts (type: bug, priority: high)

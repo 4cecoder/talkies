@@ -2,7 +2,7 @@
 
 ## Why
 
-The CI now builds and tests the actual macOS Swift package, runs native Windows and Zig/Linux build-and-test jobs, and checks the frontend on pull requests. macOS CI also downloads the pinned S1-mini GGUF and verifies CPU inference against cleanup assertions. The release workflow still packages basic archives; a complete installer and update path across supported systems remains planned.
+The CI builds and tests the actual macOS Swift package, runs native Windows and Zig/Linux build-and-test jobs, and checks the frontend on pull requests. macOS CI also downloads the pinned S1-mini GGUF and verifies CPU inference against cleanup assertions. Versioned releases package desktop archives and SHA-256 checksums; native installers and an update path remain planned.
 
 Metanoia provides two useful patterns: a dedicated regression workflow that runs tests on changes, and a rolling `latest` release alongside versioned releases. Talkies should adopt those patterns without allowing an untested rolling build to replace a good release.
 
@@ -23,7 +23,7 @@ Use changed-path filtering only when it still creates stable required check name
 ## Release tracks
 
 1. **PR builds:** CI artifacts for review only; never update `latest`.
-2. **Versioned release:** a `vX.Y.Z` tag runs the same tests, then builds native installers and archives, generates SHA-256 checksums and release notes, and attaches all artifacts to a draft release for verification.
+2. **Versioned release:** a `vX.Y.Z` tag runs macOS, Windows, and Linux tests, builds desktop archives, generates SHA-256 checksums and release notes, and attaches all artifacts to a GitHub Release. The current workflow publishes the release immediately; draft verification and native installers remain future work.
 3. **Rolling latest:** only after a green merge to `master`, publish a prerelease `latest` channel from that exact SHA. Serialize this workflow so concurrent commits cannot move the tag backward.
 
 ## Installer targets

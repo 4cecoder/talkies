@@ -19,6 +19,10 @@ jobs:
         with:
           swift-version: '6.3.3'
 
+      - name: Run macOS tests
+        working-directory: mac
+        run: swift test
+
       - name: Build macOS release binary
         working-directory: mac
         run: swift build -c release
@@ -54,6 +58,10 @@ jobs:
       - name: Restore dependencies
         working-directory: windows/Talkies.Windows
         run: dotnet restore
+
+      - name: Run Windows tests
+        working-directory: windows/Talkies.Windows
+        run: dotnet test --configuration Release --no-restore
 
       - name: Build Windows release binary
         working-directory: windows/Talkies.Windows
@@ -123,6 +131,10 @@ jobs:
         working-directory: linux
         run: zig build -Doptimize=ReleaseFast
 
+      - name: Run Linux tests
+        working-directory: linux
+        run: zig build test
+
       - name: Package Linux binary
         working-directory: linux
         run: |
@@ -175,6 +187,10 @@ jobs:
           name: linux-release
           path: artifacts
 
+      - name: Generate SHA-256 checksums
+        working-directory: artifacts
+        run: sha256sum Talkies-macOS-${{ github.ref_name }}.tar.gz Talkies-Windows-${{ github.ref_name }}.zip Talkies-Linux-${{ github.ref_name }}.tar.gz > SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -186,5 +202,6 @@ jobs:
             artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
             artifacts/Talkies-Windows-${{ github.ref_name }}.zip
             artifacts/Talkies-Linux-${{ github.ref_name }}.tar.gz
+            artifacts/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
