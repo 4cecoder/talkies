@@ -17,6 +17,8 @@ public sealed class S1MiniProvider : ILlmProvider, IDisposable
     private List<LlmModel> _models = new();
     private LLamaWeights? _weights;
 
+    public event Action<string, double, bool>? StatusChanged;
+
     public S1MiniProvider(S1MiniModelStore? store = null) => _store = store ?? new S1MiniModelStore();
 
     public string ProviderName => "S1-mini (on-device)";
@@ -46,7 +48,12 @@ public sealed class S1MiniProvider : ILlmProvider, IDisposable
         await _inferenceLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var modelPath = await _store.EnsureInstalledAsync().ConfigureAwait(false);
+            StatusChanged?.Invoke("Verifying the on-device cleanup model", 0, true);
+            var needsDownload = !_store.IsInstalled;
+            if (needsDownload) StatusChanged?.Invoke("Downloading S1-mini for local cleanup", 0, true);
+            var modelPath = await _store.EnsureInstalledAsync(new Progress<double>(fraction =>
+                StatusChanged?.Invoke("Downloading S1-mini for local cleanup", fraction, false))).ConfigureAwait(false);
+            if (needsDownload) StatusChanged?.Invoke("Loading S1-mini on the CPU", 1, true);
             var parameters = new ModelParams(modelPath) { ContextSize = 4096, GpuLayerCount = 0 };
             var weights = _weights ??= LLamaWeights.LoadFromFile(parameters);
             var executor = new StatelessExecutor(weights, parameters);

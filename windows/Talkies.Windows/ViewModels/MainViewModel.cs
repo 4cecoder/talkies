@@ -412,7 +412,7 @@ namespace Talkies.Windows.ViewModels
             // Create initial LLM provider
             _currentLlmProvider = SelectedLlmProvider switch
             {
-                "S1-mini (on-device)" => _s1MiniProvider ??= new S1MiniProvider(),
+                "S1-mini (on-device)" => GetS1MiniProvider(),
                 "Ollama" => new OllamaEnhancer(LlmEndpoint, _settings.OllamaModel),
                 _ => new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = "openai/gpt-oss-20b" }
             };
@@ -444,7 +444,7 @@ namespace Talkies.Windows.ViewModels
                 }
                 else if (SelectedLlmProvider == "S1-mini (on-device)")
                 {
-                    _currentLlmProvider = _s1MiniProvider ??= new S1MiniProvider();
+                    _currentLlmProvider = GetS1MiniProvider();
                 }
 
                 if (_currentLlmProvider == null)
@@ -509,6 +509,27 @@ namespace Talkies.Windows.ViewModels
             {
                 IsFetchingModels = false;
             }
+        }
+
+        private S1MiniProvider GetS1MiniProvider()
+        {
+            if (_s1MiniProvider != null) return _s1MiniProvider;
+
+            _s1MiniProvider = new S1MiniProvider();
+            _s1MiniProvider.StatusChanged += (message, fraction, indeterminate) =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+                dispatcher.BeginInvoke(() =>
+                {
+                    ShowOverlay = true;
+                    OverlayTitle = "Preparing on-device cleanup";
+                    OverlayMessage = message;
+                    OverlayIsIndeterminate = indeterminate;
+                    OverlayProgress = indeterminate ? 0 : Math.Clamp(fraction * 100, 0, 100);
+                    HotkeyStatus = message;
+                });
+            };
+            return _s1MiniProvider;
         }
 
         private async void OnRecordingCompleted(object? sender, RecordingCompletedEventArgs e)
