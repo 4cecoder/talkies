@@ -75,7 +75,7 @@ pub const WhisperService = struct {
         }
 
         // Load model with whisper.cpp C API
-        const model_path_z = try self.allocator.dupeZ(u8, model_path);
+        const model_path_z = try utils.dupeZ(self.allocator, model_path);
         defer self.allocator.free(model_path_z);
 
         // Initialize with default context parameters

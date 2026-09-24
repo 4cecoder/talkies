@@ -31,6 +31,10 @@ pub fn sleepNanoseconds(nanoseconds: u64) void {
     io().sleep(.fromNanoseconds(@intCast(nanoseconds)), .awake) catch {};
 }
 
+pub fn dupeZ(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+    return std.mem.concatWithSentinel(allocator, u8, &.{value}, 0);
+}
+
 /// Get XDG config directory (~/.config/talkies)
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
     const home = getEnv("HOME") orelse return error.NoHomeDir;
