@@ -13,7 +13,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 | Surface | Pull-request gate |
 |---|---|
 | macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, package and inspect the `.app` zip, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify real CPU inference. |
-| Windows | Restore and build WPF app; run fast .NET tests; cache and integrity-check pinned S1-mini weights, then run CPU cleanup with all HTTP requests rejected during inference |
+| Windows | Restore and build WPF app; run fast .NET tests; cache and integrity-check pinned Whisper tiny and S1-mini weights, then run CPU ASR and cleanup with model-store HTTP requests rejected during inference |
 | Linux | Track Zig master; build CPU-only llama.cpp and whisper.cpp; build the app and run unit tests plus a pinned S1-mini download/inference test on CPU |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |
 | Cross-platform contract | Shared cleanup golden fixtures and model manifest schema validation on macOS, Windows, and Linux |
@@ -37,7 +37,7 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge state for cleanup PR #145
 
-- Verified on 2026-09-24 at PR head `2add2328ec41d686177b9c7463f5cd0a2de01b97`: all five CI jobs pass—Linux Zig-master build and tests including pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and tests plus cached-model CPU inference using a network-denying HTTP handler; macOS build, package tests, pinned S1-mini CPU inference, and app bundle smoke test; and website typecheck/lint/static export. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement. Linux local vocabulary prompt support is included in this verified head.
+- Verified on 2026-09-24 at PR head `5deaf9a9fddc24a21d10dbe270e43e88603289e4`: all five CI jobs pass—Linux Zig-master build and tests including pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and fast tests, plus cached Whisper ASR and S1-mini CPU inference using a network-denying model-store client; macOS build, package tests, pinned S1-mini CPU inference, and app bundle smoke test; and website typecheck/lint/static export. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement. Windows Whisper model downloads now pin their source revision, expected size, and SHA-256; Linux local vocabulary prompt support is included in this verified head.
 - GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
 - The Claude review action failed on this head with `is_error:true` before producing a review. An earlier failure also reported an internal directory mismatch. No automated review findings were produced; the active ruleset still requires one human approving review.
 - The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
