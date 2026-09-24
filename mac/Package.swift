@@ -68,6 +68,11 @@ let package = Package(
             path: "Tests/TalkiesCoreTests"
         ),
         .testTarget(
+            name: "TalkiesAudioTests",
+            dependencies: ["TalkiesAudio"],
+            path: "Tests/TalkiesAudioTests"
+        ),
+        .testTarget(
             name: "TalkiesInferenceTests",
             dependencies: ["TalkiesInference"],
             path: "Tests/TalkiesInferenceTests"
