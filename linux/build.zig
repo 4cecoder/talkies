@@ -221,19 +221,20 @@ fn addCImport(
     });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
-    const system_include_paths = [_][]const u8{
+    const arch = @tagName(target.result.cpu.arch);
+    const include_paths = [_][]const u8{
         "/usr/include/gtk-4.0",
         "/usr/include/pango-1.0",
         "/usr/include/harfbuzz",
         "/usr/include/glib-2.0",
-        "/usr/lib64/glib-2.0/include",
+        b.fmt("/usr/lib/{s}-linux-gnu/glib-2.0/include", .{arch}),
         "/usr/include/cairo",
         "/usr/include/gdk-pixbuf-2.0",
         "/usr/include/graphene-1.0",
-        "/usr/lib64/graphene-1.0/include",
+        b.fmt("/usr/lib/{s}-linux-gnu/graphene-1.0/include", .{arch}),
     };
-    for (system_include_paths) |include_path| {
-        translation.addSystemIncludePath(.{ .cwd_relative = include_path });
+    for (include_paths) |include_path| {
+        translation.addIncludePath(.{ .cwd_relative = include_path });
     }
     translation.addIncludePath(b.path("src"));
     translation.addIncludePath(b.path("vendor/libfvad/include"));
