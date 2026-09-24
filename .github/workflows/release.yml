@@ -208,12 +208,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Point rolling latest at the tested commit
-        if: ${{ github.ref_type != 'tag' }}
-        run: |
-          git tag --force latest "$GITHUB_SHA"
-          git push --force origin refs/tags/latest
-
       - name: Download macOS artifact
         uses: actions/download-artifact@v7
         with:
@@ -242,6 +236,12 @@ jobs:
             echo "release=$RELEASE_VERSION"
             echo "platforms=macOS,windows-x64,linux-x86_64"
           } > BUILD-INFO.txt
+
+      - name: Point rolling latest at the tested commit
+        if: ${{ github.ref_type != 'tag' }}
+        run: |
+          git tag --force latest "$GITHUB_SHA"
+          git push --force origin refs/tags/latest
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
