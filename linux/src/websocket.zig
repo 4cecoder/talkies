@@ -119,7 +119,7 @@ pub const Server = struct {
             .family = posix.AF.INET,
             .port = std.mem.nativeToBig(u16, port),
             .addr = 0x0100007F, // 127.0.0.1 in network byte order
-            .zero = [_]u8{0} ** 8,
+            .zero = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
         };
         const sockaddr = @as(*const posix.sockaddr, @ptrCast(&addr));
         try posix.bind(sock, sockaddr, @sizeOf(posix.sockaddr.in));
@@ -228,7 +228,8 @@ pub const Server = struct {
 
         // Send handshake response (use stack buffer for fixed-size response)
         var response_buf: [512]u8 = undefined;
-        const response = try std.fmt.bufPrint(&response_buf,
+        const response = try std.fmt.bufPrint(
+            &response_buf,
             "HTTP/1.1 101 Switching Protocols\r\n" ++
                 "Upgrade: websocket\r\n" ++
                 "Connection: Upgrade\r\n" ++

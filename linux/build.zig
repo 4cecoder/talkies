@@ -110,6 +110,9 @@ pub fn build(b: *std.Build) void {
     exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
     exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
     exe_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    const multiarch_dir = b.fmt("/usr/lib/{s}-linux-gnu", .{@tagName(target.result.cpu.arch)});
+    exe_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/glib-2.0/include", .{multiarch_dir}) });
+    exe_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/graphene-1.0/include", .{multiarch_dir}) });
 
     b.installArtifact(exe);
 
@@ -180,6 +183,8 @@ pub fn build(b: *std.Build) void {
     test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
     test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
     test_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    test_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/glib-2.0/include", .{multiarch_dir}) });
+    test_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/graphene-1.0/include", .{multiarch_dir}) });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
