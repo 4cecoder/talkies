@@ -152,11 +152,15 @@ device = "alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback"
 model = "small"       # Options: tiny, base, small, medium, large
 language = "en"
 threads = 4
+vocabulary_prompt = "Talkies, WhisperKit, S1-mini" # Optional local recognition hints; max 400 characters
 
 [output]
 auto_paste = true     # true = paste at cursor, false = copy to clipboard
 export_format = "txt" # Options: txt, srt, vtt
 ```
+
+The vocabulary prompt is passed to the on-device whisper.cpp recognizer. It supports names
+and uncommon terms and is stored in this local config file.
 
 ## Commands
 

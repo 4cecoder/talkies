@@ -37,9 +37,9 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge state for cleanup PR #145
 
-- Verified on 2026-09-24 at head `2af9f1b5336ed47e31ff70e7fc120f417a34a44b`: Linux Zig-master build and tests including fresh pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and tests; macOS build, package tests, pinned S1-mini CPU inference, and asynchronous insertion build; and website typecheck/lint/static export all pass. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement.
+- Verified on 2026-09-24 at PR head `9133c772fca379e0b5aef424ce1c5f212c5556d8`: all five CI jobs pass—Linux Zig-master build and tests including pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and tests; macOS build, package tests, pinned S1-mini CPU inference, and app bundle smoke test; and website typecheck/lint/static export. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement. Linux local vocabulary prompt support is included in this verified head.
 - GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
-- The latest automated Claude review check passes, but the active ruleset still requires one approving review; automated check success does not satisfy that review requirement.
+- The Claude review action failed on this head with `is_error:true` before producing a review. An earlier failure also reported an internal directory mismatch. No automated review findings were produced; the active ruleset still requires one human approving review.
 - The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
 - The GitHub Pages API currently returns 404, so deployment is not yet configured. Enable Pages with Actions as the source after merge, then verify the published site.
 
