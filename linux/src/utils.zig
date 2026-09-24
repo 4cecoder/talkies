@@ -17,10 +17,16 @@ pub fn logDebug(comptime fmt: []const u8, args: anytype) void {
     }
 }
 
+/// Read a process environment value using libc's current environment.
+pub fn getEnv(name: [:0]const u8) ?[]const u8 {
+    const value = std.c.getenv(name) orelse return null;
+    return std.mem.span(value);
+}
+
 /// Get XDG config directory (~/.config/talkies)
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.NoHomeDir;
-    const xdg_config = std.posix.getenv("XDG_CONFIG_HOME");
+    const home = getEnv("HOME") orelse return error.NoHomeDir;
+    const xdg_config = getEnv("XDG_CONFIG_HOME");
 
     if (xdg_config) |config_base| {
         return std.fmt.allocPrint(allocator, "{s}/talkies", .{config_base});
@@ -31,8 +37,8 @@ pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
 
 /// Get XDG data directory (~/.local/share/talkies)
 pub fn getDataDir(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.NoHomeDir;
-    const xdg_data = std.posix.getenv("XDG_DATA_HOME");
+    const home = getEnv("HOME") orelse return error.NoHomeDir;
+    const xdg_data = getEnv("XDG_DATA_HOME");
 
     if (xdg_data) |data_base| {
         return std.fmt.allocPrint(allocator, "{s}/talkies", .{data_base});

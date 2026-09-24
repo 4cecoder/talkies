@@ -148,12 +148,12 @@ pub const Clipboard = struct {
 /// Checks both WAYLAND_DISPLAY and XDG_SESSION_TYPE for reliability
 fn detectWayland() bool {
     // Check WAYLAND_DISPLAY first (most reliable)
-    if (std.posix.getenv("WAYLAND_DISPLAY")) |_| {
+    if (utils.getEnv("WAYLAND_DISPLAY")) |_| {
         return true;
     }
 
     // Fallback to XDG_SESSION_TYPE
-    if (std.posix.getenv("XDG_SESSION_TYPE")) |session_type| {
+    if (utils.getEnv("XDG_SESSION_TYPE")) |session_type| {
         return std.mem.eql(u8, session_type, "wayland");
     }
 

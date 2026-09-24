@@ -430,7 +430,7 @@ pub const Config = struct {
 
     /// Detect if running on Wayland
     pub fn detectPlatform() []const u8 {
-        if (std.posix.getenv("WAYLAND_DISPLAY")) |_| {
+        if (utils.getEnv("WAYLAND_DISPLAY")) |_| {
             return "wayland";
         }
         return "x11";
