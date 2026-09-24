@@ -397,7 +397,7 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
     std.debug.print("  talkies audio-set <device-name>\n\n", .{});
 }
 
-fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runAudioSet(allocator: std.mem.Allocator, args: []const []const u8) !void {
     if (args.len < 3) {
         std.debug.print("Usage: talkies audio-set <device-name>\n", .{});
         std.debug.print("Run 'talkies audio-list' to see available devices\n", .{});
@@ -428,7 +428,7 @@ fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("\nYou can test it with: talkies audio\n", .{});
 }
 
-fn runTranscribeTest(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !void {
     // Get audio file from args or use default
     const audio_file = if (args.len > 2) args[2] else "anime_16k.wav";
 

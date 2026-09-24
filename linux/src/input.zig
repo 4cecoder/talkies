@@ -189,7 +189,7 @@ pub const TextInserter = struct {
     }
 
     /// Fallback: Simulate Ctrl+V paste using xdotool (if native fails)
-    pub fn pasteFallback(self: *TextInserter) !void {
+    pub fn pasteFallback(_: *TextInserter) !void {
         const argv = &[_][]const u8{ "xdotool", "key", "ctrl+v" };
         var child = try std.process.spawn(utils.io(), .{ .argv = argv });
         const term = try child.wait(utils.io());

@@ -41,7 +41,7 @@ pub const Clipboard = struct {
         }
     }
 
-    fn copyWayland(self: *Clipboard, text: []const u8) !void {
+    fn copyWayland(_: *Clipboard, text: []const u8) !void {
         // Use wl-copy - pass text as stdin for better handling of special chars
         const argv = &[_][]const u8{"wl-copy"};
         var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdin = .pipe });
@@ -59,7 +59,7 @@ pub const Clipboard = struct {
         utils.log("Copied to Wayland clipboard", .{});
     }
 
-    fn copyX11(self: *Clipboard, text: []const u8) !void {
+    fn copyX11(_: *Clipboard, text: []const u8) !void {
         // Use xclip to copy to clipboard
         const argv = &[_][]const u8{ "xclip", "-selection", "clipboard" };
         var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdin = .pipe });
