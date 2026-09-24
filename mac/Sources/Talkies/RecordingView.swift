@@ -1,6 +1,7 @@
 import SwiftUI
 import TalkiesCore
 import AVFoundation
+import TalkiesAudio
 
 struct RecordingView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder

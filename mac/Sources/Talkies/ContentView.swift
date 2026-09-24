@@ -1,4 +1,5 @@
 import SwiftUI
+import TalkiesAudio
 
 struct ContentView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder

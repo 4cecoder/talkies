@@ -2,21 +2,21 @@ import Foundation
 import AVFoundation
 
 /// Represents an audio input device
-struct AudioDeviceInfo: Identifiable, Equatable {
-    let id: String
-    let name: String
-    let isDefault: Bool
+public struct AudioDeviceInfo: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let isDefault: Bool
 
-    static func == (lhs: AudioDeviceInfo, rhs: AudioDeviceInfo) -> Bool {
+    public static func == (lhs: AudioDeviceInfo, rhs: AudioDeviceInfo) -> Bool {
         lhs.id == rhs.id
     }
 }
 
 /// Service for managing audio input devices
 @MainActor
-class AudioDeviceService: ObservableObject {
-    @Published var availableDevices: [AudioDeviceInfo] = []
-    @Published var selectedDeviceID: String? {
+public class AudioDeviceService: ObservableObject {
+    @Published public var availableDevices: [AudioDeviceInfo] = []
+    @Published public var selectedDeviceID: String? {
         didSet {
             if let deviceID = selectedDeviceID {
                 UserDefaults.standard.set(deviceID, forKey: "selectedAudioDeviceID")
@@ -24,13 +24,13 @@ class AudioDeviceService: ObservableObject {
         }
     }
 
-    init() {
+    public init() {
         loadSavedDevice()
         refreshDevices()
     }
 
     /// Enumerate all available audio input devices
-    func refreshDevices() {
+    public func refreshDevices() {
         var devices: [AudioDeviceInfo] = []
 
         #if os(macOS)
@@ -65,18 +65,18 @@ class AudioDeviceService: ObservableObject {
     }
 
     /// Get the currently selected device
-    func getSelectedDevice() -> AudioDeviceInfo? {
+    public func getSelectedDevice() -> AudioDeviceInfo? {
         guard let deviceID = selectedDeviceID else { return nil }
         return availableDevices.first(where: { $0.id == deviceID })
     }
 
     /// Get the default audio input device
-    func getDefaultDevice() -> AudioDeviceInfo? {
+    public func getDefaultDevice() -> AudioDeviceInfo? {
         return availableDevices.first(where: { $0.isDefault })
     }
 
     /// Get AVCaptureDevice for the selected device ID
-    func getAVCaptureDevice(for deviceID: String?) -> AVCaptureDevice? {
+    public func getAVCaptureDevice(for deviceID: String?) -> AVCaptureDevice? {
         guard let deviceID = deviceID else { return nil }
 
         #if os(macOS)

@@ -1,4 +1,4 @@
-import SwiftUI
+import Combine
 import AVFoundation
 import Combine
 import os.lock
@@ -42,12 +42,12 @@ final class AudioTapHandler: @unchecked Sendable {
 }
 
 @MainActor
-class AudioRecorder: NSObject, ObservableObject {
-    @Published var isRecording = false
-    @Published var isPaused = false
-    @Published var duration: TimeInterval = 0
-    @Published var audioLevel: Float = 0.0
-    @Published var hasPermission = false
+public class AudioRecorder: NSObject, ObservableObject {
+    @Published public var isRecording = false
+    @Published public var isPaused = false
+    @Published public var duration: TimeInterval = 0
+    @Published public var audioLevel: Float = 0.0
+    @Published public var hasPermission = false
 
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
@@ -59,14 +59,14 @@ class AudioRecorder: NSObject, ObservableObject {
     // Thread-safe handler for audio tap
     private var tapHandler: AudioTapHandler?
 
-    var onRecordingComplete: ((URL) -> Void)?
+    public var onRecordingComplete: ((URL) -> Void)?
     
-    override init() {
+    public override init() {
         super.init()
         requestMicrophonePermission()
     }
     
-    func requestMicrophonePermission() {
+    public func requestMicrophonePermission() {
         #if os(macOS)
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
@@ -89,7 +89,7 @@ class AudioRecorder: NSObject, ObservableObject {
         #endif
     }
     
-    func startRecording(deviceID: String? = nil) {
+    public func startRecording(deviceID: String? = nil) {
         print("      AudioRecorder.startRecording() - START")
         guard hasPermission else {
             print("      ❌ No microphone permission")
@@ -153,7 +153,7 @@ class AudioRecorder: NSObject, ObservableObject {
         }
     }
     
-    func stopRecording() {
+    public func stopRecording() {
         guard let engine = audioEngine else { return }
 
         engine.stop()
@@ -185,7 +185,7 @@ class AudioRecorder: NSObject, ObservableObject {
         self.tapHandler = nil
     }
     
-    func pauseRecording() {
+    public func pauseRecording() {
         guard isRecording && !isPaused else { return }
         
         isPaused = true
@@ -195,7 +195,7 @@ class AudioRecorder: NSObject, ObservableObject {
         audioEngine?.pause()
     }
     
-    func resumeRecording() {
+    public func resumeRecording() {
         guard isRecording && isPaused else { return }
         
         isPaused = false
@@ -236,7 +236,7 @@ class AudioRecorder: NSObject, ObservableObject {
         audioLevel = 0.0
     }
     
-    var formattedDuration: String {
+    public var formattedDuration: String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%02d:%02d", minutes, seconds)

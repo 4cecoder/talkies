@@ -3,6 +3,7 @@ import AVFoundation
 import AppKit
 import TalkiesCore
 import TalkiesInference
+import TalkiesAudio
 
 @main
 struct TalkiesApp: App {

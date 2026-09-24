@@ -19,6 +19,10 @@ let package = Package(
             name: "TalkiesInference",
             targets: ["TalkiesInference"]
         ),
+        .library(
+            name: "TalkiesAudio",
+            targets: ["TalkiesAudio"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),
@@ -39,12 +43,17 @@ let package = Package(
             ],
             path: "Sources/TalkiesInference"
         ),
+        .target(
+            name: "TalkiesAudio",
+            path: "Sources/TalkiesAudio"
+        ),
         .executableTarget(
             name: "Talkies",
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 "TalkiesCore",
                 "TalkiesInference",
+                "TalkiesAudio",
                 // DISABLED: KokoroSwift has Swift 6.2 compatibility bug
                 // .product(name: "KokoroSwift", package: "kokoro-ios")
             ],

@@ -2,14 +2,14 @@
 
 ## Why
 
-The SwiftPM manifest now separates Foundation-only `TalkiesCore` from volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter and pinned GGUF model lifecycle. The executable still owns the SwiftUI/AppKit shell, audio capture, WhisperKit integration, settings, and plugins. The next extraction is `TalkiesAudio`, followed by moving the ASR adapter into `TalkiesInference`.
+The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter and pinned GGUF model lifecycle. The executable owns the SwiftUI/AppKit shell, WhisperKit integration, settings, and plugins. The next extraction is moving the ASR adapter into `TalkiesInference`.
 
 ## Proposed products
 
 | Product/target | Change rate | Owns |
 |---|---|---|
 | `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
-| `TalkiesAudio` library | Medium | Microphone capture, device selection, VAD, temporary-file lifecycle; planned |
+| `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
 | `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter and its pinned GGUF lifecycle; WhisperKit ASR adapter and model lifecycle remain to be moved here |
 | `TalkiesApp` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, paste integration |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
@@ -21,7 +21,7 @@ The first cut should split SwiftPM targets and keep all runtime work in-process.
 ```text
 TalkiesApp ──▶ TalkiesCore
     │              ▲
-    ├──▶ TalkiesAudio
+    ├──▶ TalkiesAudio ──▶ AVFoundation/CoreAudio
     └──▶ TalkiesInference ──▶ TalkiesCore
               │
               ├── WhisperKit (ASR)
@@ -64,7 +64,7 @@ The ASR and cleanup stages receive local files/text only. Model downloads go thr
 ## Migration order
 
 1. `TalkiesCore` is a real target with Foundation-only transcript and cleanup contracts.
-2. Add `TalkiesAudio` and keep AVFoundation ownership out of domain types.
+2. `TalkiesAudio` owns microphone recording, device selection, level monitoring, and audio-file lifecycle.
 3. Move `TranscriptionService` and WhisperKit-specific code to `TalkiesInference`; use a recognizer protocol at the app boundary.
 4. Move SwiftUI/AppKit code into `TalkiesApp` and add app-bundle packaging.
 5. Add model progress and explicit download/delete controls. The model-backed CPU golden test now runs in macOS CI. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
