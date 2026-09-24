@@ -198,8 +198,8 @@ pub const Server = struct {
 
             // Use direct syscall to work around error set mismatch
             const rc = linux.accept4(@intCast(self.socket_fd), @ptrCast(&client_addr), &addr_len, 0);
-            const client_sock: posix.socket_t = if (rc < 0) {
-                std.debug.print("Accept error: {d}\n", .{-rc});
+            const client_sock: posix.socket_t = if (linux.errno(rc) != .SUCCESS) {
+                std.debug.print("Accept error: {}\n", .{linux.errno(rc)});
                 utils.sleepNanoseconds(100 * std.time.ns_per_ms);
                 continue;
             } else @intCast(rc);
