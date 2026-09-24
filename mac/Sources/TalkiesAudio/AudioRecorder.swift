@@ -24,10 +24,24 @@ final class AudioTapHandler: @unchecked Sendable {
         try? audioFile?.write(from: buffer)
 
         // Calculate audio level
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let channelDataArray = Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0, let channelData = buffer.floatChannelData?[0] else {
+            level = 0
+            return
+        }
 
-        let rms = sqrt(channelDataArray.map { $0 * $0 }.reduce(0, +) / Float(buffer.frameLength))
+        var sumOfSquares: Float = 0
+        for index in 0..<frameCount {
+            let sample = channelData[index]
+            sumOfSquares += sample * sample
+        }
+
+        let rms = sqrt(sumOfSquares / Float(frameCount))
+        guard rms.isFinite else {
+            level = 0
+            return
+        }
+
         let normalizedLevel = min(max(20 * log10(rms + 0.0001), -60), 0) / 60
 
         level = normalizedLevel + 1.0
