@@ -405,6 +405,7 @@ namespace Talkies.Windows.ViewModels
                 LlmEndpoint = "";
             }
             AvailableLlmModels.Clear();
+            InitializeLlmProvider();
         }
 
         private void InitializeLlmProvider()
