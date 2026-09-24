@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Header } from '@/app/components/sections/Header';
 import { Download, Check, Apple, Monitor, AlertCircle } from 'lucide-react';
 
@@ -259,12 +260,12 @@ export default function DownloadPage() {
               >
                 View Documentation
               </a>
-              <a
+              <Link
                 href="/contact"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition-transform hover:scale-105"
               >
                 Contact Support
-              </a>
+              </Link>
             </div>
           </div>
         </div>

@@ -41,6 +41,6 @@ Every release should contain version, commit SHA, platform/architecture, signing
 - GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
 - The Claude Code Review workflow succeeded on this head, but GitHub still reports `REVIEW_REQUIRED`; the active ruleset requires one approving review and no approval is recorded yet. CodeRabbit has also posted comments on earlier commits in the PR; verify each against the current code before acting.
 - The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
-- The GitHub Pages API currently returns 404, so deployment is not yet configured. Enable Pages with Actions as the source after merge, then verify the published site.
+- GitHub Pages serves the static website at `https://4cecoder.github.io/talkies/` from the dedicated `gh-pages` branch. The deployment workflow rebuilds only the frontend export from `master` and replaces the published branch contents.
 
 Page publication remains a post-merge distribution task.

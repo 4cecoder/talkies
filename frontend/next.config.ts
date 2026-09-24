@@ -4,10 +4,14 @@ import withBundleAnalyzer from '@next/bundle-analyzer';
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
+const isGitHubPagesBuild = process.env.GITHUB_PAGES === 'true';
 
 const nextConfig: NextConfig = {
   // Static export for GitHub Pages (no Node server / API routes available at runtime)
   output: 'export',
+  // This is a project site at /talkies; local development and Vercel stay at /.
+  basePath: isGitHubPagesBuild ? '/talkies' : '',
+  trailingSlash: isGitHubPagesBuild,
 
   // Production optimizations
   compress: true,

@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { Header } from './components/sections/Header';
 import { FAQSkeleton } from './components/ui/Skeleton';
 import { Globe, Shield, Zap, Sparkles, Download, Apple, Monitor, Terminal, Github } from './components/icons';
@@ -75,8 +76,9 @@ export default function Home() {
             </span>
           </h1>
           <p className="text-xl md:text-2xl text-neutral-300 mb-12 max-w-2xl mx-auto">
-            Talkies turns speech into text on-device, offline, with no account and nothing ever
-            uploaded. Pick your platform below.
+            An open-source alternative to closed dictation apps. Talkies keeps speech
+            recognition and optional cleanup on your device, with no account or subscription.
+            Pick your platform below.
           </p>
 
           {/* Platform Picker */}
@@ -247,9 +249,9 @@ export default function Home() {
             © 2026 <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">Talkies</span>. Free & open source.
           </div>
           <div className="flex gap-6">
-            <a href="/legal/privacy" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-purple-400 hover:to-pink-400 hover:bg-clip-text hover:text-transparent">Privacy</a>
-            <a href="/legal/terms" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-blue-400 hover:to-cyan-400 hover:bg-clip-text hover:text-transparent">Terms</a>
-            <a href="/contact" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-pink-400 hover:to-orange-400 hover:bg-clip-text hover:text-transparent">Contact</a>
+            <Link href="/legal/privacy" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-purple-400 hover:to-pink-400 hover:bg-clip-text hover:text-transparent">Privacy</Link>
+            <Link href="/legal/terms" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-blue-400 hover:to-cyan-400 hover:bg-clip-text hover:text-transparent">Terms</Link>
+            <Link href="/contact" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-pink-400 hover:to-orange-400 hover:bg-clip-text hover:text-transparent">Contact</Link>
             <a href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white transition-all hover:scale-110 hover:bg-gradient-to-r hover:from-green-400 hover:to-cyan-400 hover:bg-clip-text hover:text-transparent">GitHub</a>
           </div>
         </div>

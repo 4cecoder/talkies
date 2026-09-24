@@ -2,6 +2,7 @@
 
 import { Header } from '@/app/components/sections/Header';
 import { LegalSection } from '@/app/components/legal/LegalSection';
+import Link from 'next/link';
 import {
   Database,
   Clock,
@@ -340,12 +341,12 @@ export default function PrivacyPolicyPage() {
               >
                 Email Privacy Team
               </a>
-              <a
+              <Link
                 href="/contact"
                 className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3 font-semibold text-white transition-colors hover:bg-white/10"
               >
                 Contact Form
-              </a>
+              </Link>
             </div>
           </div>
         </div>

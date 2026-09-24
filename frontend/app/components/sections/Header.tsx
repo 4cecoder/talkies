@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Menu, X, Github, Download } from '../icons';
 
 const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
@@ -126,12 +127,12 @@ export function Header() {
             >
               FAQ
             </button>
-            <a
+            <Link
               href="/contact"
               className="text-neutral-400 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-2 py-1"
             >
               Contact
-            </a>
+            </Link>
           </div>
 
           <div className="hidden md:flex items-center gap-4">
@@ -216,12 +217,12 @@ export function Header() {
                   >
                     FAQ
                   </button>
-                  <a
+                  <Link
                     href="/contact"
                     className="text-left text-lg text-neutral-300 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 rounded px-4 py-3 hover:bg-white/5 block"
                   >
                     Contact
-                  </a>
+                  </Link>
                 </nav>
 
                 {/* Links */}

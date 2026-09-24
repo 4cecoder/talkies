@@ -83,6 +83,8 @@ frontend/
 
 ## Deploy on GitHub Pages
 
-This app builds to a static export (`output: 'export'`) and deploys to GitHub Pages via `.github/workflows/deploy-pages.yml`, which runs on every push to `master` that touches `frontend/**` (or can be triggered manually). The workflow installs dependencies and builds with bun, then publishes the `frontend/out/` directory using the official `actions/upload-pages-artifact` / `actions/deploy-pages` actions.
+This app builds to a static export (`output: 'export'`) and deploys to GitHub Pages via `.github/workflows/deploy-pages.yml`, which runs on every push to `master` that touches `frontend/**` or the deployment workflow itself. The workflow publishes only the generated site files to the dedicated `gh-pages` branch; application source and Pages assets stay on separate branches. The project site is served at `https://4cecoder.github.io/talkies/`. The Pages build sets Next.js `basePath` to `/talkies`, emits directory routes, and writes `.nojekyll` so Next.js assets under `_next/` are published. Local development keeps the root path. The workflow installs with Bun's frozen lockfile before building and publishing the export.
+
+GitHub Pages serves the exported frontend only. Convex mutations, authentication callbacks, account dashboards, and other server-backed features need their configured backend and do not become static API endpoints as part of this deployment.
 
 Check out the [Next.js static export documentation](https://nextjs.org/docs/app/building-your-application/deploying/static-exports) for more details.

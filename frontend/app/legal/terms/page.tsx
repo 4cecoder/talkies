@@ -2,6 +2,7 @@
 
 import { Header } from '@/app/components/sections/Header';
 import { LegalSection } from '@/app/components/legal/LegalSection';
+import Link from 'next/link';
 import {
   FileText,
   UserPlus,
@@ -126,7 +127,7 @@ export default function TermsOfServicePage() {
                 <li>We only collect your email address for authentication purposes</li>
               </ul>
               <p>
-                For complete details, please read our <a href="/legal/privacy" className="text-purple-400 hover:text-purple-300 underline">Privacy Policy</a>.
+                For complete details, please read our <Link href="/legal/privacy" className="text-purple-400 hover:text-purple-300 underline">Privacy Policy</Link>.
               </p>
             </LegalSection>
 
@@ -198,12 +199,12 @@ export default function TermsOfServicePage() {
             <p className="text-neutral-400 mb-4">
               We're here to help. Reach out anytime.
             </p>
-            <a
+            <Link
               href="/contact"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition-transform hover:scale-105"
             >
               Contact Support
-            </a>
+            </Link>
           </div>
         </div>
       </main>

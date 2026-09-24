@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AlertTriangle } from './components/icons';
 import { Button } from './components/ui/Button';
 
@@ -11,6 +12,8 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
+
   useEffect(() => {
     // Log error to error reporting service
     if (process.env.NODE_ENV === 'production') {
@@ -35,7 +38,7 @@ export default function Error({
           </pre>
         )}
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => window.location.href = '/'}>
+          <Button variant="secondary" onClick={() => router.push('/')}>
             Go Home
           </Button>
           <Button variant="gradient" onClick={reset}>

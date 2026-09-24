@@ -5,54 +5,49 @@ on:
     branches: [master]
     paths:
       - "frontend/**"
-  workflow_dispatch: {}
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run
-# in-progress and latest queued.
 concurrency:
-  group: "pages"
+  group: github-pages-branch
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-publish:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout master
+        uses: actions/checkout@v6
 
-      - name: Setup bun
+      - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         working-directory: frontend
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Build static export
+      - name: Build project-site export
         working-directory: frontend
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_BASE_PATH: /talkies
+          NEXT_PUBLIC_SITE_URL: https://4cecoder.github.io/talkies
         run: bun run build
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Preserve Next.js asset folders
+        run: touch frontend/out/.nojekyll
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Publish static site to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: frontend/out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: frontend/out
+          force_orphan: true
+          commit_message: "Deploy Talkies website from ${GITHUB_SHA}"

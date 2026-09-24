@@ -2,7 +2,7 @@
 
 ## Why
 
-Talkies should make local dictation feel as quick and polished as the best commercial voice-input apps, without subscriptions, accounts, or cloud inference.
+Talkies is an open-source competitor to the growing field of voice-input apps. It should make local dictation feel as quick and polished as the best alternatives, without subscriptions, accounts, or cloud inference.
 
 ## Who it is for
 
