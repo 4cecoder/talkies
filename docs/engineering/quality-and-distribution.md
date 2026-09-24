@@ -37,7 +37,7 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge state for cleanup PR #145
 
-- Verified on 2026-09-24 at head `8b1edc68daad102a5f6f57c764ba943a7576abc2`: Linux Zig-master build and tests including fresh pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and tests; macOS build, package tests, and pinned S1-mini CPU inference; and website typecheck/lint/static export all pass. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement.
+- Verified on 2026-09-24 at head `2af9f1b5336ed47e31ff70e7fc120f417a34a44b`: Linux Zig-master build and tests including fresh pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and tests; macOS build, package tests, pinned S1-mini CPU inference, and asynchronous insertion build; and website typecheck/lint/static export all pass. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement.
 - GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
 - The latest automated Claude review check passes, but the active ruleset still requires one approving review; automated check success does not satisfy that review requirement.
 - The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
