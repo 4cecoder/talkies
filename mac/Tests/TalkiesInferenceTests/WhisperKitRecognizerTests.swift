@@ -1,5 +1,6 @@
 import XCTest
 import TalkiesInference
+import WhisperKit
 
 final class WhisperKitRecognizerTests: XCTestCase {
     func testRecordingIsDeletedWhenRecognizerIsNotReady() async throws {
@@ -34,5 +35,28 @@ final class WhisperKitRecognizerTests: XCTestCase {
         }
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+
+    func testTranscribesWithCachedModelWhenDownloadsAreDisabled() async throws {
+        guard ProcessInfo.processInfo.environment["TALKIES_RUN_WHISPERKIT_MODEL_TESTS"] == "1" else {
+            throw XCTSkip("Set TALKIES_RUN_WHISPERKIT_MODEL_TESTS=1 to download and run the WhisperKit tiny model.")
+        }
+
+        let modelFolder = try await WhisperKit.download(variant: "openai_whisper-tiny")
+        let recognizer = await MainActor.run {
+            WhisperKitRecognizer(modelName: "openai_whisper-tiny")
+        }
+        try await recognizer.initialize(download: false, modelFolder: modelFolder)
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot.appending(path: "tests/fixtures/jfk.wav")
+        let segments = try await recognizer.transcribe(fixtureURL)
+        let transcript = segments.map(\.text).joined(separator: " ")
+
+        XCTAssertTrue(transcript.localizedCaseInsensitiveContains("country"), transcript)
     }
 }

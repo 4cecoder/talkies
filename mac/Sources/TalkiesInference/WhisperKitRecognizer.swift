@@ -15,12 +15,15 @@ public final class WhisperKitRecognizer {
     }
 
     /// Loads the configured local model, downloading it on first use when needed.
-    public func initialize() async throws {
+    public func initialize(download: Bool = true, modelFolder: URL? = nil) async throws {
         guard whisperKit == nil else { return }
         whisperKit = try await WhisperKit(
             model: modelName,
+            modelFolder: modelFolder?.path,
+            tokenizerFolder: modelFolder,
             verbose: true,
-            logLevel: .debug
+            logLevel: .debug,
+            download: download
         )
     }
 

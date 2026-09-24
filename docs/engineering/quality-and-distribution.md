@@ -2,7 +2,7 @@
 
 ## Why
 
-The CI builds and tests the actual macOS Swift package, runs native Windows and Zig/Linux build-and-test jobs, and checks the frontend on pull requests. macOS CI also downloads the pinned S1-mini GGUF and verifies CPU inference against cleanup assertions. Versioned releases package desktop archives and SHA-256 checksums; native installers and an update path remain planned.
+The CI builds and tests the actual macOS Swift package, runs native Windows and Zig/Linux build-and-test jobs, and checks the frontend on pull requests. macOS CI downloads the pinned S1-mini GGUF and verifies CPU cleanup inference, then exercises WhisperKit transcription from a provisioned tiny-model folder with framework downloads disabled. Versioned releases package desktop archives and SHA-256 checksums; native installers and an update path remain planned.
 
 Metanoia provides two useful patterns: a dedicated regression workflow that runs tests on changes, and a rolling `latest` release alongside versioned releases. Talkies should adopt those patterns without allowing an untested rolling build to replace a good release.
 
@@ -12,7 +12,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 
 | Surface | Pull-request gate |
 |---|---|
-| macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, package and inspect the `.app` zip, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify real CPU inference. |
+| macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, package and inspect the `.app` zip, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify CPU cleanup inference. Provision the WhisperKit tiny model and run `TALKIES_RUN_WHISPERKIT_MODEL_TESTS=1 swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled` to exercise ASR with framework downloads disabled. |
 | Windows | Restore and build WPF app; run fast .NET tests; cache and integrity-check pinned Whisper tiny and S1-mini weights, then run CPU ASR and cleanup with model-store HTTP requests rejected during inference |
 | Linux | Track Zig master; build CPU-only llama.cpp and whisper.cpp; build the app and run unit tests plus a pinned S1-mini download/inference test on CPU |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |
@@ -37,9 +37,9 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge state for cleanup PR #145
 
-- Verified on 2026-09-24 at PR head `5deaf9a9fddc24a21d10dbe270e43e88603289e4`: all five CI jobs pass—Linux Zig-master build and tests including pinned S1-mini download, SHA-256 validation, and CPU inference; Windows build and fast tests, plus cached Whisper ASR and S1-mini CPU inference using a network-denying model-store client; macOS build, package tests, pinned S1-mini CPU inference, and app bundle smoke test; and website typecheck/lint/static export. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement. Windows Whisper model downloads now pin their source revision, expected size, and SHA-256; Linux local vocabulary prompt support is included in this verified head.
+- Verified on 2026-09-24 at PR head `33669841e04f086fd09272f0926c923a5471a97f`: all four project CI jobs pass. Linux builds with Zig 0.17-dev and runs pinned S1-mini cleanup and pinned Whisper tiny CPU ASR inference; Windows builds and tests cached Whisper ASR and S1-mini CPU inference with model-store requests denied during inference; macOS builds, runs package tests, verifies pinned S1-mini CPU inference and WhisperKit tiny ASR from a model folder with downloads disabled, and smoke-tests the app bundle; the website passes typecheck, lint, and static export. Windows also has fast model-store tests for verified downloads, bad hashes, wrong sizes, partial cleanup, and atomic replacement. Both Windows and Linux Whisper downloads pin a repository revision and verify expected size and SHA-256.
 - GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
-- The Claude review action failed on this head with `is_error:true` before producing a review. An earlier failure also reported an internal directory mismatch. No automated review findings were produced; the active ruleset still requires one human approving review.
+- The Claude review action failed on this head before producing a review. CodeRabbit has posted comments on earlier commits in the PR; review each against the current code before acting. The active ruleset still requires one human approving review.
 - The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
 - The GitHub Pages API currently returns 404, so deployment is not yet configured. Enable Pages with Actions as the source after merge, then verify the published site.
 

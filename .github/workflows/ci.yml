@@ -101,6 +101,18 @@ jobs:
           TALKIES_RUN_MODEL_TESTS: '1'
         run: swift test --filter S1MiniCleanerIntegrationTests
 
+      - name: Cache WhisperKit model files
+        uses: actions/cache@v5
+        with:
+          path: ~/Documents/huggingface
+          key: ${{ runner.os }}-whisperkit-tiny-${{ hashFiles('mac/Package.resolved') }}
+
+      - name: Verify cached WhisperKit transcription with downloads disabled
+        working-directory: mac
+        env:
+          TALKIES_RUN_WHISPERKIT_MODEL_TESTS: '1'
+        run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled
+
   windows:
     name: Windows Build & Test
     runs-on: windows-latest

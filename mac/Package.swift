@@ -74,7 +74,10 @@ let package = Package(
         ),
         .testTarget(
             name: "TalkiesInferenceTests",
-            dependencies: ["TalkiesInference"],
+            dependencies: [
+                "TalkiesInference",
+                .product(name: "WhisperKit", package: "WhisperKit"),
+            ],
             path: "Tests/TalkiesInferenceTests"
         ),
     ]
