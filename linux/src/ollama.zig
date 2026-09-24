@@ -120,7 +120,7 @@ fn parseOllamaResponse(allocator: std.mem.Allocator, json: []const u8) ![]u8 {
 
 /// Escape JSON string (handle ", \, newlines, etc.)
 fn escapeJson(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (s) |ch| {
@@ -154,7 +154,7 @@ fn escapeJson(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
 
 /// Unescape JSON string (handle \n, \t, \", \\, etc.)
 fn unescapeJson(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
