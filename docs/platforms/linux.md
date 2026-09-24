@@ -11,6 +11,10 @@ Zig-based voice transcription application for Linux with global hotkey support f
 - 🖥️ **Dual Mode** - Works on both X11 and Wayland (Hyprland)
 - 📦 **Lightweight** - <5MB binary, <10 second builds
 
+Ollama transcript cleanup accepts only `localhost`, `127.0.0.0/8`, or IPv6 `::1` endpoints.
+Remote endpoints are rejected and HTTP redirects are disabled to keep transcript requests on
+the local machine.
+
 ## Quick Start
 
 ### Option A: Download a release

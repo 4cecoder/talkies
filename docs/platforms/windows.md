@@ -28,6 +28,10 @@ A professional-grade audio transcription application for Windows with real-time 
 - **Model Discovery**: Automatic detection of available models
 - **Error Handling**: User-friendly dialogs with troubleshooting guidance
 
+Inference endpoints must resolve to `localhost` or a loopback IP address. Talkies rejects
+remote hosts and does not follow HTTP redirects, so transcript text stays with a local model
+server. First-time model downloads still require network access.
+
 ### 📤 Professional Export
 Export your transcripts in multiple formats:
 - **SRT** (SubRip) - For video subtitles with proper timestamp formatting
@@ -293,6 +297,7 @@ uv run dotnet test
 ## 🔒 Privacy & Security
 
 - All processing happens locally on your machine
+- Ollama and LM Studio inference are restricted to loopback endpoints; redirects are disabled
 - Audio files are processed and discarded
 - Settings stored locally in AppData
 - No cloud transmission without explicit action
