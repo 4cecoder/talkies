@@ -1,4 +1,9 @@
 const std = @import("std");
+const cleanup = @import("cleanup.zig");
+
+test {
+    _ = cleanup;
+}
 const audio = @import("audio.zig");
 const whisper = @import("whisper.zig");
 const clipboard = @import("clipboard.zig");
