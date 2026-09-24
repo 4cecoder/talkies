@@ -49,7 +49,7 @@ pub fn getDataDir(allocator: std.mem.Allocator) ![]const u8 {
 
 /// Ensure a directory exists, creating it if necessary
 pub fn ensureDir(path: []const u8) !void {
-    std.fs.makeDirAbsolute(path) catch |err| {
+    std.Io.Dir.createDirAbsolute(std.Io.Threaded.global_single_threaded.io(), path, .default) catch |err| {
         if (err != error.PathAlreadyExists) {
             return err;
         }
