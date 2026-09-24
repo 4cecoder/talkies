@@ -31,7 +31,13 @@ namespace Talkies.Windows.Services
             }
 
             var normalizedBase = new Uri(baseUri.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
-            return Uri.TryCreate(normalizedBase, route.TrimStart('/'), out requestUri);
+            if (!Uri.TryCreate(normalizedBase, route.TrimStart('/'), out var candidate) || candidate is null)
+            {
+                return false;
+            }
+
+            requestUri = candidate;
+            return true;
         }
 
         /// <summary>
