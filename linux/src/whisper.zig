@@ -267,12 +267,9 @@ pub const WhisperService = struct {
             url,
         };
 
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdout_behavior = .Inherit;
-        child.stderr_behavior = .Inherit;
-
-        const term = try child.spawnAndWait();
-        if (term != .Exited or term.Exited != 0) {
+        var child = try std.process.spawn(file_io, .{ .argv = argv });
+        const term = try child.wait(file_io);
+        if (!term.success()) {
             return error.DownloadFailed;
         }
 

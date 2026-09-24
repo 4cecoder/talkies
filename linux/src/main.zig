@@ -343,11 +343,7 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
 
     // Run pactl list sources short to get all audio sources
     const argv = &[_][]const u8{ "pactl", "list", "sources", "short" };
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
+    var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdout = .pipe, .stderr = .pipe });
 
     const stdout = child.stdout orelse return error.NoStdout;
 
@@ -357,13 +353,13 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
 
     var buffer: [4096]u8 = undefined;
     while (true) {
-        const n = try stdout.read(&buffer);
+        const n = try stdout.readStreaming(utils.io(), &.{&buffer});
         if (n == 0) break;
         try output_list.appendSlice(allocator, buffer[0..n]);
     }
 
-    const term = try child.wait();
-    if (term != .Exited or term.Exited != 0) {
+    const term = try child.wait(utils.io());
+    if (!term.success()) {
         std.debug.print("Error: Failed to list audio devices\n", .{});
         return error.PactlFailed;
     }

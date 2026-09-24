@@ -12,7 +12,7 @@ pub fn logError(comptime fmt: []const u8, args: anytype) void {
 
 /// Log a debug message (only in debug builds)
 pub fn logDebug(comptime fmt: []const u8, args: anytype) void {
-    if (@import("builtin").mode == .Debug) {
+    if (@import("builtin").mode == .debug) {
         std.debug.print("[DEBUG] " ++ fmt ++ "\n", args);
     }
 }
@@ -72,13 +72,8 @@ pub fn ensureDir(path: []const u8) !void {
 /// Uses aplay for WAV playback (part of alsa-utils, should already be installed)
 pub fn playSound(sound_file: []const u8) void {
     // Spawn process in background - don't wait for it to complete
-    var child = std.process.Child.init(&[_][]const u8{ "aplay", "-q", sound_file }, std.heap.page_allocator);
-    child.stdin_behavior = .Ignore;
-    child.stdout_behavior = .Ignore;
-    child.stderr_behavior = .Ignore;
-
-    // Spawn and detach - fire and forget
-    _ = child.spawn() catch {
+    const argv = &[_][]const u8{ "aplay", "-q", sound_file };
+    _ = std.process.spawn(io(), .{ .argv = argv, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch {
         // Silently fail if aplay not installed or sound file missing
         return;
     };
