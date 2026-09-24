@@ -1,6 +1,50 @@
 const std = @import("std");
-const posix = std.posix;
+const utils = @import("utils.zig");
 const linux = std.os.linux;
+
+/// Small Linux syscall adapter for APIs removed from std.posix in Zig 0.17.
+const posix = struct {
+    const socket_t = std.posix.socket_t;
+    const sockaddr = std.posix.sockaddr;
+    const socklen_t = std.posix.socklen_t;
+    const AF = std.posix.AF;
+    const SOCK = std.posix.SOCK;
+    const SOL = std.posix.SOL;
+    const SO = std.posix.SO;
+
+    fn check(result: usize) !usize {
+        if (linux.errno(result) != .SUCCESS) return error.SocketOperationFailed;
+        return result;
+    }
+
+    fn close(fd: socket_t) void {
+        _ = linux.close(fd);
+    }
+
+    fn socket(domain: u32, socket_type: u32, protocol: u32) !socket_t {
+        return @intCast(try check(linux.socket(domain, socket_type, protocol)));
+    }
+
+    fn setsockopt(fd: socket_t, level: i32, option: u32, value: []const u8) !void {
+        _ = try check(linux.setsockopt(fd, level, option, value.ptr, @intCast(value.len)));
+    }
+
+    fn bind(fd: socket_t, address: *const sockaddr, length: usize) !void {
+        _ = try check(linux.bind(fd, address, @intCast(length)));
+    }
+
+    fn listen(fd: socket_t, backlog: u32) !void {
+        _ = try check(linux.listen(fd, backlog));
+    }
+
+    fn read(fd: socket_t, buffer: []u8) !usize {
+        return try check(linux.read(fd, buffer.ptr, buffer.len));
+    }
+
+    fn write(fd: socket_t, buffer: []const u8) !usize {
+        return try check(linux.write(fd, buffer.ptr, buffer.len));
+    }
+};
 
 /// Simple WebSocket server for Talkies daemon using posix sockets
 /// Handles text messages only, no binary support needed
@@ -156,7 +200,7 @@ pub const Server = struct {
             const rc = linux.accept4(@intCast(self.socket_fd), @ptrCast(&client_addr), &addr_len, 0);
             const client_sock: posix.socket_t = if (rc < 0) {
                 std.debug.print("Accept error: {d}\n", .{-rc});
-                posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                utils.sleepNanoseconds(100 * std.time.ns_per_ms);
                 continue;
             } else @intCast(rc);
 
