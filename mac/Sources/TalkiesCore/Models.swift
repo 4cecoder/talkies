@@ -16,6 +16,26 @@ public enum ActivationKey: Int, CaseIterable, Codable, Sendable, Identifiable {
     }
 }
 
+/// A serializable copy of one representation on a system clipboard item.
+public struct ClipboardRepresentation: Codable, Equatable, Sendable {
+    public let type: String
+    public let data: Data
+
+    public init(type: String, data: Data) {
+        self.type = type
+        self.data = data
+    }
+}
+
+/// Preserves every item and representation while Talkies temporarily uses the clipboard to paste text.
+public struct ClipboardSnapshot: Codable, Equatable, Sendable {
+    public let items: [[ClipboardRepresentation]]
+
+    public init(items: [[ClipboardRepresentation]]) {
+        self.items = items
+    }
+}
+
 /// Represents a single segment of transcribed audio
 public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID

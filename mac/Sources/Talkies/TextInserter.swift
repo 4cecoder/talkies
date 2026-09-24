@@ -1,5 +1,6 @@
 import Cocoa
 @preconcurrency import ApplicationServices
+import TalkiesCore
 
 @MainActor
 class TextInserter {
@@ -19,8 +20,8 @@ class TextInserter {
 
     // MARK: - State for handling rapid successive operations
 
-    /// Stores the original clipboard content before the first operation in a sequence
-    private var originalClipboardContent: String?
+    /// Stores every original clipboard item and representation before a paste sequence.
+    private var originalClipboardContent: ClipboardSnapshot?
 
     /// Queue to serialize paste operations and prevent race conditions
     private var operationQueue: [(text: String, id: UUID)] = []
@@ -38,7 +39,7 @@ class TextInserter {
 
         // Capture original clipboard only on first call in a sequence
         if operationQueue.isEmpty && !isExecutingOperation {
-            originalClipboardContent = pasteboard.string(forType: .string)
+            originalClipboardContent = Self.snapshot(from: pasteboard)
         }
 
         // Enqueue the operation
@@ -58,65 +59,82 @@ class TextInserter {
         let operation = operationQueue.removeFirst()
         let pasteboard = NSPasteboard.general
 
-        print("📋 TextInserter: Copying to clipboard: \(operation.text)")
-
         // Copy text to clipboard
         pasteboard.clearContents()
         let success = pasteboard.setString(operation.text, forType: .string)
-        print("📋 TextInserter: Clipboard set success: \(success)")
-
-        // Verify clipboard content
-        if let clipboardContent = pasteboard.string(forType: .string) {
-            print("📋 TextInserter: Clipboard now contains: \(clipboardContent)")
+        guard success else {
+            print("⚠️ TextInserter: Could not stage text on the clipboard")
+            finishOperation(using: pasteboard)
+            return
         }
 
-        // Small delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardReadyDelay) {
-            print("📋 TextInserter: Simulating paste...")
-            // Simulate Cmd+V paste
-            self.simulatePaste()
-
-            // Wait for paste to complete before processing next operation
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) {
-                self.isExecutingOperation = false
-
-                // If more operations queued, process them
-                if !self.operationQueue.isEmpty {
-                    self.processNextOperation()
-                } else {
-                    // All operations complete - restore original clipboard
-                    pasteboard.clearContents()
-                    if let original = self.originalClipboardContent {
-                        pasteboard.setString(original, forType: .string)
-                    }
-                    self.originalClipboardContent = nil
-                }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.clipboardReadyDelay))
+            let didPaste = await Self.simulatePaste()
+            if !didPaste {
+                print("⚠️ TextInserter: Paste command failed; transcript remains visible in Talkies for manual copying")
             }
+            try? await Task.sleep(for: .seconds(Self.clipboardRestoreDelay))
+            self.finishOperation(using: pasteboard)
         }
     }
 
-    /// Simulate Cmd+V paste keystroke using osascript (most reliable cross-app)
-    private func simulatePaste() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        task.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
+    private func finishOperation(using pasteboard: NSPasteboard) {
+        isExecutingOperation = false
+        if !operationQueue.isEmpty {
+            processNextOperation()
+        } else {
+            Self.restore(originalClipboardContent, to: pasteboard)
+            originalClipboardContent = nil
+        }
+    }
 
-        let pipe = Pipe()
-        task.standardError = pipe
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            if task.terminationStatus != 0 {
-                let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
-                let errorString = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-                print("📋 TextInserter: osascript error: \(errorString)")
-            } else {
-                print("📋 TextInserter: Paste command sent successfully")
+    private static func snapshot(from pasteboard: NSPasteboard) -> ClipboardSnapshot {
+        let items = (pasteboard.pasteboardItems ?? []).map { pasteboardItem in
+            pasteboardItem.types.compactMap { type in
+                pasteboardItem.data(forType: type).map {
+                    ClipboardRepresentation(type: type.rawValue, data: $0)
+                }
             }
-        } catch {
-            print("📋 TextInserter: Failed to run osascript: \(error)")
+        }
+        return ClipboardSnapshot(items: items)
+    }
+
+    private static func restore(_ snapshot: ClipboardSnapshot?, to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        guard let snapshot else { return }
+
+        let items = snapshot.items.map { representations in
+            let item = NSPasteboardItem()
+            for representation in representations {
+                item.setData(representation.data, forType: NSPasteboard.PasteboardType(rawValue: representation.type))
+            }
+            return item as NSPasteboardWriting
+        }
+
+        if !items.isEmpty {
+            _ = pasteboard.writeObjects(items)
+        }
+    }
+
+    /// Simulate Cmd+V without blocking the main thread.
+    private static func simulatePaste() async -> Bool {
+        await withCheckedContinuation { continuation in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+            task.terminationHandler = { process in
+                continuation.resume(returning: process.terminationStatus == 0)
+            }
+
+            do {
+                try task.run()
+            } catch {
+                print("⚠️ TextInserter: Failed to launch paste command: \(error.localizedDescription)")
+                continuation.resume(returning: false)
+            }
         }
     }
 
