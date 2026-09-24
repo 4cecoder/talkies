@@ -35,11 +35,12 @@ Use changed-path filtering only when it still creates stable required check name
 
 Every release should contain version, commit SHA, platform/architecture, signing status, model licenses, and checksums. A failed platform build must prevent partial releases from being presented as complete.
 
-## Current merge blockers for cleanup PR #145
+## Current merge state for cleanup PR #145
 
-- Verified on 2026-09-24 at head `0a1bd10120c2e12fceac52324caa89261b9d308a`: Linux Zig-master, Windows build and tests, macOS build and tests, the pinned S1-mini CPU cleanup check, frontend typecheck/lint/static export, and Claude review all pass.
-- GitHub reports `REVIEW_REQUIRED`; the repository ruleset still requires an approving review. Auto-merge is enabled and will merge after required checks and approval are satisfied.
-- The `Vercel` status is red from an account-level integration, but the active ruleset does not require it.
+- Verified on 2026-09-24 at head `f83d7561613150d0c740dd4a5db3802f4abd4b29`: Linux Zig-master, Windows build and tests, macOS build and tests including pinned S1-mini CPU inference, and website typecheck/lint/static export all pass. Windows also has fast offline tests for verified model download success, bad hashes, wrong sizes, partial cleanup, and atomic replacement.
+- GitHub reports `REVIEW_REQUIRED`. The active `bad boys` ruleset requires one approving review and auto-merge is enabled; GitHub reports `BLOCKED` until that approval is recorded.
+- The Claude review action is red because its run exits with `is_error: true`; it did not post review comments. This is not a required status check in the active ruleset.
+- The `Vercel` status is red from an account-level integration and is not required by the active ruleset.
 - The GitHub Pages API currently returns 404, so deployment is not yet configured. Enable Pages with Actions as the source after merge, then verify the published site.
 
-The only current PR merge gate is the required approving review. Page publication remains a post-merge distribution task.
+Page publication remains a post-merge distribution task.

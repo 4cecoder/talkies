@@ -6,14 +6,14 @@ This comparison uses the local-only product promise in [Product vision](vision.m
 
 ## Talkies today
 
-The macOS app has a menu-bar entry, a floating dictation window, Right Option activation with press/hold detection, AVFoundation recording, WhisperKit transcription, cursor insertion, opt-in in-process S1-mini cleanup through llama.cpp on CPU, loopback-only Ollama/LM Studio adapters, basic settings, and TXT/VTT/SRT export. Windows and Linux have independent apps. The repository has platform unit/integration tests and a tag-based release workflow, but the coverage and artifact quality are uneven.
+The macOS app has a menu-bar entry, a floating dictation window, Right Option activation with press/hold detection, AVFoundation recording, WhisperKit transcription, cursor insertion, opt-in in-process S1-mini cleanup through llama.cpp on CPU, loopback-only Ollama/LM Studio adapters, basic settings, and TXT/VTT/SRT export. Windows has an embedded CPU S1-mini provider with revision-pinned download, SHA-256 verification, license notices, and first-use progress, alongside loopback-only Ollama and LM Studio. Linux transcribes with whisper.cpp and offers YAP refinement through loopback Ollama; it does not yet ship an embedded S1-mini runtime or model lifecycle. The repository has platform unit/integration tests and a tag-based release workflow, but the coverage and artifact quality are uneven.
 
 ## Gaps
 
 | Capability | Talkies now | Target | Priority |
 |---|---|---|---|
 | Offline speech recognition | WhisperKit on macOS; different engines elsewhere | Documented local model catalog on all desktop platforms; downloadable and usable offline | P0 |
-| Transcript cleanup | Optional embedded S1-mini GGUF through llama.cpp on macOS; optional loopback Ollama/LM Studio; raw-ASR fallback | Built-in local cleanup across desktop platforms, tested controls and model lifecycle | P0 |
+| Transcript cleanup | Embedded S1-mini GGUF through llama.cpp on macOS and CPU LLamaSharp on Windows; optional loopback Ollama/LM Studio on macOS/Windows; loopback Ollama YAP on Linux | Built-in local cleanup across all desktop platforms, tested controls and model lifecycle; raw-ASR fallback | P0 |
 | Swift implementation | SwiftUI shell, `TalkiesCore`, AVFoundation `TalkiesAudio`, and `TalkiesInference` adapters for WhisperKit and llama.cpp | Add focused audio and recognizer tests; keep framework types behind target APIs and verify the signed app bundle | P0 |
 | Global activation | Right Option and a threshold | User-configurable shortcuts, hold/toggle, cancel, silence stop, conflict checks | P0 |
 | Insertion | Accessibility-based text insertion | Pasteboard restore, permissions onboarding, app-specific insertion fallback, undo/recovery | P0 |
@@ -36,8 +36,8 @@ The card's trained control line accepts four style values (`casual`, `semi-casua
 ## Delivery sequence
 
 1. Keep the macOS volatility split stable by adding focused `TalkiesAudio` and recognizer adapter tests; the package targets and adapters now exist.
-2. Add model download progress and local model management, then bring the verified S1-mini cleanup pipeline to Windows and Linux.
-3. Bring configurable shortcuts, insertion recovery, modes, vocabulary, and offline guarantees to the core dictation loop.
+2. Keep verified S1-mini cleanup on macOS and Windows, then bring an embedded CPU runtime, model lifecycle, and matching offline tests to Linux.
+3. Bring configurable shortcuts, insertion recovery, modes, vocabulary, and explicit airplane-mode acceptance to the core dictation loop.
 4. Extend the current CI matrix with shared cleanup fixtures and model manifest checks; add native installers and verify the published download page.
 5. Add file transcription, history, meeting workflow, and app-specific refinements after the core loop is reliable.
 
