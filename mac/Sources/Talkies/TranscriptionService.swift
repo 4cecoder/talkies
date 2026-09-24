@@ -141,14 +141,6 @@ class TranscriptionService: ObservableObject {
     }
 
     func transcribeAudioFile(_ audioURL: URL) async {
-        guard recognizer.isReady else {
-            await MainActor.run {
-                error = "Local speech recognizer not initialized"
-                statusMessage = "Error: Not initialized"
-            }
-            return
-        }
-
         await MainActor.run {
             isTranscribing = true
             statusMessage = "Transcribing audio..."
@@ -158,7 +150,10 @@ class TranscriptionService: ObservableObject {
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
 
         do {
-            let recognizedSegments = try await recognizer.transcribe(audioURL)
+            let recognizedSegments = try await recognizer.transcribe(
+                audioURL,
+                deleteAudioAfterProcessing: true
+            )
             print("✅ Transcription complete - \(recognizedSegments.count) segments")
 
             await MainActor.run {

@@ -25,7 +25,16 @@ public final class WhisperKitRecognizer {
     }
 
     /// Transcribes a local audio file and returns framework-independent segments.
-    public func transcribe(_ audioURL: URL) async throws -> [TranscriptSegment] {
+    public func transcribe(
+        _ audioURL: URL,
+        deleteAudioAfterProcessing: Bool = false
+    ) async throws -> [TranscriptSegment] {
+        defer {
+            if deleteAudioAfterProcessing {
+                try? FileManager.default.removeItem(at: audioURL)
+            }
+        }
+
         guard let whisperKit else {
             throw WhisperKitRecognizerError.notInitialized
         }
@@ -71,6 +80,13 @@ public final class WhisperKitRecognizer {
     }
 }
 
-public enum WhisperKitRecognizerError: Error {
+public enum WhisperKitRecognizerError: LocalizedError {
     case notInitialized
+
+    public var errorDescription: String? {
+        switch self {
+        case .notInitialized:
+            return "Local speech recognizer not initialized"
+        }
+    }
 }
