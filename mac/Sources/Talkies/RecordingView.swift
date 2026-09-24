@@ -23,7 +23,7 @@ struct RecordingView: View {
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
-                    Text("Real-time transcription with MLX Whisper")
+                    Text("Real-time transcription with WhisperKit")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }

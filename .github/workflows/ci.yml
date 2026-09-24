@@ -78,6 +78,12 @@ jobs:
         working-directory: mac
         run: swift test
 
+      - name: Download pinned S1-mini and verify CPU cleanup
+        working-directory: mac
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+        run: swift test --filter S1MiniCleanerIntegrationTests
+
   windows:
     name: Windows Build & Test
     runs-on: windows-latest

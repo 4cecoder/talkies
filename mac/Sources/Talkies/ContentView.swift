@@ -340,7 +340,7 @@ struct CompactSettingsView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
 
-                    Text("MLX (GPU Accelerated)")
+                    Text("WhisperKit (On-device)")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.9))
                         .padding(12)

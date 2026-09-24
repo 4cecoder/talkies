@@ -1,12 +1,13 @@
 # Talkies Swift macOS App
 
-A modern, native Swift macOS application for real-time voice transcription using MLX Whisper, inspired by SuperWhisper's clean and professional design.
+A native Swift macOS dictation app using WhisperKit for speech recognition and optional S1-mini cleanup through llama.cpp.
 
 ## Features
 
 ### 🎤 Real-Time Transcription
-- Live voice-to-text with sub-second latency
-- MLX Whisper integration for Apple Silicon optimization
+- Live voice-to-text using on-device WhisperKit models
+- Optional S1-mini transcript cleanup using the local Q4_K_M GGUF model
+- CPU-only cleanup inference through llama.cpp
 - Voice Activity Detection (VAD) for efficient processing
 - Real-time audio level monitoring
 
@@ -39,7 +40,7 @@ A modern, native Swift macOS application for real-time voice transcription using
 ## Requirements
 
 - macOS 15+
-- Apple Silicon (M1/M2/M3/M4)
+- Apple Silicon recommended for WhisperKit performance
 - Swift 6.3 or newer
 - Microphone access permission
 
@@ -94,28 +95,15 @@ The package manifest requires Swift tools 6.3. CI and release builds use Swift 6
 - **TalkiesApp.swift**: Main app entry point
 - **ContentView.swift**: Primary interface with sidebar navigation
 - **AudioRecorder.swift**: AVFoundation-based audio recording
-- **TranscriptionService.swift**: Python bridge for MLX Whisper
+- **TranscriptionService.swift**: WhisperKit transcription pipeline
+- **TalkiesInference**: S1-mini model storage and llama.cpp CPU adapter
 - **RecordingView.swift**: Live recording interface
 - **TranscriptView.swift**: Transcript viewing and editing
 - **SettingsView.swift**: App configuration
 
-### Python Integration
-
-The Swift app communicates with the existing Python MLX Whisper backend through subprocess communication, maintaining compatibility with the original CLI tools while providing a native interface.
-
 ## Performance
 
-### Apple Silicon Optimization
-- MLX Whisper with Metal GPU acceleration
-- Sub-second transcription latency
-- Efficient memory usage
-- Native audio processing
-
-### Benchmarks
-- **Tiny Model**: ~200ms latency
-- **Base Model**: ~400ms latency  
-- **Medium Model**: ~600ms latency
-- **Large Model**: ~800ms latency
+Speech recognition and transcript cleanup run on-device. S1-mini cleanup uses the CPU and its model is downloaded on first use; after download, cleanup works offline.
 
 ## Troubleshooting
 
@@ -125,17 +113,11 @@ If microphone access is denied:
 2. Enable Talkies in the list
 3. Restart the app
 
-### Python Integration Issues
-If transcription fails:
-1. Ensure Python 3.11+ is installed
-2. Verify MLX Whisper is installed: `pip install mlx-whisper`
-3. Check the Python path in Settings
+### S1-mini download issues
+S1-mini requires a one-time model download. Connect to the network, retry cleanup, and then the app can use the verified local model offline. If cleanup still fails, Talkies inserts the raw WhisperKit transcript.
 
 ### Performance Issues
-For better performance:
-1. Use a smaller model for real-time use
-2. Ensure sufficient RAM is available
-3. Close other GPU-intensive applications
+For better performance, select a smaller WhisperKit speech model and leave enough memory for the local speech model and S1-mini's CPU context.
 
 ## Development
 
@@ -184,4 +166,4 @@ For issues and feature requests:
 
 ---
 
-**Talkies** - Blazing-fast real-time voice transcription optimized for Apple Silicon.
+**Talkies** - Local voice dictation with optional offline transcript cleanup.

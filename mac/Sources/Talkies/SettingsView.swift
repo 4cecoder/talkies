@@ -271,7 +271,7 @@ struct GeneralSettingsView: View {
                 }
                 .disabled(!(settingsService.settings.s1Mini?.isEnabled ?? false))
 
-                Text("The first use downloads the S1-mini MLX model (about 335 MB). Cleanup runs locally after download; transcript text is not sent to a server.")
+                Text("The first use downloads the S1-mini GGUF model (about 462 MB). Cleanup runs on your CPU after download; transcript text is not sent to a server.")
                     .font(.caption)
                     .foregroundColor(.secondary)
 

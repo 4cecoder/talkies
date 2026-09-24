@@ -2,7 +2,7 @@
 
 ## Why
 
-The SwiftPM manifest now separates Foundation-only `TalkiesCore` from volatile `TalkiesInference`, which owns the embedded MLX S1-mini adapter. The executable still owns the SwiftUI/AppKit shell, audio capture, WhisperKit integration, settings, and plugins. The next extraction is `TalkiesAudio`, followed by moving the ASR adapter into `TalkiesInference`.
+The SwiftPM manifest now separates Foundation-only `TalkiesCore` from volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter and pinned GGUF model lifecycle. The executable still owns the SwiftUI/AppKit shell, audio capture, WhisperKit integration, settings, and plugins. The next extraction is `TalkiesAudio`, followed by moving the ASR adapter into `TalkiesInference`.
 
 ## Proposed products
 
@@ -10,7 +10,7 @@ The SwiftPM manifest now separates Foundation-only `TalkiesCore` from volatile `
 |---|---|---|
 | `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
 | `TalkiesAudio` library | Medium | Microphone capture, device selection, VAD, temporary-file lifecycle; planned |
-| `TalkiesInference` library | High | Embedded MLX S1-mini cleanup adapter and its pinned model load; WhisperKit ASR adapter and model lifecycle remain to be moved here |
+| `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter and its pinned GGUF lifecycle; WhisperKit ASR adapter and model lifecycle remain to be moved here |
 | `TalkiesApp` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, paste integration |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
@@ -25,10 +25,10 @@ TalkiesApp ──▶ TalkiesCore
     └──▶ TalkiesInference ──▶ TalkiesCore
               │
               ├── WhisperKit (ASR)
-              └── llama.cpp/MLX backend (S1-mini, selected per platform)
+              └── llama.cpp CPU backend (S1-mini)
 ```
 
-`TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, MLX, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
+`TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
 
 ## SPM layout
 
@@ -59,7 +59,7 @@ AVAudioEngine → SpeechRecognizer.transcribe → raw transcript
               → optional TranscriptCleaner.clean → insertion/export
 ```
 
-The ASR and cleanup stages receive local files/text only. Model downloads go through a model-store service with explicit download state, verified files, version pinning, and offline-ready status. The cleanup protocol returns either cleaned text, a valid empty result, or a typed failure. The pipeline retains raw ASR until cleanup succeeds and follows a user-visible fallback policy.
+The ASR and cleanup stages receive local files/text only. Model downloads go through a model-store service with verified files, version pinning, and offline-ready status. The cleanup protocol returns either cleaned text, a valid empty result, or a typed failure. The pipeline retains raw ASR until cleanup succeeds and follows a user-visible fallback policy.
 
 ## Migration order
 
@@ -67,6 +67,6 @@ The ASR and cleanup stages receive local files/text only. Model downloads go thr
 2. Add `TalkiesAudio` and keep AVFoundation ownership out of domain types.
 3. Move `TranscriptionService` and WhisperKit-specific code to `TalkiesInference`; use a recognizer protocol at the app boundary.
 4. Move SwiftUI/AppKit code into `TalkiesApp` and add app-bundle packaging.
-5. Add model progress, explicit download/delete controls, and model-backed test automation. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
+5. Add model progress and explicit download/delete controls. The model-backed CPU golden test now runs in macOS CI. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
 
 No migration step should silently delete or rewrite the user's uncommitted files.

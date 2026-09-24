@@ -22,9 +22,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm", exact: "2.30.6"),
-        .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.30.6"),
-        .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.1.6"),
+        .package(url: "https://github.com/mattt/llama.swift", exact: "2.10549.0"),
         // DISABLED: KokoroSwift has Swift 6.2 compatibility bug in MisakiSwift dependency
         // .package(path: "/tmp/kokoro-ios")
     ],
@@ -37,12 +35,7 @@ let package = Package(
             name: "TalkiesInference",
             dependencies: [
                 "TalkiesCore",
-                .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXLLM", package: "mlx-swift-lm"),
-                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
-                .product(name: "Hub", package: "swift-transformers"),
-                .product(name: "Transformers", package: "swift-transformers"),
-                .product(name: "Tokenizers", package: "swift-transformers"),
+                .product(name: "LlamaSwift", package: "llama.swift"),
             ],
             path: "Sources/TalkiesInference"
         ),

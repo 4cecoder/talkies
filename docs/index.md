@@ -26,7 +26,7 @@ Talkies is a free, open-source dictation app for macOS, Windows, and Linux. The 
 
 ## Current state
 
-The macOS package builds with Swift 6.3.3. Speech recognition uses WhisperKit. Its `TalkiesCore` target contains stable transcript and cleanup contracts; the volatile `TalkiesInference` target contains an embedded MLX S1-mini adapter. S1-mini cleanup is opt-in in General settings and uses a pinned model revision. The app downloads weights on first use and keeps transcript cleanup in-process. Windows and Linux have separate native implementations and do not yet share this cleanup behavior or feature set.
+The macOS package builds with Swift 6.3.3. Speech recognition uses WhisperKit. Its `TalkiesCore` target contains stable transcript and cleanup contracts; the volatile `TalkiesInference` target contains a llama.cpp adapter for the pinned S1-mini GGUF. S1-mini cleanup is opt-in in General settings, downloads weights on first use, and runs inference on the CPU. After the model is available, transcript cleanup works offline and transcript text never leaves the device. Windows and Linux have separate native implementations and do not yet share this cleanup behavior or feature set.
 
 ## Architecture map
 

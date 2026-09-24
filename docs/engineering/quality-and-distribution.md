@@ -2,7 +2,7 @@
 
 ## Why
 
-The current CI selects macOS, Windows, and Linux jobs, but the macOS job writes a temporary package manifest that skips the full app, Linux is currently blocked on Zig master removing `@cImport`, and the frontend has no pull-request build gate. The release workflow packages basic archives; it does not yet provide a complete installer/update path across supported systems.
+The CI now builds and tests the actual macOS Swift package, runs native Windows and Zig/Linux build-and-test jobs, and checks the frontend on pull requests. macOS CI also downloads the pinned S1-mini GGUF and verifies CPU inference against cleanup assertions. The release workflow still packages basic archives; a complete installer and update path across supported systems remains planned.
 
 Metanoia provides two useful patterns: a dedicated regression workflow that runs tests on changes, and a rolling `latest` release alongside versioned releases. Talkies should adopt those patterns without allowing an untested rolling build to replace a good release.
 
@@ -12,7 +12,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 
 | Surface | Pull-request gate |
 |---|---|
-| macOS Swift | Swift 6.3+, resolve package, build app/package, run all model-free Swift tests; launch/smoke test app bundle where runner permits. Keep model downloads out of the required suite and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` in a separately provisioned inference job. |
+| macOS Swift | Swift 6.3+, resolve package, build app/package, run model-free Swift tests, then download the pinned S1-mini model and run `TALKIES_RUN_MODEL_TESTS=1 swift test --filter S1MiniCleanerIntegrationTests` to verify real CPU inference. |
 | Windows | Restore and build WPF app; run all .NET tests; package smoke test |
 | Linux | Pin or deliberately track a Zig toolchain only after source compiles on it; build and run unit tests; run headless integration tests under Xvfb where needed |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |
@@ -37,9 +37,9 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge blockers for cleanup PR #145
 
-- Latest CI is red on Linux: the selected Zig master removed `@cImport`, and the GTK C wrappers cannot find `graphene-config.h`.
+- The latest completed cross-platform CI passed Linux, Windows, macOS, frontend, and Claude review checks. Revalidate those checks on the current commit before merge.
 - The `Vercel` status is red from an account-level integration even though deployment moved to GitHub Pages.
 - The PR body says Pages needs `NEXT_PUBLIC_CONVEX_URL` and `NEXT_PUBLIC_APP_URL` Actions configuration. The repository currently exposes neither through `gh variable list` nor the secret list. Resolve whether the static site should be independent of Convex before enabling deployment.
 - GitHub reports `REVIEW_REQUIRED`; the existing review is a comment, not an approval.
 
-Do not mark this PR ready to merge until the website build is secret-independent or configured, the Linux policy is explicit and its check outcome is truthful, stale Vercel status is handled, and a maintainer approval is recorded.
+Do not mark this PR ready to merge until the Pages build is secret-independent or configured, the stale Vercel status is handled, and an independent maintainer approval is recorded.
