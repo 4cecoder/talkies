@@ -82,8 +82,8 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          # Track Zig master intentionally — see matching comment in ci.yml.
-          version: master
+          # Keep release artifacts on the tested stable Linux toolchain.
+          version: 0.16.0
 
       - name: Install system build dependencies
         run: |

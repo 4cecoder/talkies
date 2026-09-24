@@ -167,10 +167,9 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          # Track Zig master intentionally (bleeding edge, not the 0.16
-          # stable release) — a fixed dev-nightly commit gets pruned from
-          # the build mirrors within weeks and starts hard-failing CI.
-          version: master
+          # Match the documented Linux minimum and avoid incompatible Zig
+          # development snapshots that remove @cImport before this code migrates.
+          version: 0.16.0
 
       - name: Install system build dependencies
         run: |
