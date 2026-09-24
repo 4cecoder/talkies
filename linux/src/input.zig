@@ -77,7 +77,8 @@ pub const TextInserter = struct {
         }
 
         // Open uinput device
-        const fd = try std.posix.open(
+        const fd = try std.posix.openat(
+            std.posix.AT.FDCWD,
             "/dev/uinput",
             .{ .ACCMODE = .WRONLY, .NONBLOCK = true },
             0,
@@ -178,9 +179,11 @@ pub const TextInserter = struct {
         event.value = value;
 
         const bytes = std.mem.asBytes(&event);
-        const written = try std.posix.write(self.uinput_fd.?, bytes);
+        const written = std.c.write(self.uinput_fd.?, bytes.ptr, bytes.len);
 
-        if (written != bytes.len) {
+        if (written < 0) return error.InputOutput;
+
+        if (@as(usize, @intCast(written)) != bytes.len) {
             return error.PartialWrite;
         }
     }
