@@ -37,9 +37,9 @@ Every release should contain version, commit SHA, platform/architecture, signing
 
 ## Current merge blockers for cleanup PR #145
 
-- Linux Zig-master, Windows, macOS (including the pinned S1-mini CPU inference test), frontend typecheck/lint/static export, and Claude review all pass on the current PR commit.
-- The `Vercel` status is red from an account-level integration even though deployment moved to GitHub Pages.
-- GitHub reports `REVIEW_REQUIRED`; the existing review is a comment, not an approval.
-- GitHub Pages still needs to be enabled with Actions as the source after merge.
+- Verified on 2026-09-24 at head `0a1bd10120c2e12fceac52324caa89261b9d308a`: Linux Zig-master, Windows build and tests, macOS build and tests, the pinned S1-mini CPU cleanup check, frontend typecheck/lint/static export, and Claude review all pass.
+- GitHub reports `REVIEW_REQUIRED`; the repository ruleset still requires an approving review. Auto-merge is enabled and will merge after required checks and approval are satisfied.
+- The `Vercel` status is red from an account-level integration, but the active ruleset does not require it.
+- The GitHub Pages API currently returns 404, so deployment is not yet configured. Enable Pages with Actions as the source after merge, then verify the published site.
 
-Do not mark this PR ready to merge until the stale Vercel status is handled and an independent maintainer approval is recorded. Enable GitHub Pages after merge.
+The only current PR merge gate is the required approving review. Page publication remains a post-merge distribution task.

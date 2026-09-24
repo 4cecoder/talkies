@@ -35,10 +35,10 @@ The card's trained control line accepts four style values (`casual`, `semi-casua
 
 ## Delivery sequence
 
-1. Finish the macOS volatility split by extracting audio and ASR from the app target.
-2. Add model download progress and local model management, then bring the verified cleanup pipeline to Windows and Linux.
-3. Bring shortcuts, insertion, modes, vocabulary, and offline guarantees to the core dictation loop.
-4. Establish one CI matrix that runs each platform's actual tests and the website checks. Release only artifacts built from green commits.
+1. Keep the macOS volatility split stable by adding focused `TalkiesAudio` and recognizer adapter tests; the package targets and adapters now exist.
+2. Add model download progress and local model management, then bring the verified S1-mini cleanup pipeline to Windows and Linux.
+3. Bring configurable shortcuts, insertion recovery, modes, vocabulary, and offline guarantees to the core dictation loop.
+4. Extend the current CI matrix with shared cleanup fixtures and model manifest checks; add native installers and verify the published download page.
 5. Add file transcription, history, meeting workflow, and app-specific refinements after the core loop is reliable.
 
 ## Done means
