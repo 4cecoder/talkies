@@ -12,6 +12,7 @@ pub const Config = struct {
     model: []const u8 = "base",
     language: []const u8 = "en",
     threads: u8 = 4,
+    vocabulary_prompt: []const u8 = "",
     s1_cleanup_enabled: bool = true,
 
     // Output settings
@@ -39,6 +40,7 @@ pub const Config = struct {
     audio_device_owned: bool = false,
     model_owned: bool = false,
     language_owned: bool = false,
+    vocabulary_prompt_owned: bool = false,
     export_format_owned: bool = false,
     paste_keybind_owned: bool = false,
     platform_owned: bool = false,
@@ -61,6 +63,9 @@ pub const Config = struct {
         }
         if (self.language_owned) {
             self.allocator.free(self.language);
+        }
+        if (self.vocabulary_prompt_owned) {
+            self.allocator.free(self.vocabulary_prompt);
         }
         if (self.export_format_owned) {
             self.allocator.free(self.export_format);
@@ -119,6 +124,8 @@ pub const Config = struct {
             \\model = "base"
             \\language = "en"
             \\threads = 4
+            \\# Comma-separated names and uncommon words used as on-device Whisper hints (max 400 chars)
+            \\vocabulary_prompt = ""
             \\
             \\[cleanup]
             \\s1_mini_enabled = true
@@ -256,6 +263,11 @@ pub const Config = struct {
                 self.language_owned = true;
             } else if (std.mem.eql(u8, key, "threads")) {
                 self.threads = try parseIntValue(u8, value_raw);
+            } else if (std.mem.eql(u8, key, "vocabulary_prompt")) {
+                const value = try parseStringValue(value_raw);
+                if (self.vocabulary_prompt_owned) self.allocator.free(self.vocabulary_prompt);
+                self.vocabulary_prompt = try self.allocator.dupe(u8, value);
+                self.vocabulary_prompt_owned = true;
             }
         } else if (std.mem.eql(u8, section, "output")) {
             if (std.mem.eql(u8, key, "auto_paste")) {
@@ -351,6 +363,7 @@ pub const Config = struct {
             \\model = "{s}"
             \\language = "{s}"
             \\threads = {d}
+            \\vocabulary_prompt = "{s}"
             \\
             \\[cleanup]
             \\s1_mini_enabled = {s}
@@ -372,6 +385,7 @@ pub const Config = struct {
                 self.model,
                 self.language,
                 self.threads,
+                self.vocabulary_prompt,
                 if (self.s1_cleanup_enabled) "true" else "false",
                 if (self.auto_paste) "true" else "false",
                 self.export_format,
@@ -438,6 +452,7 @@ pub const Config = struct {
         std.debug.print("  Model: {s}\n", .{self.model});
         std.debug.print("  Language: {s}\n", .{self.language});
         std.debug.print("  Threads: {d}\n", .{self.threads});
+        std.debug.print("  Local recognition hints: {s}\n", .{if (self.vocabulary_prompt.len > 0) self.vocabulary_prompt else "(none)"});
         std.debug.print("  S1-mini cleanup: {}\n", .{self.s1_cleanup_enabled});
         std.debug.print("  Auto-paste: {}\n", .{self.auto_paste});
         std.debug.print("  Export format: {s}\n", .{self.export_format});
@@ -492,6 +507,7 @@ test "config initialization" {
     try std.testing.expectEqualStrings("base", cfg.model);
     try std.testing.expectEqualStrings("en", cfg.language);
     try std.testing.expect(cfg.threads == 4);
+    try std.testing.expectEqualStrings("", cfg.vocabulary_prompt);
     try std.testing.expect(cfg.auto_paste == true);
     try std.testing.expect(cfg.s1_cleanup_enabled);
 }
@@ -530,6 +546,7 @@ test "parse toml content" {
         \\model = "small"
         \\language = "es"
         \\threads = 8
+        \\vocabulary_prompt = "Talkies, WhisperKit, S1-mini"
         \\
         \\[cleanup]
         \\s1_mini_enabled = false
@@ -544,6 +561,7 @@ test "parse toml content" {
     try std.testing.expectEqualStrings("small", cfg.model);
     try std.testing.expectEqualStrings("es", cfg.language);
     try std.testing.expect(cfg.threads == 8);
+    try std.testing.expectEqualStrings("Talkies, WhisperKit, S1-mini", cfg.vocabulary_prompt);
     try std.testing.expect(!cfg.s1_cleanup_enabled);
     try std.testing.expect(cfg.auto_paste == false);
     try std.testing.expectEqualStrings("srt", cfg.export_format);

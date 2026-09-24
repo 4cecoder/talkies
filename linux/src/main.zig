@@ -178,7 +178,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
 
     // Transcribe
     std.debug.print("Transcribing audio...\n", .{});
-    const raw_transcription = try whisper_service.transcribe(temp_path);
+    const raw_transcription = try whisper_service.transcribe(temp_path, cfg.vocabulary_prompt);
     defer allocator.free(raw_transcription);
     const cleaned_transcription = if (cfg.s1_cleanup_enabled)
         cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
@@ -468,7 +468,7 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
     try whisper_service.loadModel(cfg.model);
 
     std.debug.print("Transcribing {s}...\n", .{audio_file});
-    const transcription = try whisper_service.transcribe(audio_file);
+    const transcription = try whisper_service.transcribe(audio_file, cfg.vocabulary_prompt);
     defer allocator.free(transcription);
 
     std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
@@ -784,7 +784,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 }
 
                 // Transcribe the recording (possibly VAD-trimmed)
-                const raw_transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
+                const raw_transcription = whisper_service.transcribe(audio_file_to_transcribe, cfg.vocabulary_prompt) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
 
                     if (daemon_status_win) |win| {
@@ -1320,7 +1320,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                         // Transcribe
                         std.debug.print("⚙️  Transcribing...\n", .{});
-                        const transcription = whisper_service.transcribe(temp_path) catch |err| {
+                        const transcription = whisper_service.transcribe(temp_path, cfg.vocabulary_prompt) catch |err| {
                             std.debug.print("Error transcribing: {}\n", .{err});
                             continue;
                         };

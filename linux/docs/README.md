@@ -88,11 +88,16 @@ Default config location: `~/.config/talkies/config.toml`
 model = "base"           # Model size: tiny, base, small, medium, large
 language = "en"          # Language code
 threads = 4              # CPU threads for transcription
+vocabulary_prompt = ""  # Optional comma-separated names and uncommon terms (max 400 chars)
 
 [output]
 auto_paste = true        # Automatically paste after transcription
 export_format = "txt"    # Export format: txt, srt, vtt
 ```
+
+`vocabulary_prompt` is passed directly to the local whisper.cpp recognizer as an initial
+prompt. It can help with names and domain-specific words; it does not send data over the
+network. The GTK settings window exposes the same field as **Recognition Hints**.
 
 ## Architecture
 

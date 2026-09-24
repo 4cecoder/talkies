@@ -93,7 +93,7 @@ pub const WhisperService = struct {
     }
 
     /// Transcribe an audio file (WAV format, 16kHz mono PCM)
-    pub fn transcribe(self: *WhisperService, audio_path: []const u8) ![]const u8 {
+    pub fn transcribe(self: *WhisperService, audio_path: []const u8, vocabulary_prompt: []const u8) ![]const u8 {
         if (self.ctx == null) {
             return error.ModelNotLoaded;
         }
@@ -105,7 +105,13 @@ pub const WhisperService = struct {
         defer self.allocator.free(audio_data);
 
         // Setup whisper parameters
-        const params = c.whisper_full_default_params(c.WHISPER_SAMPLING_GREEDY);
+        var params = c.whisper_full_default_params(c.WHISPER_SAMPLING_GREEDY);
+        const prompt_z = if (vocabulary_prompt.len > 0) try utils.dupeZ(self.allocator, vocabulary_prompt) else null;
+        defer if (prompt_z) |prompt| self.allocator.free(prompt);
+        if (prompt_z) |prompt| {
+            params.initial_prompt = prompt.ptr;
+            params.carry_initial_prompt = true;
+        }
 
         // Run transcription
         const result = c.whisper_full(
