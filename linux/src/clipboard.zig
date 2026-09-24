@@ -90,7 +90,10 @@ pub const Clipboard = struct {
 
         var buffer: [4096]u8 = undefined;
         while (true) {
-            const n = try stdout.readStreaming(utils.io(), &.{&buffer});
+            const n = stdout.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
             if (n == 0) break;
             try output_list.appendSlice(self.allocator, buffer[0..n]);
         }
@@ -117,7 +120,10 @@ pub const Clipboard = struct {
 
         var buffer: [4096]u8 = undefined;
         while (true) {
-            const n = try stdout.readStreaming(utils.io(), &.{&buffer});
+            const n = stdout.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
             if (n == 0) break;
             try output_list.appendSlice(self.allocator, buffer[0..n]);
         }
