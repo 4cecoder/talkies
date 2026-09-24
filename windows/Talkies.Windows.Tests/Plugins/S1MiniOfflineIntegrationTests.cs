@@ -11,7 +11,7 @@ namespace Talkies.Windows.Tests.Plugins;
 
 public sealed class S1MiniOfflineIntegrationTests
 {
-    [ModelIntegrationFact]
+    [ModelIntegrationFact("TALKIES_TEST_S1_MINI_MODEL_DIR")]
     [Trait("Category", "ModelIntegration")]
     public async Task VerifiedModelCleansTranscriptWithoutNetworkAccess()
     {
@@ -46,9 +46,10 @@ public sealed class S1MiniOfflineIntegrationTests
 
 public sealed class ModelIntegrationFactAttribute : FactAttribute
 {
-    public ModelIntegrationFactAttribute()
+    public ModelIntegrationFactAttribute(string modelDirectoryVariable)
     {
-        if (Environment.GetEnvironmentVariable("TALKIES_RUN_MODEL_TESTS") != "1")
-            Skip = "Set TALKIES_RUN_MODEL_TESTS=1 and TALKIES_TEST_S1_MINI_MODEL_DIR to run pinned model integration tests.";
+        if (Environment.GetEnvironmentVariable("TALKIES_RUN_MODEL_TESTS") != "1" ||
+            string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(modelDirectoryVariable)))
+            Skip = $"Set TALKIES_RUN_MODEL_TESTS=1 and {modelDirectoryVariable} to run this pinned model integration test.";
     }
 }

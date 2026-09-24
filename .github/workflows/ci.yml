@@ -134,6 +134,12 @@ jobs:
           path: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: windows-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
 
+      - name: Cache verified Whisper tiny model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+          key: windows-whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+
       - name: Build Windows app
         working-directory: windows/Talkies.Windows
         run: dotnet build --configuration Debug --no-restore
@@ -148,6 +154,13 @@ jobs:
           TALKIES_RUN_MODEL_TESTS: '1'
           TALKIES_TEST_S1_MINI_MODEL_DIR: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "Category=ModelIntegration" --verbosity normal
+
+      - name: Verify cached Whisper ASR works offline on CPU
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "FullyQualifiedName~WhisperAsrOfflineIntegrationTests" --verbosity normal
 
   frontend:
     name: Website Typecheck & Lint

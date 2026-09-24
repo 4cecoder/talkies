@@ -16,6 +16,10 @@ A professional-grade audio transcription application for Windows with real-time 
 - **Advanced Filtering**: Voice Activity Detection (VAD) and hallucination filtering
 - **Live Display**: Real-time transcript with timestamps and statistics
 
+Whisper models are downloaded from a pinned upstream revision, checked against their
+expected size and SHA-256, and installed atomically in `%USERPROFILE%\.talkies\models`.
+Once the selected model is present, recognition reads it from disk and works offline.
+
 ### 🧠 LLM Enhancement (Optional)
 - **Multi-Provider Support**:
   - **S1-mini**: Embedded local CPU inference; no inference server or GPU required
