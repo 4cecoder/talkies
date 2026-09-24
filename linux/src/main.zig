@@ -45,19 +45,24 @@ fn onSettingsCallback() void {
     daemon_show_settings = true;
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = std.heap.smp_allocator;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var args_iterator = try std.process.Args.Iterator.initAllocator(init.args, allocator);
+    defer args_iterator.deinit();
 
-    if (args.len < 2) {
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(allocator);
+    while (args_iterator.next()) |arg| try args.append(allocator, arg);
+    const arguments = args.items;
+
+    if (arguments.len < 2) {
         try printHelp();
         return;
     }
 
-    const command = parseCommand(args[1]) orelse {
-        std.debug.print("Unknown command: {s}\n", .{args[1]});
+    const command = parseCommand(arguments[1]) orelse {
+        std.debug.print("Unknown command: {s}\n", .{arguments[1]});
         try printHelp();
         return;
     };
@@ -69,8 +74,8 @@ pub fn main() !void {
         .config_show => try runConfigShow(allocator),
         .audio_test => try runAudioTest(allocator),
         .audio_list => try runAudioList(allocator),
-        .audio_set => try runAudioSet(allocator, args),
-        .transcribe_test => try runTranscribeTest(allocator, args),
+        .audio_set => try runAudioSet(allocator, arguments),
+        .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
         .help => try printHelp(),
     }
