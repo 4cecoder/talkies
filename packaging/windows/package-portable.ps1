@@ -117,9 +117,9 @@ function Assert-InstalledApplication([string]$Directory) {
 # Run the actual per-user installer in an isolated temporary directory. Re-run
 # it with a stale marker present to exercise its in-place upgrade behavior,
 # then invoke its uninstaller and ensure application files are removed.
-& $installerPath /S "/D=$smokeInstallDirectory"
-if ($LASTEXITCODE -ne 0) {
-    throw "Silent install smoke test failed (exit code $LASTEXITCODE)."
+$installProcess = Start-Process -FilePath $installerPath -ArgumentList @('/S', "/D=$smokeInstallDirectory") -Wait -PassThru
+if ($installProcess.ExitCode -ne 0) {
+    throw "Silent install smoke test failed (exit code $($installProcess.ExitCode))."
 }
 Write-Host "Installer smoke test requested install path: $smokeInstallDirectory"
 $installRegistry = Get-ItemProperty -Path 'HKCU:\Software\Talkies' -Name InstallLocation -ErrorAction SilentlyContinue
@@ -135,9 +135,9 @@ if (Test-Path $smokeInstallDirectory -PathType Container) {
 Assert-InstalledApplication $smokeInstallDirectory
 $staleMarker = Join-Path $smokeInstallDirectory 'obsolete-stale-marker.tmp'
 Set-Content -Path $staleMarker -Value 'stale files should not survive an upgrade'
-& $installerPath /S "/D=$smokeInstallDirectory"
-if ($LASTEXITCODE -ne 0) {
-    throw "In-place upgrade smoke test failed (exit code $LASTEXITCODE)."
+$upgradeProcess = Start-Process -FilePath $installerPath -ArgumentList @('/S', "/D=$smokeInstallDirectory") -Wait -PassThru
+if ($upgradeProcess.ExitCode -ne 0) {
+    throw "In-place upgrade smoke test failed (exit code $($upgradeProcess.ExitCode))."
 }
 Assert-InstalledApplication $smokeInstallDirectory
 if (Test-Path $staleMarker) {
@@ -145,9 +145,9 @@ if (Test-Path $staleMarker) {
 }
 
 $uninstallerPath = Join-Path $smokeInstallDirectory 'Uninstall.exe'
-& $uninstallerPath /S
-if ($LASTEXITCODE -ne 0) {
-    throw "Silent uninstall smoke test failed (exit code $LASTEXITCODE)."
+$uninstallProcess = Start-Process -FilePath $uninstallerPath -ArgumentList '/S' -Wait -PassThru
+if ($uninstallProcess.ExitCode -ne 0) {
+    throw "Silent uninstall smoke test failed (exit code $($uninstallProcess.ExitCode))."
 }
 if (Test-Path (Join-Path $smokeInstallDirectory 'Talkies.Windows.exe')) {
     throw 'Uninstaller left the Talkies application executable behind.'
