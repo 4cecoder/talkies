@@ -391,6 +391,12 @@ jobs:
           TALKIES_TEST_WHISPER: "1"
         run: zig build test
 
+      - name: Verify offline cached-model dictation acceptance
+        working-directory: linux
+        env:
+          TALKIES_OFFLINE_ACCEPTANCE: "1"
+        run: zig build test
+
       - name: Smoke-test portable Linux release archive
         env:
           VERSION: ci-${{ github.run_id }}

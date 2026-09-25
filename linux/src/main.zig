@@ -1,11 +1,13 @@
 const std = @import("std");
 const cleanup = @import("cleanup.zig");
 const transcript_export = @import("transcript_export.zig");
+const offline_acceptance = @import("offline_acceptance.zig");
 
 test {
     _ = cleanup;
     _ = local_diagnostics;
     _ = transcript_export;
+    _ = offline_acceptance;
 }
 const audio = @import("audio.zig");
 const whisper = @import("whisper.zig");

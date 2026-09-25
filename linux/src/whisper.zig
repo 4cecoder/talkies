@@ -259,6 +259,7 @@ pub const WhisperService = struct {
             utils.log("Verified Whisper model {s} already exists", .{model_name});
             return;
         }
+        if (utils.getEnv("TALKIES_OFFLINE_ACCEPTANCE") != null) return error.OfflineModelUnavailable;
 
         const partial = try std.fmt.allocPrint(self.allocator, "{s}.partial", .{destination});
         defer self.allocator.free(partial);

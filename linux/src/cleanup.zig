@@ -76,6 +76,7 @@ pub const ModelStore = struct {
         defer self.allocator.free(destination);
         if (size != null and expected_hash != null and try isVerified(destination)) return;
         if (size == null and fileExists(destination)) return;
+        if (utils.getEnv("TALKIES_OFFLINE_ACCEPTANCE") != null) return error.OfflineModelUnavailable;
 
         const partial = try std.fmt.allocPrint(self.allocator, "{s}.partial", .{destination});
         defer self.allocator.free(partial);
