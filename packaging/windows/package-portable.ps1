@@ -121,6 +121,17 @@ function Assert-InstalledApplication([string]$Directory) {
 if ($LASTEXITCODE -ne 0) {
     throw "Silent install smoke test failed (exit code $LASTEXITCODE)."
 }
+Write-Host "Installer smoke test requested install path: $smokeInstallDirectory"
+$installRegistry = Get-ItemProperty -Path 'HKCU:\Software\Talkies' -Name InstallLocation -ErrorAction SilentlyContinue
+$registeredInstallPath = if ($null -ne $installRegistry) { $installRegistry.InstallLocation } else { '<missing>' }
+Write-Host "Installer registered install path: $registeredInstallPath"
+if (Test-Path $smokeInstallDirectory -PathType Container) {
+    $installedFileSample = Get-ChildItem -LiteralPath $smokeInstallDirectory -File -Recurse |
+        Select-Object -First 12 -ExpandProperty FullName
+    Write-Host "Installed file sample: $($installedFileSample -join '; ')"
+} else {
+    Write-Host 'Smoke install directory was not created.'
+}
 Assert-InstalledApplication $smokeInstallDirectory
 $staleMarker = Join-Path $smokeInstallDirectory 'obsolete-stale-marker.tmp'
 Set-Content -Path $staleMarker -Value 'stale files should not survive an upgrade'
