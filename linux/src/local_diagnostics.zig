@@ -40,7 +40,6 @@ pub fn formatReport(
 /// files. Returns false on any filesystem error so diagnostics remain best-effort.
 pub fn writeReport(dir: std.Io.Dir, io: std.Io, report: []const u8) bool {
     if (report.len > max_report_bytes) return false;
-    dir.setPermissions(io, @fromBackingInt(@intCast(0o700))) catch return false;
 
     var index: usize = retained_reports - 1;
     while (index > 0) {
@@ -80,9 +79,17 @@ pub fn recordUnhandledError(allocator: std.mem.Allocator, error_name: []const u8
     defer allocator.free(diagnostic_dir);
     utils.ensureDir(diagnostic_dir) catch return;
 
+    if (!setPrivateDirectoryPermissions(allocator, diagnostic_dir)) return;
+
     const report = formatReport(allocator, error_name, utils.realtimeSeconds(), trace) catch return;
     defer allocator.free(report);
     _ = writeReportAtPath(diagnostic_dir, report);
+}
+
+fn setPrivateDirectoryPermissions(allocator: std.mem.Allocator, path: []const u8) bool {
+    const path_z = utils.dupeZ(allocator, path) catch return false;
+    defer allocator.free(path_z);
+    return std.c.chmod(path_z, 0o700) == 0;
 }
 
 fn slotName(index: usize) [11]u8 {
@@ -142,4 +149,16 @@ test "local diagnostics returns false for an unavailable path" {
     try std.testing.expect(!writeReportAtPath("/dev/null/not-a-directory", "error report"));
     const oversized: [max_report_bytes + 1]u8 = @splat(0);
     try std.testing.expect(!writeReport(temp.dir, std.testing.io, &oversized));
+}
+
+test "local diagnostics makes its directory private" {
+    const allocator = std.testing.allocator;
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const path = try std.fmt.allocPrint(allocator, ".zig-cache/tmp/{s}", .{temp.sub_path});
+    defer allocator.free(path);
+
+    try std.testing.expect(setPrivateDirectoryPermissions(allocator, path));
+    const permissions = @backingInt((try temp.dir.stat(std.testing.io)).permissions) & 0o777;
+    try std.testing.expectEqual(@as(usize, 0o700), permissions);
 }
