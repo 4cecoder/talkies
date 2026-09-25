@@ -24,7 +24,6 @@ namespace Talkies.Windows.ViewModels
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
         private AppSettings _settings = new();
-        private bool _usingGpu;
 
         private DateTime? _startTime;
         private string _lastVtt = string.Empty;
@@ -143,7 +142,7 @@ namespace Talkies.Windows.ViewModels
         public AudioDeviceInfo? SelectedMicrophone { get => _selectedMicrophone; set { _selectedMicrophone = value; OnPropertyChanged(); } }
         private AudioDeviceInfo? _selectedMicrophone;
         public string Backend { get => _backend; set { _backend = value; OnPropertyChanged(); } }
-        private string _backend = "CPU";
+        private string _backend = "Auto (GPU with CPU fallback)";
         public string ElapsedText { get => _elapsedText; set { _elapsedText = value; OnPropertyChanged(); } }
         private string _elapsedText = "00:00";
         public string HotkeyStatus { get => _hotkeyStatus; set { _hotkeyStatus = value; OnPropertyChanged(); } }
@@ -559,55 +558,51 @@ namespace Talkies.Windows.ViewModels
             IsTranscribing = true;
             TranscriptionProgress = 0;
             IsTranscriptionIndeterminate = true;
-            _usingGpu = CudaDetector.IsNvidiaCudaAvailable(out var gpuReason);
-            Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
-            if (!_usingGpu && !string.IsNullOrEmpty(gpuReason))
-            {
-                Logger.Warn($"GPU not used: {gpuReason}");
-            }
-            else if (_usingGpu)
-            {
-                Logger.Info($"GPU mode enabled: {gpuReason}");
-            }
+            Backend = "Selecting GPU or CPU runtime...";
 
             var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
             var progress = new Progress<TranscriptionProgress>(update =>
+            {
+                dispatcher.Invoke(() =>
                 {
-                    dispatcher.Invoke(() =>
+                    if (!string.IsNullOrWhiteSpace(update.Backend))
                     {
-                        switch (update.Stage)
-                        {
-                            case TranscriptionStage.DownloadModel:
-                                IsDownloadingModel = true;
-                                IsModelDownloadIndeterminate = update.IsIndeterminate;
-                                if (!update.IsIndeterminate)
-                                {
-                                    ModelDownloadProgress = update.Percent;
-                                }
-                                HotkeyStatus = update.Message ?? "Downloading model...";
-                                ShowOverlay = true;
-                                OverlayTitle = "Installing model";
-                                OverlayMessage = update.Message ?? "Downloading model...";
-                                OverlayIsIndeterminate = update.IsIndeterminate;
-                                OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
-                                break;
-                            case TranscriptionStage.Transcribing:
-                                IsTranscribing = true;
-                                IsTranscriptionIndeterminate = update.IsIndeterminate;
-                                if (!update.IsIndeterminate)
-                                {
-                                    TranscriptionProgress = update.Percent;
-                                }
-                                HotkeyStatus = update.Message ?? "Transcribing...";
-                                ShowOverlay = true;
-                                OverlayTitle = "Transcribing";
-                                OverlayMessage = update.Message ?? "Transcribing audio...";
-                                OverlayIsIndeterminate = update.IsIndeterminate;
-                                OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
-                                break;
-                        }
-                    });
+                        Backend = update.Backend;
+                    }
+
+                    switch (update.Stage)
+                    {
+                        case TranscriptionStage.DownloadModel:
+                            IsDownloadingModel = true;
+                            IsModelDownloadIndeterminate = update.IsIndeterminate;
+                            if (!update.IsIndeterminate)
+                            {
+                                ModelDownloadProgress = update.Percent;
+                            }
+                            HotkeyStatus = update.Message ?? "Downloading model...";
+                            ShowOverlay = true;
+                            OverlayTitle = "Installing model";
+                            OverlayMessage = update.Message ?? "Downloading model...";
+                            OverlayIsIndeterminate = update.IsIndeterminate;
+                            OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
+                            break;
+                        case TranscriptionStage.Transcribing:
+                            IsTranscribing = true;
+                            IsTranscriptionIndeterminate = update.IsIndeterminate;
+                            if (!update.IsIndeterminate)
+                            {
+                                TranscriptionProgress = update.Percent;
+                            }
+                            HotkeyStatus = update.Message ?? "Transcribing...";
+                            ShowOverlay = true;
+                            OverlayTitle = "Transcribing";
+                            OverlayMessage = update.Message ?? "Transcribing audio...";
+                            OverlayIsIndeterminate = update.IsIndeterminate;
+                            OverlayProgress = update.IsIndeterminate ? 0 : update.Percent;
+                            break;
+                    }
                 });
+            });
             Logger.OperationStart($"Transcription of {Path.GetFileName(e.FilePath)}");
             try
             {
@@ -775,8 +770,6 @@ namespace Talkies.Windows.ViewModels
 
                 Logger.Success($"Transcription completed: {finalSegments.Count} segments, {totalWords} words");
                 Logger.Status($"WPM: {wpm}");
-
-                Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
 
                 // TTS
                 if (TtsEnabled)
@@ -1196,16 +1189,8 @@ namespace Talkies.Windows.ViewModels
 
         private void DetectBackend()
         {
-            _usingGpu = CudaDetector.IsNvidiaCudaAvailable(out var reason);
-            Backend = _usingGpu ? "GPU (CUDA)" : "CPU";
-            if (_usingGpu)
-            {
-                Logger.Info($"Startup GPU detection: {reason}");
-            }
-            else
-            {
-                Logger.Warn($"Startup GPU detection: {reason}");
-            }
+            Backend = "Auto (GPU with CPU fallback)";
+            Logger.Info("Whisper.net will select a compatible CUDA/Vulkan runtime or fall back to CPU.");
         }
 
         private void RefreshEnhancementModes()
