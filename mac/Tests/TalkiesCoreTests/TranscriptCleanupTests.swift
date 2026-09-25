@@ -27,4 +27,35 @@ final class TranscriptCleanupTests: XCTestCase {
             "<|im_start|>system\n\(S1MiniPrompt.system)<|im_end|>\n<|im_start|>user\n[Styling: semi-formal] [Structure: prose] [Context: general]\nraw words<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
         )
     }
+
+    func testPromptMatchesSharedCrossPlatformGoldenFixture() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/s1-mini-prompt-golden.json")
+        let fixture = try JSONDecoder().decode(PromptGoldenFixture.self, from: Data(contentsOf: fixtureURL))
+
+        for testCase in fixture.cases {
+            let options = TranscriptCleanupOptions(
+                style: try XCTUnwrap(TranscriptStyle(rawValue: testCase.style)),
+                structure: try XCTUnwrap(TranscriptStructure(rawValue: testCase.structure)),
+                context: try XCTUnwrap(TranscriptContext(rawValue: testCase.context))
+            )
+            XCTAssertEqual(S1MiniPrompt.render(transcript: testCase.transcript, options: options), testCase.expected)
+        }
+    }
+}
+
+private struct PromptGoldenFixture: Decodable {
+    let cases: [PromptCase]
+
+    struct PromptCase: Decodable {
+        let transcript: String
+        let style: String
+        let structure: String
+        let context: String
+        let expected: String
+    }
 }

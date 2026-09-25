@@ -47,6 +47,8 @@ public enum S1MiniPrompt {
 
     /// Renders the Qwen3 chat prefix used by S1-mini, including its required empty thinking block.
     public static func render(transcript: String, options: TranscriptCleanupOptions) -> String {
-        "<|im_start|>system\n\(system)<|im_end|>\n<|im_start|>user\n\(options.controlLine)\n\(transcript)<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        let trimCharacters = CharacterSet(charactersIn: " \t\r\n")
+        let normalizedTranscript = transcript.trimmingCharacters(in: trimCharacters)
+        return "<|im_start|>system\n\(system)<|im_end|>\n<|im_start|>user\n\(options.controlLine)\n\(normalizedTranscript)<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
     }
 }

@@ -10,6 +10,7 @@ public static class S1MiniPrompt
     public static string Render(string transcript, string style = "semi-formal", string structure = "prose", string context = "general")
     {
         ArgumentNullException.ThrowIfNull(transcript);
-        return $"<|im_start|>system\n{SystemPrompt}<|im_end|>\n<|im_start|>user\n[Styling: {style}] [Structure: {structure}] [Context: {context}]\n{transcript}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        var normalizedTranscript = transcript.Trim(' ', '\t', '\r', '\n');
+        return $"<|im_start|>system\n{SystemPrompt}<|im_end|>\n<|im_start|>user\n[Styling: {style}] [Structure: {structure}] [Context: {context}]\n{normalizedTranscript}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
     }
 }

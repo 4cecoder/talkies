@@ -202,6 +202,47 @@ test "all style and structure options render as model control values" {
     try std.testing.expect(std.mem.indexOf(u8, prompt, "[Styling: semi-casual] [Structure: lists] [Context: email]") != null);
 }
 
+test "prompt matches the shared cross-platform golden fixture" {
+    const PromptCase = struct {
+        transcript: []const u8,
+        style: []const u8,
+        structure: []const u8,
+        context: []const u8,
+        expected: []const u8,
+    };
+    const PromptFixture = struct { cases: []const PromptCase };
+    const fixture_json = @embedFile("testdata/s1-mini-prompt-golden.json");
+    const parsed = try std.json.parseFromSlice(PromptFixture, std.testing.allocator, fixture_json, .{});
+    defer parsed.deinit();
+
+    for (parsed.value.cases) |test_case| {
+        const style: Style = blk: {
+            if (std.mem.eql(u8, test_case.style, "casual")) break :blk .casual;
+            if (std.mem.eql(u8, test_case.style, "semi-casual")) break :blk .semi_casual;
+            if (std.mem.eql(u8, test_case.style, "semi-formal")) break :blk .semi_formal;
+            if (std.mem.eql(u8, test_case.style, "formal")) break :blk .formal;
+            return error.UnknownFixtureStyle;
+        };
+        const structure: Structure = blk: {
+            if (std.mem.eql(u8, test_case.structure, "prose")) break :blk .prose;
+            if (std.mem.eql(u8, test_case.structure, "lists")) break :blk .lists;
+            return error.UnknownFixtureStructure;
+        };
+        const context: Context = blk: {
+            if (std.mem.eql(u8, test_case.context, "general")) break :blk .general;
+            if (std.mem.eql(u8, test_case.context, "email")) break :blk .email;
+            return error.UnknownFixtureContext;
+        };
+        const actual = try renderPrompt(std.testing.allocator, test_case.transcript, .{
+            .style = style,
+            .structure = structure,
+            .context = context,
+        });
+        defer std.testing.allocator.free(actual);
+        try std.testing.expectEqualStrings(test_case.expected, actual);
+    }
+}
+
 test "blank model output falls back to the original transcript" {
     const result = try cleanedOrOriginal(std.testing.allocator, " raw ASR ", " \n\t ");
     defer std.testing.allocator.free(result);

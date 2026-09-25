@@ -16,7 +16,7 @@ Required CI should be deterministic, test the actual app/package, and fail on mi
 | Windows | Restore and build WPF app; run fast .NET tests; cache and integrity-check pinned Whisper tiny and S1-mini weights, then run CPU ASR and cleanup with model-store HTTP requests rejected during inference |
 | Linux | Track Zig master; build CPU-only llama.cpp and whisper.cpp; build and test the app, then smoke-test the portable archive and Debian package, including install, upgrade, uninstall, and preservation of user data. |
 | Frontend/docs | Bun install from lockfile, TypeScript, ESLint, static export; docs link/structure check |
-| Cross-platform contract | Shared cleanup golden fixtures and model manifest schema validation on macOS, Windows, and Linux |
+| Cross-platform contract | Shared S1-mini prompt and TXT/VTT/SRT export golden fixtures on macOS, Windows, and Linux; model manifest schema validation |
 
 Use changed-path filtering only when it still creates stable required check names. Keep platform workflows separate if needed, but have an aggregate gate fail if a changed platform's tests are skipped. Cache package managers by lockfile hash. Publish logs and test reports on failure.
 

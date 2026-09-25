@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using Talkies.Windows.Plugins;
 using Talkies.Windows.Services;
 using Xunit;
@@ -23,5 +26,40 @@ public sealed class S1MiniPromptTests
         Assert.Equal(64, S1MiniModelStore.ModelSha256.Length);
         Assert.Equal("s1-mini-q4_k_m.gguf", S1MiniModelStore.ModelFileName);
         Assert.Equal(484_219_808, S1MiniModelStore.ModelSize);
+    }
+
+    [Fact]
+    public void Render_MatchesSharedCrossPlatformGoldenFixture()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "s1-mini-prompt-golden.json");
+        var fixture = JsonSerializer.Deserialize<PromptGoldenFixture>(File.ReadAllText(fixturePath), new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })!;
+
+        foreach (var testCase in fixture.Cases)
+        {
+            Assert.Equal(testCase.Expected, S1MiniPrompt.Render(
+                testCase.Transcript,
+                testCase.Style,
+                testCase.Structure,
+                testCase.Context));
+        }
+    }
+
+    private sealed class PromptGoldenFixture
+    {
+        public PromptGoldenFixture() { }
+        public List<PromptCase> Cases { get; init; } = [];
+    }
+
+    private sealed class PromptCase
+    {
+        public PromptCase() { }
+        public string Transcript { get; init; } = string.Empty;
+        public string Style { get; init; } = string.Empty;
+        public string Structure { get; init; } = string.Empty;
+        public string Context { get; init; } = string.Empty;
+        public string Expected { get; init; } = string.Empty;
     }
 }
