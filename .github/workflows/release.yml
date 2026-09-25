@@ -292,7 +292,7 @@ jobs:
           git push --force origin refs/tags/latest
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.resolve-version.outputs.release_label }}
           target_commitish: ${{ github.sha }}
