@@ -32,8 +32,8 @@
                 <!-- Recording Controls -->
                 <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
-                        <Button Content="Start Recording" Command="{Binding StartCommand}" IsEnabled="{Binding IsIdle}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
-                        <Button Content="Stop Recording" Command="{Binding StopCommand}" IsEnabled="{Binding IsRecording}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
+                        <Button x:Name="StartRecordingButton" Content="Start Recording" Command="{Binding StartCommand}" IsEnabled="{Binding IsIdle}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
+                        <Button x:Name="StopRecordingButton" Content="Stop Recording" Command="{Binding StopCommand}" IsEnabled="{Binding IsRecording}" Height="40" Margin="0,0,0,8" FontSize="13" FontWeight="SemiBold"/>
                         <Button Content="Save VTT" Command="{Binding SaveCommand}" IsEnabled="{Binding CanSave}" Height="36" Margin="0,0,0,6"/>
                         <Button Content="Clear" Command="{Binding ClearCommand}" Height="36"/>
                     </StackPanel>
@@ -206,7 +206,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#2d2d2d" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0">
+                                        <Border Background="#2d2d2d" CornerRadius="6" Padding="12" Margin="0,0,0,8" BorderThickness="0" Loaded="OnTranscriptCardLoaded">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
