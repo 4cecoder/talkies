@@ -6,10 +6,9 @@ This guide covers packaging and distribution options for the Talkies .NET 8 WPF 
 
 The supported release installer is the per-user NSIS setup produced by
 [`package-portable.ps1`](./package-portable.ps1) and [`Talkies.nsi`](./Talkies.nsi). It installs
-under `%LOCALAPPDATA%\Programs\Talkies`, creates Start menu shortcuts, optionally creates a
-desktop shortcut, and preserves user settings and downloaded models during upgrades and
-uninstallation. The self-contained ZIP remains available as a portable option. Both artifacts are
-unsigned in public CI builds.
+under `%LOCALAPPDATA%\Programs\Talkies`, creates Start menu shortcuts, and preserves user settings
+and downloaded models during upgrades and uninstallation. The self-contained ZIP remains available
+as a portable option. Both artifacts are unsigned in public CI builds.
 
 The sections below compare packaging formats considered during planning; their former recommendation
 for Inno Setup is superseded by the current NSIS release installer.

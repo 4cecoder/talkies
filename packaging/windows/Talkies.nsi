@@ -3,7 +3,6 @@ RequestExecutionLevel user
 SetCompressor /SOLID zlib
 
 !include "MUI2.nsh"
-!include "LogicLib.nsh"
 
 !ifndef APP_VERSION
   !error "APP_VERSION must be provided"
@@ -35,11 +34,8 @@ UninstallIcon "${PUBLISH_DIRECTORY}\Resources\talkies-app-icon.ico"
 !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\Talkies"
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "StartMenuFolder"
 
-InstType "Full"
-
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${REPOSITORY_ROOT}\LICENSE"
-!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_STARTMENU Application $StartMenuFolder
 !insertmacro MUI_PAGE_INSTFILES
@@ -56,11 +52,6 @@ Function un.onInit
 FunctionEnd
 
 Section "Talkies application" SecApplication
-  SectionIn 1 RO
-  ReadRegStr $0 HKCU "Software\Talkies" "DesktopShortcut"
-  ${If} $0 == "1"
-    Delete "$DESKTOP\Talkies.lnk"
-  ${EndIf}
   ; Replace the app-only install tree completely so removed files don't linger
   ; after upgrades. Preferences and model files are stored outside this folder.
   RMDir /r "$INSTDIR"
@@ -70,7 +61,6 @@ Section "Talkies application" SecApplication
   File "${REPOSITORY_ROOT}\packaging\windows\THIRD-PARTY-NOTICES.txt"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\Talkies" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\Talkies" "DesktopShortcut" "0"
 
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     CreateDirectory "$SMPROGRAMS\$StartMenuFolder"
@@ -79,16 +69,7 @@ Section "Talkies application" SecApplication
   !insertmacro MUI_STARTMENU_WRITE_END
 SectionEnd
 
-Section /o "Desktop shortcut" SecDesktop
-  CreateShortcut "$DESKTOP\Talkies.lnk" "$INSTDIR\Talkies.Windows.exe" "" "$INSTDIR\Resources\talkies-app-icon.ico"
-  WriteRegStr HKCU "Software\Talkies" "DesktopShortcut" "1"
-SectionEnd
-
 Section "Uninstall"
-  ReadRegStr $0 HKCU "Software\Talkies" "DesktopShortcut"
-  ${If} $0 == "1"
-    Delete "$DESKTOP\Talkies.lnk"
-  ${EndIf}
   !insertmacro MUI_STARTMENU_GETFOLDER Application $StartMenuFolder
   Delete "$SMPROGRAMS\$StartMenuFolder\Talkies.lnk"
   Delete "$SMPROGRAMS\$StartMenuFolder\Uninstall Talkies.lnk"
