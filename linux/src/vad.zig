@@ -2,9 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 // Import libfvad C API
-const c = @cImport({
-    @cInclude("fvad.h");
-});
+const c = @import("c_vad");
 
 /// Voice Activity Detection modes (aggressiveness levels)
 pub const VadMode = enum(c_int) {
@@ -14,7 +12,7 @@ pub const VadMode = enum(c_int) {
     very_aggressive = 3, // Most aggressive, may cut speech
 
     pub fn toInt(self: VadMode) c_int {
-        return @intFromEnum(self);
+        return @backingInt(self);
     }
 };
 
@@ -140,10 +138,10 @@ pub const VoiceActivityDetector = struct {
         const voice_end = try self.findVoiceEnd(samples, frame_ms);
         if (voice_end == null) {
             // Voice at start but not at end (shouldn't happen)
-            return samples[voice_start.? ..];
+            return samples[voice_start.?..];
         }
 
-        return samples[voice_start.? .. voice_end.?];
+        return samples[voice_start.?..voice_end.?];
     }
 };
 

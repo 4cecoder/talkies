@@ -1,262 +1,147 @@
-# Talkies Packaging
+# Talkies releases and packaging
 
-This directory contains packaging configuration and scripts for building distributable releases of Talkies across all supported platforms.
+Talkies publishes desktop downloads through GitHub Releases. Builds, tests, artifact checksums,
+and release metadata are handled by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml). The app and its inference
+runtimes are packaged; speech and cleanup model weights are downloaded and verified on first use,
+then kept in user storage for offline inference.
 
-## Directory Structure
+## Release process
 
-```
-packaging/
-├── README.md           # This file - packaging overview and documentation
-├── macos/              # macOS-specific packaging (DMG, app bundle, notarization)
-├── windows/            # Windows-specific packaging (MSI, installer, code signing)
-└── shared/
-    └── version.txt     # Single source of truth for application version
-```
+`packaging/shared/version.txt` is the app-version source for rolling releases. Push a tag in
+`vMAJOR.MINOR.PATCH` form for a versioned release. Push to `master` to publish the serialized
+`latest` prerelease. Both paths run platform tests and builds before creating a GitHub Release.
+Version tags are validated; the rolling release label is `latest`, while app metadata keeps the
+numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` with the artifacts.
 
-## Version Management
+| Platform | Release asset | Contents | Current install method |
+|---|---|---|---|
+| macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
+| Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe` and `.zip` | Per-user NSIS installer and self-contained published app directory | Run the setup wizard, or expand the ZIP and run `Talkies.Windows.exe`. |
+| Linux x86_64 | `Talkies-Linux-{LABEL}.deb` and `.tar.gz` | Debian package or portable `talkies-linux/` directory, with app binary, whisper/llama runtime libraries, and their licenses | Debian/Ubuntu: `sudo apt install ./Talkies-Linux-{LABEL}.deb`. Other distributions: extract the archive and run `talkies-linux/talkies`. |
+| All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 
-The application version is stored in `shared/version.txt` and serves as the single source of truth across all platforms. This ensures consistency in:
+The public macOS DMG and ZIP and the Windows setup EXE are unsigned because CI has no maintainer
+signing credentials. Local packaging can sign with an Apple Development identity; that does not make
+the public macOS build notarized. The Windows setup installs per-user under
+`%LOCALAPPDATA%\Programs\Talkies`; it does not need administrator access. Re-running the installer
+updates that install and removes obsolete application files. Uninstalling removes the application
+files and shortcuts while preserving settings and model downloads. The ZIP remains available as a
+portable fallback. There is no automatic updater or background release check. Open the GitHub
+Releases page yourself when you want to check for an update; Talkies does not contact GitHub during
+startup, recording, transcription, cleanup, or insertion.
 
-- GitHub release tags
-- Application bundles and installers
-- CI/CD workflows
-- Platform-specific manifests
+## Verify and install a release
 
-**Current Version**: See [`shared/version.txt`](./shared/version.txt)
+Download all files from the same GitHub Release. In a directory containing the archives and
+`SHA256SUMS`, verify the published hashes before expanding them:
 
-### Updating the Version
-
-1. Edit `shared/version.txt` with the new version number (semver format: `MAJOR.MINOR.PATCH`)
-2. Commit the change
-3. Create and push a git tag matching the version:
-   ```bash
-   VERSION=$(cat packaging/shared/version.txt)
-   git tag -a "v$VERSION" -m "Release v$VERSION"
-   git push origin "v$VERSION"
-   ```
-4. The GitHub Actions release workflow will automatically trigger
-
-## Quick Start
-
-### macOS
-
-**Prerequisites**:
-- macOS 15+ (Sequoia or later)
-- Swift 6.0+
-- Xcode Command Line Tools
-
-**Build Release Binary**:
-```bash
-cd mac
-swift build -c release
+```sh
+shasum -a 256 -c SHA256SUMS
 ```
 
-**Create Distribution Package**:
-```bash
-cd packaging/macos
-./build.sh  # See macos/README.md for details (to be created)
+On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG and drag Talkies to
+Applications, or expand the ZIP. On Windows, run the setup EXE for the per-user install, or expand
+the ZIP for portable use. On Debian/Ubuntu, install the `.deb` with
+`sudo apt install ./Talkies-Linux-{LABEL}.deb`; other distributions can use the Linux tarball.
+If downloading only one artifact, calculate its SHA-256 with `shasum -a 256 path/to/artifact` on
+macOS, `Get-FileHash path/to/artifact -Algorithm SHA256` in PowerShell, or
+`sha256sum path/to/artifact` on Linux, then
+compare the resulting hash with that artifact's filename entry in the same release's `SHA256SUMS`.
+Do not install the artifact if the hash differs or the manifest is unavailable. Public macOS and
+Windows builds are currently unsigned and macOS builds are not notarized; hashes detect corruption
+but do not replace a code signature or prove publisher identity.
+Follow the platform guides for supported OS versions, system dependencies, model downloads, and
+offline operation:
+
+- [macOS](../docs/platforms/macos.md)
+- [Windows](../docs/platforms/windows.md)
+- [Linux](../docs/platforms/linux.md)
+
+First-run model provisioning needs network access. When each required model is downloaded and its
+checksum verified, transcription and cleanup use local inference; no hosted inference service is
+required.
+
+## Manual updates
+
+Use the newest asset from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest),
+verify it against that release's `SHA256SUMS`, and update using the same install method:
+
+- **macOS:** quit Talkies, open the new DMG, and replace `/Applications/Talkies.app` with the new
+  copy. The app bundle can also be replaced from the ZIP.
+- **Windows:** close Talkies and run the new setup EXE. It updates the per-user installation and
+  replaces obsolete app files. For a portable ZIP, close Talkies and replace the extracted app
+  directory with the new archive contents.
+- **Debian/Ubuntu:** run `sudo apt install ./Talkies-Linux-{LABEL}.deb`; apt upgrades the installed
+  package. For the portable tarball, replace the extracted `talkies-linux/` directory.
+
+## Roll back to a previous release
+
+Download the previous version from [GitHub Releases](https://github.com/4cecoder/talkies/releases),
+verify the artifact against that release's `SHA256SUMS`, and install it using the same method as an
+update:
+
+- **macOS:** quit Talkies, open the older DMG, and replace `/Applications/Talkies.app` with the
+  older copy. You can also restore the app bundle from the older ZIP.
+- **Windows:** quit Talkies and run the older per-user setup EXE, or replace the portable app
+  directory with the older ZIP contents.
+- **Debian/Ubuntu:** install the older package with
+  `sudo apt install --allow-downgrades ./Talkies-Linux-{LABEL}.deb`. For a portable installation,
+  replace the extracted `talkies-linux/` directory with the older archive contents.
+
+These operations replace application files only. Settings and downloaded models remain in their
+user-data directories, so the previous release can be restored without reinstalling models. If an
+installation fails, leave the existing user-data directories in place, reinstall the last known-good
+release, and use the platform-specific uninstall guide only if you intend to remove local data.
+
+Releases are published on GitHub with generated release notes; the website's downloads page links
+to the latest GitHub Release.
+
+## Uninstall and remove local data
+
+The downloads do not install system services. Quit Talkies before removing its app or extracted
+folder. Removing the application does not remove model downloads or settings:
+
+- **macOS:** remove `/Applications/Talkies.app`. To also delete S1-mini weights, remove
+  `~/Library/Application Support/Talkies/Models/`. WhisperKit's model cache is under
+  `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/`. Delete either cache only if you
+  also want to remove its downloaded models. Talkies preferences are separate in macOS-managed
+  preferences.
+- **Windows:** use **Uninstall Talkies** in the Start menu for setup installs, or remove the folder
+  where you extracted the portable ZIP. Settings and the Whisper cache are under
+  `%USERPROFILE%\.talkies\`; the S1-mini weights are under
+  `%LOCALAPPDATA%\Talkies\Models\`. Delete those directories only if you want to remove settings
+  and downloaded models too.
+- **Linux:** remove the extracted `talkies-linux/` directory. Settings are under
+  `${XDG_CONFIG_HOME:-$HOME/.config}/talkies/`, and models and local app data are under
+  `${XDG_DATA_HOME:-$HOME/.local/share}/talkies/`. Delete those directories only if you want to
+  remove settings and downloaded data too.
+
+## Build and verify locally
+
+The release workflow is the authoritative end-to-end packaging path. Local build prerequisites and
+platform-specific checks are documented in the platform guides. Useful checks include:
+
+```sh
+(cd mac && swift test)
+actionlint .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/deploy-pages.yml
 ```
 
-**Output**: `.dmg` installer with notarized app bundle
+For a locally signed macOS `.app` zip, provide the certificate identity and actual Team ID:
 
-### Windows
-
-**Prerequisites**:
-- Windows 10/11
-- .NET 8.0 SDK
-- (Optional) Inno Setup for installer creation
-- (Optional) Code signing certificate
-
-**Build Release Package** (all-in-one):
-```powershell
-cd packaging/windows
-.\build-installer.ps1
+```sh
+SIGNING_IDENTITY="Apple Development: Name (CERTIFICATE_ID)" \
+EXPECTED_TEAM_ID="TEAM_ID" \
+VERSION="$(tr -d '[:space:]' < packaging/shared/version.txt)" \
+OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
 ```
 
-This will:
-- Build self-contained .NET 8 application
-- Create single-file executable (~150MB with runtime)
-- Optionally create Inno Setup installer
-- Optionally code sign with traditional or Azure Trusted Signing
-- Generate checksums and organize output
+See [macOS packaging](./macos/README.md) and [Windows packaging](./windows/README.md) for
+maintainer-only build details. Those guides also describe optional signing; signing credentials
+are not required for public open-source builds.
 
-**Quick Build** (unsigned):
-```powershell
-.\build-installer.ps1
-```
+## Release work still outstanding
 
-**Build with Signing**:
-```powershell
-# With traditional certificate
-.\build-installer.ps1 -SigningCertificate "cert.pfx" -CertificatePassword "pass"
-
-# With Azure Trusted Signing
-.\build-installer.ps1 -UseAzureTrustedSigning -AzureMetadataFile "config\azure.json"
-```
-
-**Output**:
-- `Talkies-1.0.0-win-x64.exe` - Standalone executable with embedded runtime
-- `Talkies-Setup-1.0.0-win-x64.exe` - Inno Setup installer (if configured)
-
-### Linux (Future)
-
-Linux packaging will be added when the Tauri-based Linux application reaches production readiness. Planned formats:
-- AppImage (universal)
-- .deb (Debian/Ubuntu)
-- .rpm (Fedora/RHEL)
-- Flatpak (Flathub)
-
-## CI/CD Integration
-
-### GitHub Actions Release Workflow
-
-The automated release workflow (`.github/workflows/release.yml`) handles:
-
-1. **Version Detection**: Reads version from `packaging/shared/version.txt`
-2. **Parallel Builds**: Builds macOS and Windows release binaries in parallel
-3. **Artifact Creation**: Packages platform-specific installers/bundles
-4. **GitHub Release**: Creates a release with all artifacts attached
-
-**Trigger**: Push a git tag matching `v*` (e.g., `v0.1.0`)
-
-**Workflow Steps**:
-```
-Tag Push (v*) → Read Version → Build macOS + Windows (parallel)
-                                      ↓
-                              Upload Artifacts
-                                      ↓
-                              Create GitHub Release
-                                      ↓
-                              Attach DMG + MSI
-```
-
-**Manual Trigger** (for testing):
-```bash
-gh workflow run release.yml
-```
-
-### Release Artifacts
-
-Each GitHub release includes:
-
-| Platform | Artifact | Format | Notes |
-|----------|----------|--------|-------|
-| macOS    | `Talkies-macOS-v{VERSION}.dmg` | DMG | Notarized app bundle for macOS 15+ |
-| Windows  | `Talkies-Windows-v{VERSION}.msi` | MSI | Self-contained installer with .NET runtime |
-
-### Environment Variables
-
-The following secrets/variables are used in CI:
-
-| Secret | Purpose | Required For |
-|--------|---------|--------------|
-| `GITHUB_TOKEN` | Create releases and upload assets | All workflows |
-| `APPLE_DEVELOPER_ID` | Code signing certificate | macOS notarization (future) |
-| `APPLE_TEAM_ID` | Apple Developer Team ID | macOS notarization (future) |
-| `WINDOWS_CERT_PASSWORD` | Code signing certificate password | Windows signing (future) |
-
-## Platform-Specific Details
-
-### macOS Packaging (`macos/`)
-
-See [`macos/README.md`](./macos/README.md) for detailed documentation on:
-- App bundle structure
-- Code signing with Apple Developer ID
-- Notarization process
-- DMG creation and customization
-- Universal binary support (Apple Silicon + Intel)
-
-### Windows Packaging (`windows/`)
-
-See [`windows/README.md`](./windows/README.md) for detailed documentation on:
-- MSIX, WiX (MSI), and Inno Setup installer options
-- Self-contained publishing with .NET 8 runtime
-- Code signing with traditional certificates or Azure Trusted Signing
-- Automated build scripts (PowerShell)
-- GitHub Actions CI/CD integration
-- Multi-architecture support (x64, ARM64, x86)
-
-**Quick Start**: See [`windows/QUICKSTART.md`](./windows/QUICKSTART.md) to create your first installer in 10 minutes
-
-## Development Workflow
-
-### Testing Packaging Locally
-
-Before pushing a release tag, test packaging locally:
-
-**macOS**:
-```bash
-cd packaging/macos
-./build.sh --test  # Creates unsigned DMG for testing
-```
-
-**Windows**:
-```bash
-cd packaging/windows
-.\build.ps1 -Test  # Creates unsigned MSI for testing
-```
-
-### Versioning Strategy
-
-Talkies follows [Semantic Versioning 2.0.0](https://semver.org/):
-
-- **MAJOR**: Incompatible API/data format changes (e.g., settings migration required)
-- **MINOR**: New features, backward-compatible
-- **PATCH**: Bug fixes, backward-compatible
-
-Examples:
-- `0.1.0` - Initial beta release
-- `0.2.0` - Added LLM enhancement features
-- `0.2.1` - Fixed audio recording bug
-- `1.0.0` - First stable release
-
-### Pre-release Versions
-
-For alpha/beta/rc releases, append a suffix:
-- `0.1.0-alpha.1`
-- `0.2.0-beta.2`
-- `1.0.0-rc.1`
-
-These will be marked as pre-releases in GitHub.
-
-## Troubleshooting
-
-### Release Workflow Fails
-
-1. **Check version format**: Must be valid semver (e.g., `0.1.0`, not `v0.1.0`)
-2. **Verify tag format**: Git tag must start with `v` (e.g., `v0.1.0`)
-3. **Review build logs**: Check GitHub Actions logs for platform-specific errors
-4. **Test locally**: Run packaging scripts on your development machine first
-
-### Version Mismatch
-
-If platform-specific manifests show different versions:
-
-1. Update `packaging/shared/version.txt`
-2. Sync platform manifests:
-   - macOS: `Package.swift` (if applicable)
-   - Windows: `Talkies.Windows.csproj` `<Version>` tag
-3. Commit and re-tag
-
-### Artifact Upload Issues
-
-- Ensure artifact paths in `.github/workflows/release.yml` match actual output locations
-- Check `retention-days` settings (currently 1 day for release artifacts)
-- Verify `actions/upload-artifact` and `actions/download-artifact` versions are compatible
-
-## Contributing
-
-When adding new platforms or packaging features:
-
-1. Create a platform-specific subdirectory (e.g., `linux/`)
-2. Add a platform-specific `README.md` with detailed instructions
-3. Update this main README with quick start steps
-4. Add the platform to the release workflow (`.github/workflows/release.yml`)
-5. Test the full release process end-to-end
-
-## Resources
-
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [macOS Code Signing Guide](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution)
-- [WiX Toolset Documentation](https://wixtoolset.org/docs/)
-- [Semantic Versioning Specification](https://semver.org/)
+- Documented signing and notarization choices for maintainers, while keeping unsigned builds
+  available.
+- A tested public release run on clean machines for every OS and architecture.

@@ -1,5 +1,7 @@
 import SwiftUI
 import Foundation
+import TalkiesCore
+import TalkiesInference
 
 // MARK: - Ollama Plugin
 @MainActor
@@ -236,7 +238,8 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
             stop: stopSequences.isEmpty ? nil : stopSequences.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }
         )
 
-        guard let url = URL(string: "\(ollamaHost)/api/generate") else {
+        guard let endpoint = LocalModelEndpoint.url(ollamaHost),
+              let url = URL(string: "/api/generate", relativeTo: endpoint)?.absoluteURL else {
             throw OllamaError.invalidURL
         }
 
@@ -248,7 +251,7 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let (data, response) = try await LocalInferenceURLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OllamaError.invalidResponse
@@ -273,7 +276,8 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         }
 
         // Try to connect to Ollama
-        guard let url = URL(string: "\(ollamaHost)/api/tags") else {
+        guard let endpoint = LocalModelEndpoint.url(ollamaHost),
+              let url = URL(string: "/api/tags", relativeTo: endpoint)?.absoluteURL else {
             await MainActor.run {
                 ollamaStatus = .notInstalled
                 isCheckingStatus = false
@@ -282,7 +286,7 @@ class OllamaPlugin: TalkiesPlugin, ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await LocalInferenceURLSession.shared.data(from: url)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

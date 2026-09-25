@@ -217,10 +217,8 @@ For full integration testing, you'll need:
    - VAD (Voice Activity Detection) configuration
    - Custom prompts for context
 
-6. **Export formats**:
-   - VTT (WebVTT) subtitle generation
-   - SRT (SubRip) subtitle generation
-   - JSON structured output
+6. **Transcript file export (not implemented)**:
+   - Add VTT (WebVTT), SRT (SubRip), and JSON output with shared cross-platform fixtures
 
 ## Reference Implementation
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import ServiceManagement
+import TalkiesCore
 
 // MARK: - Plugin Protocol
 /// Protocol for all Talkies plugins (MCP, Ollama, etc.)
@@ -178,6 +179,23 @@ struct GeneralSettingsView: View {
         )
     }
 
+    private var activationKey: Binding<ActivationKey> {
+        Binding(
+            get: { settingsService.settings.activationKey ?? .rightOption },
+            set: { settingsService.settings.activationKey = $0 }
+        )
+    }
+
+    private var vocabularyText: Binding<String> {
+        Binding(
+            get: { (settingsService.settings.vocabulary ?? []).joined(separator: "\n") },
+            set: { text in
+                let terms = text.components(separatedBy: .newlines)
+                settingsService.settings.vocabulary = LocalVocabulary(terms: terms).terms
+            }
+        )
+    }
+
     private var launchAtLogin: Binding<Bool> {
         Binding(
             get: { settingsService.settings.launchAtLogin },
@@ -199,8 +217,108 @@ struct GeneralSettingsView: View {
         )
     }
 
+    private var s1MiniCleanupEnabled: Binding<Bool> {
+        Binding(
+            get: { settingsService.settings.s1Mini?.isEnabled ?? false },
+            set: { isEnabled in
+                var cleanupSettings = settingsService.settings.s1Mini ?? S1MiniSettings()
+                cleanupSettings.isEnabled = isEnabled
+                settingsService.settings.s1Mini = cleanupSettings
+            }
+        )
+    }
+
+    private var s1MiniStyle: Binding<TranscriptStyle> {
+        Binding(
+            get: { settingsService.settings.s1Mini?.style ?? .semiFormal },
+            set: { value in
+                var cleanupSettings = settingsService.settings.s1Mini ?? S1MiniSettings()
+                cleanupSettings.style = value
+                settingsService.settings.s1Mini = cleanupSettings
+            }
+        )
+    }
+
+    private var s1MiniStructure: Binding<TranscriptStructure> {
+        Binding(
+            get: { settingsService.settings.s1Mini?.structure ?? .prose },
+            set: { value in
+                var cleanupSettings = settingsService.settings.s1Mini ?? S1MiniSettings()
+                cleanupSettings.structure = value
+                settingsService.settings.s1Mini = cleanupSettings
+            }
+        )
+    }
+
+    private var s1MiniContext: Binding<TranscriptContext> {
+        Binding(
+            get: { settingsService.settings.s1Mini?.context ?? .general },
+            set: { value in
+                var cleanupSettings = settingsService.settings.s1Mini ?? S1MiniSettings()
+                cleanupSettings.context = value
+                settingsService.settings.s1Mini = cleanupSettings
+            }
+        )
+    }
+
     var body: some View {
         Form {
+            Section(header: Text("Dictation Window")) {
+                Toggle("Use mini window", isOn: Binding(
+                    get: { settingsService.settings.useMinimalDictationWindow ?? false },
+                    set: { settingsService.settings.useMinimalDictationWindow = $0 }
+                ))
+                .help("Use a smaller floating panel with the waveform, status, and recording controls")
+                Text("Turn this off to use the larger transcript panel.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Transcript Cleanup")) {
+                Toggle("Clean up with S1-mini", isOn: s1MiniCleanupEnabled)
+                    .help("Run the S1-mini text normalizer on this Mac after transcription")
+
+                Picker("Writing style", selection: s1MiniStyle) {
+                    ForEach(TranscriptStyle.allCases, id: \.self) { style in
+                        Text(style.rawValue.capitalized).tag(style)
+                    }
+                }
+                .disabled(!(settingsService.settings.s1Mini?.isEnabled ?? false))
+
+                Picker("Structure", selection: s1MiniStructure) {
+                    ForEach(TranscriptStructure.allCases, id: \.self) { structure in
+                        Text(structure.rawValue.capitalized).tag(structure)
+                    }
+                }
+                .disabled(!(settingsService.settings.s1Mini?.isEnabled ?? false))
+
+                Picker("Context", selection: s1MiniContext) {
+                    ForEach(TranscriptContext.allCases, id: \.self) { context in
+                        Text(context.rawValue.capitalized).tag(context)
+                    }
+                }
+                .disabled(!(settingsService.settings.s1Mini?.isEnabled ?? false))
+
+                Text("The first use downloads the S1-mini GGUF model (about 462 MB). Cleanup runs on your CPU after download; transcript text is not sent to a server.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("S1-mini by Superwhisper · English · Apache 2.0 with naming clause")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Personal Vocabulary")) {
+                TextEditor(text: vocabularyText)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 88, maxHeight: 140)
+                    .accessibilityLabel("Personal vocabulary, one term per line")
+
+                Text("Add names and uncommon terms, one per line. WhisperKit uses these as local recognition hints; terms stay in this Mac's settings file.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(header: Text("Voice Assistant Mode")) {
                 Toggle("Enable Voice Assistant", isOn: voiceAssistantMode)
                     .help("Speak responses back using TTS instead of inserting text")
@@ -243,12 +361,14 @@ struct GeneralSettingsView: View {
             }
 
             Section(header: Text("Keyboard Shortcut")) {
-                HStack {
-                    Text("Activation Key:")
-                    Spacer()
-                    Text("Right Option (⌥)")
-                        .foregroundColor(.secondary)
+                Picker("Activation Key", selection: activationKey) {
+                    ForEach(ActivationKey.allCases) { key in
+                        Text(key.displayName).tag(key)
+                    }
                 }
+                Text("Tap the selected key to start or stop recording. Hold it to use push-to-talk.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Section(header: Text("About")) {

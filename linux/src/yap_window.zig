@@ -1,11 +1,10 @@
 const std = @import("std");
 const yap_sandbox = @import("yap_sandbox.zig");
 const daemon_ws = @import("daemon_ws.zig");
+const utils = @import("utils.zig");
 
 // GTK4 C shim wrapper
-pub const c = @cImport({
-    @cInclude("yap_window_gtk.h");
-});
+pub const c = @import("c_yap_window");
 
 // External GObject functions
 extern fn g_object_get_data(object: ?*anyopaque, key: [*c]const u8) ?*anyopaque;
@@ -88,7 +87,7 @@ pub const YapWindow = struct {
     fn displayRevision(self: *YapWindow, index: usize) !void {
         if (self.sandbox.getRevision(index)) |text| {
             // Create null-terminated string for C
-            const cstr = try self.allocator.dupeZ(u8, text);
+            const cstr = try utils.dupeZ(self.allocator, text);
             defer self.allocator.free(cstr);
 
             c.yap_window_gtk_set_revision_text(

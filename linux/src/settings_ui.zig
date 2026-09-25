@@ -1,11 +1,6 @@
 const std = @import("std");
 const config = @import("config.zig");
 
-// GTK4 C bindings (fallback until Ghostty bindings support Zig 0.16)
-const c = @cImport({
-    @cInclude("gtk/gtk.h");
-});
-
 const log = std.log.scoped(.settings_ui);
 
 /// Settings window using GTK4 C FFI
@@ -31,6 +26,7 @@ pub const SettingsWindow = struct {
         audio_device_entry: ?*gtk.Entry = null,
         model_combo: ?*gtk.ComboBoxText = null,
         language_entry: ?*gtk.Entry = null,
+        vocabulary_entry: ?*gtk.Entry = null,
         threads_spin: ?*gtk.SpinButton = null,
         auto_paste_switch: ?*gtk.Switch = null,
 
@@ -50,7 +46,7 @@ pub const SettingsWindow = struct {
 
         // Configure window
         window.setTitle("Talkies Settings");
-        window.setDefaultSize(500, 400);
+        window.setDefaultSize(500, 460);
         window.setResizable(0); // Non-resizable
 
         // Create main vertical box with margins
@@ -68,6 +64,7 @@ pub const SettingsWindow = struct {
         self.addSection(vbox, "Transcription");
         self.addModelRow(vbox);
         self.addLanguageRow(vbox);
+        self.addVocabularyRow(vbox);
         self.addThreadsRow(vbox);
 
         // Output section
@@ -166,11 +163,11 @@ pub const SettingsWindow = struct {
 
         const adjustment = gtk.Adjustment.new(
             @floatFromInt(priv.cfg.threads), // value
-            1.0,  // lower
+            1.0, // lower
             16.0, // upper
-            1.0,  // step_increment
-            4.0,  // page_increment
-            0.0,  // page_size
+            1.0, // step_increment
+            4.0, // page_increment
+            0.0, // page_size
         );
 
         const spin = gtk.SpinButton.new(adjustment, 1.0, 0);
@@ -178,6 +175,25 @@ pub const SettingsWindow = struct {
         spin.as(gtk.Widget).setHexpand(@intFromBool(true));
         hbox.append(spin.as(gtk.Widget));
 
+        container.append(hbox.as(gtk.Widget));
+    }
+
+    fn addVocabularyRow(self: *Self, container: *gtk.Box) void {
+        const priv = self.private();
+        const hbox = gtk.Box.new(.horizontal, 10);
+
+        const label = gtk.Label.new("Recognition Hints:");
+        label.as(gtk.Widget).setSizeRequest(150, -1);
+        label.as(gtk.Widget).setHalign(.start);
+        hbox.append(label.as(gtk.Widget));
+
+        const entry = gtk.Entry.new();
+        priv.vocabulary_entry = entry;
+        entry.getBuffer().setText(priv.cfg.vocabulary_prompt.ptr, -1);
+        entry.setMaxLength(400);
+        entry.as(gtk.Widget).setHexpand(@intFromBool(true));
+        entry.as(gtk.Widget).setTooltipText("Comma-separated local names and uncommon terms (max 400 characters)");
+        hbox.append(entry.as(gtk.Widget));
         container.append(hbox.as(gtk.Widget));
     }
 
@@ -275,6 +291,13 @@ pub const SettingsWindow = struct {
             }
             priv.cfg.language = try priv.cfg.allocator.dupe(u8, text);
             priv.cfg.language_owned = true;
+        }
+
+        if (priv.vocabulary_entry) |entry| {
+            const text = std.mem.span(entry.getBuffer().getText());
+            if (priv.cfg.vocabulary_prompt_owned) priv.cfg.allocator.free(priv.cfg.vocabulary_prompt);
+            priv.cfg.vocabulary_prompt = try priv.cfg.allocator.dupe(u8, text);
+            priv.cfg.vocabulary_prompt_owned = true;
         }
 
         // Read threads

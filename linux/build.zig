@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addCImports(b, target, optimize, exe_mod);
 
     const exe = b.addExecutable(.{
         .name = "talkies",
@@ -25,12 +26,17 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add C source files for GTK wrappers
-    exe.addCSourceFile(.{
+    // (addCSourceFile moved from Step.Compile to Module upstream)
+    exe_mod.addCSourceFile(.{
         .file = b.path("src/yap_window_gtk.c"),
         .flags = &.{"-std=c11"},
     });
-    exe.addCSourceFile(.{
+    exe_mod.addCSourceFile(.{
         .file = b.path("src/daemon_status_gtk.c"),
+        .flags = &.{"-std=c11"},
+    });
+    exe_mod.addCSourceFile(.{
+        .file = b.path("src/s1_runtime.c"),
         .flags = &.{"-std=c11"},
     });
 
@@ -64,65 +70,78 @@ pub fn build(b: *std.Build) void {
     // }
 
     // Link system libraries
-    exe.linkSystemLibrary("pulse-simple");
-    exe.linkSystemLibrary("pulse");
-    exe.linkSystemLibrary("whisper");
-    exe.linkSystemLibrary("sqlite3"); // For YAP session management
+    // (linkSystemLibrary/addObjectFile/addIncludePath/addRPath/linkLibC all
+    // moved from Step.Compile to Module upstream; linkSystemLibrary also
+    // gained a mandatory options param, Zig has no default arguments)
+    exe_mod.linkSystemLibrary("pulse-simple", .{});
+    exe_mod.linkSystemLibrary("pulse", .{});
+    exe_mod.linkSystemLibrary("whisper", .{});
+    exe_mod.linkSystemLibrary("llama", .{});
+    exe_mod.linkSystemLibrary("sqlite3", .{}); // For YAP session management
 
     // Link libfvad (WebRTC VAD) - vendored static library
-    exe.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
-    exe.addIncludePath(b.path("vendor/libfvad/include"));
+    exe_mod.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    exe_mod.addIncludePath(b.path("vendor/libfvad/include"));
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
-        exe.linkSystemLibrary("X11");
+        exe_mod.linkSystemLibrary("X11", .{});
     }
 
-    exe.linkSystemLibrary("dbus-1"); // For system tray
-    exe.linkSystemLibrary("gtk-4"); // For settings UI
-    exe.linkSystemLibrary("glib-2.0"); // For GLib functions in GTK wrappers
-    exe.linkSystemLibrary("gobject-2.0"); // For GObject functions in GTK wrappers
-    exe.linkLibC();
+    exe_mod.linkSystemLibrary("dbus-1", .{}); // For system tray
+    exe_mod.linkSystemLibrary("gtk-4", .{}); // For settings UI
+    exe_mod.linkSystemLibrary("glib-2.0", .{}); // For GLib functions in GTK wrappers
+    exe_mod.linkSystemLibrary("gobject-2.0", .{}); // For GObject functions in GTK wrappers
+    exe_mod.link_libc = true;
+
+    // libwhisper/libggml aren't packaged by any Linux distro (see
+    // linux/docs/DEPENDENCIES.md — every distro builds them from source).
+    // Release packaging bundles those .so files next to the binary in a
+    // lib/ directory; this rpath lets the dynamic linker find them there
+    // without needing them installed system-wide. $ORIGIN is a literal
+    // linker token (resolved at runtime, relative to the binary's own
+    // location), not a build-time filesystem path.
+    exe_mod.addRPathSpecial("$ORIGIN/lib");
 
     // Add include paths for whisper.h and GTK4
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
-    exe.addIncludePath(b.path("src")); // For yap_window_gtk.h
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
-    exe.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include" });
+    exe_mod.addIncludePath(b.path("src")); // For yap_window_gtk.h
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
+    exe_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    const multiarch_dir = b.fmt("/usr/lib/{s}-linux-gnu", .{@tagName(target.result.cpu.arch)});
+    exe_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/glib-2.0/include", .{multiarch_dir}) });
+    exe_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/graphene-1.0/include", .{multiarch_dir}) });
 
     b.installArtifact(exe);
 
     // Run command
+    // (b.args, which forwarded `zig build run -- extra args`, was removed
+    // upstream with no direct replacement; dropped since it's a local-dev
+    // convenience only, not exercised by CI)
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
     // GTK overlay runner
-    const overlay_cmd = b.addSystemCommand(&[_][]const u8{
-        "python3",
-        b.pathJoin(&[_][]const u8{ b.pathFromRoot(""), "talkies-overlay-gtk" }),
-    });
+    // (b.pathFromRoot was removed upstream; addFileArg is the current way
+    // to pass a build-root-relative path to a spawned command)
+    const overlay_cmd = b.addSystemCommand(&[_][]const u8{"python3"});
+    overlay_cmd.addFileArg(b.path("talkies-overlay-gtk"));
     const overlay_step = b.step("overlay", "Run the GTK overlay");
     overlay_step.dependOn(&overlay_cmd.step);
 
     // Cleanup command to kill stuck processes and free ports
-    const cleanup_cmd = b.addSystemCommand(&[_][]const u8{
-        "bash",
-        b.pathJoin(&[_][]const u8{ b.pathFromRoot(""), "scripts/cleanup.sh" }),
-    });
+    const cleanup_cmd = b.addSystemCommand(&[_][]const u8{"bash"});
+    cleanup_cmd.addFileArg(b.path("scripts/cleanup.sh"));
     const cleanup_step = b.step("cleanup", "Kill stuck talkies processes and free ports");
     cleanup_step.dependOn(&cleanup_cmd.step);
 
@@ -132,6 +151,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    addCImports(b, target, optimize, test_mod);
 
     // Add build options to test module
     test_mod.addImport("build_options", build_options.createModule());
@@ -141,36 +161,85 @@ pub fn build(b: *std.Build) void {
     });
 
     // Link same libraries for tests
-    unit_tests.linkSystemLibrary("pulse-simple");
-    unit_tests.linkSystemLibrary("pulse");
-    unit_tests.linkSystemLibrary("whisper");
-    unit_tests.linkSystemLibrary("sqlite3");
+    test_mod.linkSystemLibrary("pulse-simple", .{});
+    test_mod.linkSystemLibrary("pulse", .{});
+    test_mod.linkSystemLibrary("whisper", .{});
+    test_mod.linkSystemLibrary("llama", .{});
+    test_mod.linkSystemLibrary("sqlite3", .{});
 
     // Link libfvad for tests
-    unit_tests.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
-    unit_tests.addIncludePath(b.path("vendor/libfvad/include"));
+    test_mod.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
+    test_mod.addIncludePath(b.path("vendor/libfvad/include"));
+    test_mod.addCSourceFile(.{
+        .file = b.path("src/s1_runtime.c"),
+        .flags = &.{"-std=c11"},
+    });
 
     // Only link X11 if GTK was built with X11 support
     if (has_x11) {
-        unit_tests.linkSystemLibrary("X11");
+        test_mod.linkSystemLibrary("X11", .{});
     }
 
-    unit_tests.linkSystemLibrary("dbus-1");
-    unit_tests.linkSystemLibrary("gtk-4");
-    unit_tests.linkLibC();
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
-    unit_tests.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    test_mod.linkSystemLibrary("dbus-1", .{});
+    test_mod.linkSystemLibrary("gtk-4", .{});
+    test_mod.link_libc = true;
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gtk-4.0" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/pango-1.0" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/harfbuzz" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/cairo" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/gdk-pixbuf-2.0" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/include/graphene-1.0" });
+    test_mod.addIncludePath(.{ .cwd_relative = "/usr/lib64/graphene-1.0/include" });
+    test_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/glib-2.0/include", .{multiarch_dir}) });
+    test_mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/graphene-1.0/include", .{multiarch_dir}) });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+}
+
+fn addCImports(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+    module: *std.Build.Module,
+) void {
+    addCImport(b, target, optimize, module, "c_audio", "audio.h", &.{ "pulse-simple", "pulse" });
+    addCImport(b, target, optimize, module, "c_daemon_status", "daemon_status.h", &.{});
+    addCImport(b, target, optimize, module, "c_hotkey", "hotkey.h", &.{"X11"});
+    addCImport(b, target, optimize, module, "c_input", "input.h", &.{});
+    addCImport(b, target, optimize, module, "c_sqlite3", "sqlite3.h", &.{"sqlite3"});
+    addCImport(b, target, optimize, module, "c_s1_runtime", "s1_runtime.h", &.{});
+    addCImport(b, target, optimize, module, "c_tray", "tray.h", &.{"dbus-1"});
+    addCImport(b, target, optimize, module, "c_vad", "vad.h", &.{});
+    addCImport(b, target, optimize, module, "c_whisper", "whisper.h", &.{});
+    addCImport(b, target, optimize, module, "c_yap_window", "yap_window.h", &.{});
+}
+
+fn addCImport(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+    module: *std.Build.Module,
+    name: []const u8,
+    header: []const u8,
+    libraries: []const []const u8,
+) void {
+    const translation = b.addTranslateC(.{
+        .root_source_file = b.path(b.fmt("src/c_headers/{s}", .{header})),
+        .target = target,
+        .optimize = optimize,
+    });
+    translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+    translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    translation.addIncludePath(b.path("src"));
+    translation.addIncludePath(b.path("vendor/libfvad/include"));
+    for (libraries) |library| {
+        translation.linkSystemLibrary(library, .{});
+    }
+    module.addImport(name, translation.createModule());
 }

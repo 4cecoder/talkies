@@ -1,5 +1,7 @@
 import SwiftUI
+import TalkiesCore
 import AVFoundation
+import TalkiesAudio
 
 struct RecordingView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
@@ -22,7 +24,7 @@ struct RecordingView: View {
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
-                    Text("Real-time transcription with MLX Whisper")
+                    Text("Real-time transcription with WhisperKit")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }

@@ -1,23 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { Header } from '@/app/components/sections/Header';
 import { Download, Check, Apple, Monitor, AlertCircle } from 'lucide-react';
 
-export default function DownloadPage() {
-  const [platform, setPlatform] = useState<'mac' | 'windows' | 'linux' | 'unknown'>('unknown');
+type Platform = 'mac' | 'windows' | 'linux' | 'unknown';
 
-  useEffect(() => {
-    // Detect platform
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    if (userAgent.indexOf('mac') !== -1) {
-      setPlatform('mac');
-    } else if (userAgent.indexOf('win') !== -1) {
-      setPlatform('windows');
-    } else if (userAgent.indexOf('linux') !== -1) {
-      setPlatform('linux');
-    }
-  }, []);
+function subscribeToPlatformChanges() {
+  return () => {};
+}
+
+function getDetectedPlatform(): Platform {
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.includes('mac')) return 'mac';
+  if (userAgent.includes('win')) return 'windows';
+  if (userAgent.includes('linux')) return 'linux';
+  return 'unknown';
+}
+
+function getServerPlatform(): Platform {
+  return 'unknown';
+}
+
+export default function DownloadPage() {
+  const platform = useSyncExternalStore(
+    subscribeToPlatformChanges,
+    getDetectedPlatform,
+    getServerPlatform,
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -259,12 +270,12 @@ export default function DownloadPage() {
               >
                 View Documentation
               </a>
-              <a
+              <Link
                 href="/contact"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition-transform hover:scale-105"
               >
                 Contact Support
-              </a>
+              </Link>
             </div>
           </div>
         </div>

@@ -4,19 +4,25 @@ import withBundleAnalyzer from '@next/bundle-analyzer';
 const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
+const isGitHubPagesBuild = process.env.GITHUB_PAGES === 'true';
 
 const nextConfig: NextConfig = {
+  // Static export for GitHub Pages (no Node server / API routes available at runtime)
+  output: 'export',
+  // This is a project site at /talkies; local development stays at /.
+  basePath: isGitHubPagesBuild ? '/talkies' : '',
+  trailingSlash: isGitHubPagesBuild,
+
   // Production optimizations
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
 
   // Image optimization
+  // Static export doesn't support the default Next.js image optimization
+  // loader (it requires a running server), so it must be disabled.
   images: {
-    formats: ['image/avif', 'image/webp'],
-    dangerouslyAllowSVG: true,
-    contentDispositionType: 'attachment',
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    unoptimized: true,
   },
 
   // Bundle optimization

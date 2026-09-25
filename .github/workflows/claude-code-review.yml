@@ -9,9 +9,11 @@ on:
     #   - "src/**/*.tsx"
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
+  workflow_dispatch:
 
 jobs:
   claude-review:
+    if: false # Disabled temporarily - re-enable when CLAUDE_CODE_OAUTH_TOKEN is configured
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||

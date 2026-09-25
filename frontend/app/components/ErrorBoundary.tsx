@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
               Something went wrong
             </h2>
             <p className="text-neutral-400 mb-6">
-              We're sorry, but something unexpected happened. Please try again.
+              We&apos;re sorry, but something unexpected happened. Please try again.
             </p>
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <pre className="text-left text-xs bg-black/50 p-4 rounded-lg mb-4 overflow-auto max-h-40 text-red-400">

@@ -12,15 +12,52 @@ pub fn logError(comptime fmt: []const u8, args: anytype) void {
 
 /// Log a debug message (only in debug builds)
 pub fn logDebug(comptime fmt: []const u8, args: anytype) void {
-    if (@import("builtin").mode == .Debug) {
+    if (@import("builtin").mode == .debug) {
         std.debug.print("[DEBUG] " ++ fmt ++ "\n", args);
     }
 }
 
+/// Read a process environment value using libc's current environment.
+pub fn getEnv(name: [:0]const u8) ?[]const u8 {
+    const value = std.c.getenv(name) orelse return null;
+    return std.mem.span(value);
+}
+
+pub fn io() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
+/// Configure the process-wide single-threaded I/O implementation. Zig's
+/// static default uses Allocator.failing, which breaks process spawning for
+/// curl-based model downloads unless the application supplies an allocator.
+pub fn setIoAllocator(allocator: std.mem.Allocator) void {
+    std.Io.Threaded.global_single_threaded.allocator = allocator;
+}
+
+pub fn sleepNanoseconds(nanoseconds: u64) void {
+    io().sleep(.fromNanoseconds(@intCast(nanoseconds)), .awake) catch {};
+}
+
+pub fn monotonicMilliseconds() i64 {
+    return std.Io.Timestamp.now(io(), .awake).toMilliseconds();
+}
+
+pub fn monotonicTimestamp() std.Io.Timestamp {
+    return std.Io.Timestamp.now(io(), .awake);
+}
+
+pub fn realtimeSeconds() i64 {
+    return std.Io.Timestamp.now(io(), .real).toSeconds();
+}
+
+pub fn dupeZ(allocator: std.mem.Allocator, value: []const u8) ![:0]u8 {
+    return std.mem.concatWithSentinel(allocator, u8, &.{value}, 0);
+}
+
 /// Get XDG config directory (~/.config/talkies)
 pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.NoHomeDir;
-    const xdg_config = std.posix.getenv("XDG_CONFIG_HOME");
+    const home = getEnv("HOME") orelse return error.NoHomeDir;
+    const xdg_config = getEnv("XDG_CONFIG_HOME");
 
     if (xdg_config) |config_base| {
         return std.fmt.allocPrint(allocator, "{s}/talkies", .{config_base});
@@ -31,8 +68,8 @@ pub fn getConfigDir(allocator: std.mem.Allocator) ![]const u8 {
 
 /// Get XDG data directory (~/.local/share/talkies)
 pub fn getDataDir(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.NoHomeDir;
-    const xdg_data = std.posix.getenv("XDG_DATA_HOME");
+    const home = getEnv("HOME") orelse return error.NoHomeDir;
+    const xdg_data = getEnv("XDG_DATA_HOME");
 
     if (xdg_data) |data_base| {
         return std.fmt.allocPrint(allocator, "{s}/talkies", .{data_base});
@@ -43,7 +80,7 @@ pub fn getDataDir(allocator: std.mem.Allocator) ![]const u8 {
 
 /// Ensure a directory exists, creating it if necessary
 pub fn ensureDir(path: []const u8) !void {
-    std.fs.makeDirAbsolute(path) catch |err| {
+    std.Io.Dir.createDirAbsolute(std.Io.Threaded.global_single_threaded.io(), path, .default_dir) catch |err| {
         if (err != error.PathAlreadyExists) {
             return err;
         }
@@ -54,13 +91,8 @@ pub fn ensureDir(path: []const u8) !void {
 /// Uses aplay for WAV playback (part of alsa-utils, should already be installed)
 pub fn playSound(sound_file: []const u8) void {
     // Spawn process in background - don't wait for it to complete
-    var child = std.process.Child.init(&[_][]const u8{ "aplay", "-q", sound_file }, std.heap.page_allocator);
-    child.stdin_behavior = .Ignore;
-    child.stdout_behavior = .Ignore;
-    child.stderr_behavior = .Ignore;
-
-    // Spawn and detach - fire and forget
-    _ = child.spawn() catch {
+    const argv = &[_][]const u8{ "aplay", "-q", sound_file };
+    _ = std.process.spawn(io(), .{ .argv = argv, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch {
         // Silently fail if aplay not installed or sound file missing
         return;
     };

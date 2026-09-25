@@ -24,6 +24,16 @@ macOS applications can be distributed in two primary formats:
 
 For Talkies, we recommend DMG distribution as it provides the best user experience for a menu bar application.
 
+GitHub Actions publishes an unsigned `.app` ZIP and a drag-and-drop DMG so anyone can build releases without maintainer credentials. CI creates the DMG from the app bundle after checking its executable, icon, embedded `llama.framework`, and Applications shortcut. Local app packaging fails closed unless you provide a valid, stable Apple Development identity and the certificate's actual Team ID:
+
+```bash
+SIGNING_IDENTITY="Apple Development: Your Name (CERTIFICATE_ID)" \
+EXPECTED_TEAM_ID="TEAM_ID" \
+VERSION=1.2.3 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
+```
+
+The certificate name suffix is not necessarily the Team ID, so set both values explicitly. The script signs `llama.framework` before the app, verifies bundle IDs, versions, Team ID, and signatures, then validates and zips `Talkies.app`. The public DMG is also unsigned and is not notarized; notarization is not currently part of the release pipeline. Model weights stay in persistent user storage and are not copied into the app bundle.
+
 ---
 
 ## Prerequisites
@@ -42,17 +52,22 @@ For Talkies, we recommend DMG distribution as it provides the best user experien
    - GitHub: https://github.com/create-dmg/create-dmg
    - Alternative: https://github.com/sindresorhus/create-dmg (Node.js-based)
 
-3. **Apple Developer Account** ($99/year)
-   - Required for code signing and notarization
+3. **Apple Developer Account** (optional for unsigned builds)
+   - Needed to obtain signing certificates; public GitHub CI builds remain unsigned
    - Sign up at: https://developer.apple.com
 
 ### Required Certificates
 
-1. **Developer ID Application Certificate**
-   - Used to sign the application bundle
+1. **Apple Development Certificate**
+   - Used by local `package-app.sh` builds to keep the same signing identity across rebuilds
+   - Set `SIGNING_IDENTITY` and the certificate's actual `EXPECTED_TEAM_ID`
    - Obtained from Apple Developer Portal
 
-2. **Developer ID Installer Certificate** (for .pkg only)
+2. **Developer ID Application Certificate** (for future direct distribution)
+   - Used for outside-the-App-Store distribution and notarization workflows
+   - Not currently used by the public release workflow
+
+3. **Developer ID Installer Certificate** (for .pkg only)
    - Used to sign package installers
    - Obtained from Apple Developer Portal
 
@@ -61,7 +76,7 @@ For Talkies, we recommend DMG distribution as it provides the best user experien
 1. Visit [Apple Developer Account](https://developer.apple.com/account)
 2. Navigate to **Certificates, Identifiers & Profiles**
 3. Create a new certificate:
-   - Select **Developer ID Application**
+   - Select **Apple Development** for local signed app builds, or **Developer ID Application** for future notarized distribution
    - Follow CSR (Certificate Signing Request) generation steps
    - Download and install in Keychain Access
 
@@ -78,75 +93,19 @@ A DMG (Disk Image) is macOS's preferred format for distributing applications. Wh
 
 ### Step-by-Step DMG Creation
 
-#### 1. Build Your Application
+#### 1. Build the application bundle
 
 ```bash
-cd /home/fource/talkies/mac
-swift build -c release
+SIGNING_IDENTITY="Apple Development: Your Name (CERTIFICATE_ID)" \
+EXPECTED_TEAM_ID="TEAM_ID" \
+VERSION=1.2.3 OUTPUT_DIR="$PWD/packaging/macos/build" ./packaging/macos/package-app.sh
 ```
 
-The compiled binary will be at `.build/release/Talkies`. However, for macOS distribution, you need an `.app` bundle.
+This creates `Talkies.app` and `Talkies-macOS-1.2.3.zip` in the output directory. The bundle includes the linked `llama.framework`, its loader rpath, and the microphone and Apple Events usage descriptions. Do not package the Swift executable on its own.
 
-#### 2. Create Application Bundle
+The bundle includes the Talkies icon from `branding/icons/talkies-app-icon.icns`.
 
-Since we're using Swift Package Manager (not Xcode), we need to manually create the `.app` bundle structure:
-
-```bash
-# Create bundle structure
-mkdir -p "Talkies.app/Contents/MacOS"
-mkdir -p "Talkies.app/Contents/Resources"
-
-# Copy binary
-cp .build/release/Talkies "Talkies.app/Contents/MacOS/Talkies"
-
-# Make executable
-chmod +x "Talkies.app/Contents/MacOS/Talkies"
-```
-
-#### 3. Create Info.plist
-
-Create `Talkies.app/Contents/Info.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>Talkies</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.talkies.app</string>
-    <key>CFBundleName</key>
-    <string>Talkies</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Talkies needs access to your microphone for voice transcription.</string>
-</dict>
-</plist>
-```
-
-#### 4. Add Application Icon (Optional)
-
-```bash
-# If you have an .icns file
-cp path/to/AppIcon.icns "Talkies.app/Contents/Resources/AppIcon.icns"
-
-# Update Info.plist to reference it
-# Add: <key>CFBundleIconFile</key><string>AppIcon.icns</string>
-```
-
-#### 5. Create DMG with create-dmg
+#### 3. Create DMG with create-dmg
 
 Using the `create-dmg` tool:
 

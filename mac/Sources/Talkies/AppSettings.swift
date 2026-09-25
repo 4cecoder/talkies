@@ -1,14 +1,20 @@
 import Foundation
+import TalkiesCore
 
 // MARK: - App Settings Model
 /// Main settings model for Talkies - persisted to ~/.talkies/config.json
 struct AppSettings: Codable {
     // MARK: - General Settings
     var pushToTalkThreshold: Double = 0.15
+    var activationKey: ActivationKey? = .rightOption
+    var vocabulary: [String]? = []
     var launchAtLogin: Bool = false
     var voiceAssistantMode: Bool = false
     var insertTextInAssistantMode: Bool = false
     var debugMode: Bool = false
+    /// Optional for backward compatibility with existing config.json files.
+    var useMinimalDictationWindow: Bool? = false
+    var s1Mini: S1MiniSettings?
 
     // MARK: - Plugin Settings
     var ollama: OllamaSettings = OllamaSettings()
@@ -19,16 +25,27 @@ struct AppSettings: Codable {
 
     enum CodingKeys: String, CodingKey {
         case pushToTalkThreshold
+        case activationKey
+        case vocabulary
         case launchAtLogin
         case voiceAssistantMode
         case insertTextInAssistantMode
         case debugMode
+        case useMinimalDictationWindow
+        case s1Mini
         case ollama
         case lmStudio
         case sentiment
         case mlxTTS = "mlx_tts"
         case mlxImageGen = "mlx_image_gen"
     }
+}
+
+struct S1MiniSettings: Codable {
+    var isEnabled: Bool = false
+    var style: TranscriptStyle = .semiFormal
+    var structure: TranscriptStructure = .prose
+    var context: TranscriptContext = .general
 }
 
 // MARK: - Ollama Settings

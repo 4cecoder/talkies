@@ -12,10 +12,11 @@ pub const Config = struct {
     model: []const u8 = "base",
     language: []const u8 = "en",
     threads: u8 = 4,
+    vocabulary_prompt: []const u8 = "",
+    s1_cleanup_enabled: bool = true,
 
     // Output settings
     auto_paste: bool = true,
-    export_format: []const u8 = "txt",
     paste_keybind: []const u8 = "ctrl+v", // Keybind for pasting (xdotool format)
 
     // Platform settings
@@ -38,7 +39,7 @@ pub const Config = struct {
     audio_device_owned: bool = false,
     model_owned: bool = false,
     language_owned: bool = false,
-    export_format_owned: bool = false,
+    vocabulary_prompt_owned: bool = false,
     paste_keybind_owned: bool = false,
     platform_owned: bool = false,
     yap_llm_model_owned: bool = false,
@@ -61,8 +62,8 @@ pub const Config = struct {
         if (self.language_owned) {
             self.allocator.free(self.language);
         }
-        if (self.export_format_owned) {
-            self.allocator.free(self.export_format);
+        if (self.vocabulary_prompt_owned) {
+            self.allocator.free(self.vocabulary_prompt);
         }
         if (self.paste_keybind_owned) {
             self.allocator.free(self.paste_keybind);
@@ -83,6 +84,7 @@ pub const Config = struct {
 
     /// Create default configuration file if it doesn't exist
     pub fn createDefaultConfig(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -96,15 +98,15 @@ pub const Config = struct {
         defer self.allocator.free(config_path);
 
         // Check if file already exists
-        if (std.fs.cwd().access(config_path, .{})) |_| {
+        if (std.Io.Dir.cwd().access(file_io, config_path, .{})) |_| {
             // File exists, don't overwrite
             return;
         } else |_| {
             // File doesn't exist, create it
         }
 
-        const file = try std.fs.cwd().createFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(file_io, config_path, .{});
+        defer file.close(file_io);
 
         const default_content =
             \\[audio]
@@ -117,10 +119,14 @@ pub const Config = struct {
             \\model = "base"
             \\language = "en"
             \\threads = 4
+            \\# Comma-separated names and uncommon words used as on-device Whisper hints (max 400 chars)
+            \\vocabulary_prompt = ""
+            \\
+            \\[cleanup]
+            \\s1_mini_enabled = true
             \\
             \\[output]
             \\auto_paste = true
-            \\export_format = "txt"
             \\# Paste keybind in xdotool format
             \\# Common options:
             \\#   "ctrl+v"        - Standard (Ctrl+V)
@@ -149,12 +155,13 @@ pub const Config = struct {
             \\
         ;
 
-        try file.writeAll(default_content);
+        try file.writeStreamingAll(file_io, default_content);
         utils.log("Created default config at: {s}", .{config_path});
     }
 
     /// Load configuration from disk
     pub fn load(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -168,7 +175,7 @@ pub const Config = struct {
         defer self.allocator.free(config_path);
 
         // Try to open the file
-        const file = std.fs.cwd().openFile(config_path, .{}) catch |err| {
+        const file = std.Io.Dir.cwd().openFile(file_io, config_path, .{}) catch |err| {
             if (err == error.FileNotFound) {
                 // Create default config
                 try self.createDefaultConfig();
@@ -177,15 +184,15 @@ pub const Config = struct {
             }
             return err;
         };
-        defer file.close();
+        defer file.close(file_io);
 
         // Read file content
         const max_size = 1024 * 1024; // 1MB max
-        const stat = try file.stat();
+        const stat = try file.stat(file_io);
         const file_size = @min(stat.size, max_size);
         const content = try self.allocator.alloc(u8, file_size);
         defer self.allocator.free(content);
-        const bytes_read = try file.read(content[0..]);
+        const bytes_read = try file.readStreaming(file_io, &.{content[0..]});
 
         // Parse TOML content
         try self.parseToml(content[0..bytes_read]);
@@ -226,7 +233,8 @@ pub const Config = struct {
     fn setConfigValue(self: *Config, section: []const u8, key: []const u8, value_raw: []const u8) !void {
         if (std.mem.eql(u8, section, "audio")) {
             if (std.mem.eql(u8, key, "device")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.audio_device_owned) {
                     self.allocator.free(self.audio_device);
                 }
@@ -235,14 +243,16 @@ pub const Config = struct {
             }
         } else if (std.mem.eql(u8, section, "transcription")) {
             if (std.mem.eql(u8, key, "model")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.model_owned) {
                     self.allocator.free(self.model);
                 }
                 self.model = try self.allocator.dupe(u8, value);
                 self.model_owned = true;
             } else if (std.mem.eql(u8, key, "language")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.language_owned) {
                     self.allocator.free(self.language);
                 }
@@ -250,28 +260,33 @@ pub const Config = struct {
                 self.language_owned = true;
             } else if (std.mem.eql(u8, key, "threads")) {
                 self.threads = try parseIntValue(u8, value_raw);
+            } else if (std.mem.eql(u8, key, "vocabulary_prompt")) {
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
+                if (self.vocabulary_prompt_owned) self.allocator.free(self.vocabulary_prompt);
+                self.vocabulary_prompt = try self.allocator.dupe(u8, value);
+                self.vocabulary_prompt_owned = true;
             }
         } else if (std.mem.eql(u8, section, "output")) {
             if (std.mem.eql(u8, key, "auto_paste")) {
                 self.auto_paste = try parseBoolValue(value_raw);
-            } else if (std.mem.eql(u8, key, "export_format")) {
-                const value = try parseStringValue(value_raw);
-                if (self.export_format_owned) {
-                    self.allocator.free(self.export_format);
-                }
-                self.export_format = try self.allocator.dupe(u8, value);
-                self.export_format_owned = true;
             } else if (std.mem.eql(u8, key, "paste_keybind")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.paste_keybind_owned) {
                     self.allocator.free(self.paste_keybind);
                 }
                 self.paste_keybind = try self.allocator.dupe(u8, value);
                 self.paste_keybind_owned = true;
             }
+        } else if (std.mem.eql(u8, section, "cleanup")) {
+            if (std.mem.eql(u8, key, "s1_mini_enabled")) {
+                self.s1_cleanup_enabled = try parseBoolValue(value_raw);
+            }
         } else if (std.mem.eql(u8, section, "platform")) {
             if (std.mem.eql(u8, key, "mode")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.platform_owned) {
                     self.allocator.free(self.platform);
                 }
@@ -282,21 +297,24 @@ pub const Config = struct {
             if (std.mem.eql(u8, key, "enabled")) {
                 self.yap_mode_enabled = try parseBoolValue(value_raw);
             } else if (std.mem.eql(u8, key, "llm_model")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_llm_model_owned) {
                     self.allocator.free(self.yap_llm_model);
                 }
                 self.yap_llm_model = try self.allocator.dupe(u8, value);
                 self.yap_llm_model_owned = true;
             } else if (std.mem.eql(u8, key, "ollama_url")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_ollama_url_owned) {
                     self.allocator.free(self.yap_ollama_url);
                 }
                 self.yap_ollama_url = try self.allocator.dupe(u8, value);
                 self.yap_ollama_url_owned = true;
             } else if (std.mem.eql(u8, key, "system_prompt")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_system_prompt_owned) {
                     self.allocator.free(self.yap_system_prompt);
                 }
@@ -314,6 +332,7 @@ pub const Config = struct {
 
     /// Save configuration to disk
     pub fn save(self: *Config) !void {
+        const file_io = utils.io();
         const config_dir = try utils.getConfigDir(self.allocator);
         defer self.allocator.free(config_dir);
 
@@ -326,9 +345,28 @@ pub const Config = struct {
         );
         defer self.allocator.free(config_path);
 
+        const audio_device = try escapeTomlString(self.allocator, self.audio_device);
+        defer self.allocator.free(audio_device);
+        const model = try escapeTomlString(self.allocator, self.model);
+        defer self.allocator.free(model);
+        const language = try escapeTomlString(self.allocator, self.language);
+        defer self.allocator.free(language);
+        const vocabulary_prompt = try escapeTomlString(self.allocator, self.vocabulary_prompt);
+        defer self.allocator.free(vocabulary_prompt);
+        const paste_keybind = try escapeTomlString(self.allocator, self.paste_keybind);
+        defer self.allocator.free(paste_keybind);
+        const platform = try escapeTomlString(self.allocator, self.platform);
+        defer self.allocator.free(platform);
+        const yap_llm_model = try escapeTomlString(self.allocator, self.yap_llm_model);
+        defer self.allocator.free(yap_llm_model);
+        const yap_ollama_url = try escapeTomlString(self.allocator, self.yap_ollama_url);
+        defer self.allocator.free(yap_ollama_url);
+        const yap_system_prompt = try escapeTomlString(self.allocator, self.yap_system_prompt);
+        defer self.allocator.free(yap_system_prompt);
+
         // Create/overwrite file
-        const file = try std.fs.cwd().createFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(file_io, config_path, .{});
+        defer file.close(file_io);
 
         // Serialize to TOML format
         const content = try std.fmt.allocPrint(
@@ -340,13 +378,23 @@ pub const Config = struct {
             \\model = "{s}"
             \\language = "{s}"
             \\threads = {d}
+            \\vocabulary_prompt = "{s}"
+            \\
+            \\[cleanup]
+            \\s1_mini_enabled = {s}
             \\
             \\[output]
             \\auto_paste = {s}
-            \\export_format = "{s}"
+            \\paste_keybind = "{s}"
             \\
             \\[platform]
             \\mode = "{s}"
+            \\
+            \\[yap]
+            \\enabled = {s}
+            \\llm_model = "{s}"
+            \\ollama_url = "{s}"
+            \\system_prompt = "{s}"
             \\
             \\[vad]
             \\enabled = {s}
@@ -354,20 +402,26 @@ pub const Config = struct {
             \\
         ,
             .{
-                self.audio_device,
-                self.model,
-                self.language,
+                audio_device,
+                model,
+                language,
                 self.threads,
+                vocabulary_prompt,
+                if (self.s1_cleanup_enabled) "true" else "false",
                 if (self.auto_paste) "true" else "false",
-                self.export_format,
-                self.platform,
+                paste_keybind,
+                platform,
+                if (self.yap_mode_enabled) "true" else "false",
+                yap_llm_model,
+                yap_ollama_url,
+                yap_system_prompt,
                 if (self.vad_enabled) "true" else "false",
                 self.vad_mode,
             },
         );
         defer self.allocator.free(content);
 
-        try file.writeAll(content);
+        try file.writeStreamingAll(file_io, content);
         utils.log("Config saved to: {s}", .{config_path});
     }
 
@@ -391,24 +445,6 @@ pub const Config = struct {
             self.model_owned = false;
         }
 
-        // Validate export format
-        const valid_formats = [_][]const u8{ "txt", "srt", "vtt" };
-        var valid_format = false;
-        for (valid_formats) |vf| {
-            if (std.mem.eql(u8, self.export_format, vf)) {
-                valid_format = true;
-                break;
-            }
-        }
-        if (!valid_format) {
-            utils.log("Warning: Invalid export_format '{s}', using 'txt'", .{self.export_format});
-            if (self.export_format_owned) {
-                self.allocator.free(self.export_format);
-            }
-            self.export_format = "txt";
-            self.export_format_owned = false;
-        }
-
         // Validate threads (1-16)
         if (self.threads < 1 or self.threads > 16) {
             utils.log("Warning: Invalid threads {d}, using 4", .{self.threads});
@@ -423,14 +459,15 @@ pub const Config = struct {
         std.debug.print("  Model: {s}\n", .{self.model});
         std.debug.print("  Language: {s}\n", .{self.language});
         std.debug.print("  Threads: {d}\n", .{self.threads});
+        std.debug.print("  Local recognition hints: {s}\n", .{if (self.vocabulary_prompt.len > 0) self.vocabulary_prompt else "(none)"});
+        std.debug.print("  S1-mini cleanup: {}\n", .{self.s1_cleanup_enabled});
         std.debug.print("  Auto-paste: {}\n", .{self.auto_paste});
-        std.debug.print("  Export format: {s}\n", .{self.export_format});
         std.debug.print("  Platform mode: {s}\n", .{self.platform});
     }
 
     /// Detect if running on Wayland
     pub fn detectPlatform() []const u8 {
-        if (std.posix.getenv("WAYLAND_DISPLAY")) |_| {
+        if (utils.getEnv("WAYLAND_DISPLAY")) |_| {
             return "wayland";
         }
         return "x11";
@@ -446,11 +483,83 @@ pub const Config = struct {
 };
 
 /// Parse a string value from TOML (removes quotes)
-fn parseStringValue(raw: []const u8) ![]const u8 {
-    if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
-        return raw[1 .. raw.len - 1];
+fn parseStringValue(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+    if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') {
+        return allocator.dupe(u8, raw);
     }
-    return raw;
+
+    const encoded = raw[1 .. raw.len - 1];
+    var decoded_len: usize = 0;
+    var i: usize = 0;
+    while (i < encoded.len) : (i += 1) {
+        if (encoded[i] == '\\') {
+            i += 1;
+            if (i == encoded.len) return error.InvalidStringEscape;
+            if (encoded[i] != '"' and encoded[i] != '\\' and encoded[i] != 'b' and encoded[i] != 't' and encoded[i] != 'n' and encoded[i] != 'f' and encoded[i] != 'r') {
+                return error.InvalidStringEscape;
+            }
+        }
+        decoded_len += 1;
+    }
+
+    const decoded = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(decoded);
+    i = 0;
+    var out_index: usize = 0;
+    while (i < encoded.len) : (i += 1) {
+        if (encoded[i] == '\\') {
+            i += 1;
+            decoded[out_index] = switch (encoded[i]) {
+                '"' => '"',
+                '\\' => '\\',
+                'b' => 0x08,
+                't' => '\t',
+                'n' => '\n',
+                'f' => 0x0c,
+                'r' => '\r',
+                else => unreachable,
+            };
+        } else {
+            decoded[out_index] = encoded[i];
+        }
+        out_index += 1;
+    }
+    return decoded;
+}
+
+fn escapeTomlString(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+    var escaped_len: usize = 0;
+    for (value) |byte| {
+        escaped_len += switch (byte) {
+            '"', '\\', '\t', '\n', '\r', 0x08, 0x0c => 2,
+            0...0x07, 0x0b, 0x0e...0x1f, 0x7f => return error.InvalidTomlStringValue,
+            else => 1,
+        };
+    }
+
+    const escaped = try allocator.alloc(u8, escaped_len);
+    var index: usize = 0;
+    for (value) |byte| {
+        if (byte == '"' or byte == '\\') {
+            escaped[index] = '\\';
+            escaped[index + 1] = byte;
+            index += 2;
+        } else if (byte == '\t' or byte == '\n' or byte == '\r' or byte == 0x08 or byte == 0x0c) {
+            escaped[index] = '\\';
+            escaped[index + 1] = switch (byte) {
+                '\t' => 't',
+                '\n' => 'n',
+                '\r' => 'r',
+                0x08 => 'b',
+                else => 'f',
+            };
+            index += 2;
+        } else {
+            escaped[index] = byte;
+            index += 1;
+        }
+    }
+    return escaped;
 }
 
 /// Parse a boolean value from TOML
@@ -476,15 +585,34 @@ test "config initialization" {
     try std.testing.expectEqualStrings("base", cfg.model);
     try std.testing.expectEqualStrings("en", cfg.language);
     try std.testing.expect(cfg.threads == 4);
+    try std.testing.expectEqualStrings("", cfg.vocabulary_prompt);
     try std.testing.expect(cfg.auto_paste == true);
+    try std.testing.expect(cfg.s1_cleanup_enabled);
 }
 
 test "parse string value" {
-    const result1 = try parseStringValue("\"hello\"");
+    const allocator = std.testing.allocator;
+    const result1 = try parseStringValue(allocator, "\"hello\"");
+    defer allocator.free(result1);
     try std.testing.expectEqualStrings("hello", result1);
 
-    const result2 = try parseStringValue("world");
+    const result2 = try parseStringValue(allocator, "world");
+    defer allocator.free(result2);
     try std.testing.expectEqualStrings("world", result2);
+}
+
+test "TOML string escaping round trips quotes, slashes, and line breaks" {
+    const allocator = std.testing.allocator;
+    const original = "Talkies says: \"hello\"\\world\nnext line";
+    const escaped = try escapeTomlString(allocator, original);
+    defer allocator.free(escaped);
+
+    const quoted = try std.fmt.allocPrint(allocator, "\"{s}\"", .{escaped});
+    defer allocator.free(quoted);
+    const parsed = try parseStringValue(allocator, quoted);
+    defer allocator.free(parsed);
+
+    try std.testing.expectEqualStrings(original, parsed);
 }
 
 test "parse bool value" {
@@ -513,6 +641,10 @@ test "parse toml content" {
         \\model = "small"
         \\language = "es"
         \\threads = 8
+        \\vocabulary_prompt = "Talkies, WhisperKit, S1-mini"
+        \\
+        \\[cleanup]
+        \\s1_mini_enabled = false
         \\
         \\[output]
         \\auto_paste = false
@@ -524,8 +656,9 @@ test "parse toml content" {
     try std.testing.expectEqualStrings("small", cfg.model);
     try std.testing.expectEqualStrings("es", cfg.language);
     try std.testing.expect(cfg.threads == 8);
+    try std.testing.expectEqualStrings("Talkies, WhisperKit, S1-mini", cfg.vocabulary_prompt);
+    try std.testing.expect(!cfg.s1_cleanup_enabled);
     try std.testing.expect(cfg.auto_paste == false);
-    try std.testing.expectEqualStrings("srt", cfg.export_format);
 }
 
 test "validate config" {

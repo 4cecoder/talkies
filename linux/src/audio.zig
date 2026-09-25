@@ -1,9 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
-const c = @cImport({
-    @cInclude("pulse/simple.h");
-    @cInclude("pulse/error.h");
-});
+const c = @import("c_audio");
 
 /// WAV file header structures
 /// IMPORTANT: extern struct for C-compatible memory layout (no padding)
@@ -58,7 +55,7 @@ pub const AudioRecorder = struct {
     pa_stream: ?*c.pa_simple = null,
 
     // File handling
-    output_file: ?std.fs.File = null,
+    output_file: ?std.Io.File = null,
     output_path: ?[]u8 = null,
     bytes_recorded: u32 = 0,
 
@@ -79,7 +76,7 @@ pub const AudioRecorder = struct {
         }
 
         if (self.output_file) |file| {
-            file.close();
+            file.close(utils.io());
             self.output_file = null;
         }
 
@@ -88,7 +85,6 @@ pub const AudioRecorder = struct {
             self.output_path = null;
         }
     }
-
 
     /// Start recording audio to a WAV file
     /// device_name: PulseAudio device name (null or empty = use default)
@@ -137,16 +133,16 @@ pub const AudioRecorder = struct {
         }
 
         // Create output file
-        self.output_file = try std.fs.cwd().createFile(output_path, .{ .read = true });
+        self.output_file = try std.Io.Dir.cwd().createFile(utils.io(), output_path, .{ .read = true });
         errdefer {
-            self.output_file.?.close();
+            self.output_file.?.close(utils.io());
             self.output_file = null;
         }
 
         // Write WAV header (will update sizes on stop)
         var header = WavHeader.create(self.sample_rate, self.channels, self.bit_depth);
         const header_bytes = std.mem.asBytes(&header);
-        try self.output_file.?.writeAll(header_bytes);
+        try self.output_file.?.writeStreamingAll(utils.io(), header_bytes);
 
         // Start recording with fresh stream
         self.recording = true;
@@ -182,7 +178,7 @@ pub const AudioRecorder = struct {
         }
 
         // Write to file
-        try self.output_file.?.writeAll(&buffer);
+        try self.output_file.?.writeStreamingAll(utils.io(), &buffer);
         self.bytes_recorded += buffer_size;
 
         // Update level buffer for RMS calculation
@@ -213,12 +209,11 @@ pub const AudioRecorder = struct {
 
         // Update WAV header with actual sizes
         if (self.output_file) |file| {
-            try file.seekTo(0);
             var header = WavHeader.create(self.sample_rate, self.channels, self.bit_depth);
             header.updateSizes(self.bytes_recorded);
             const header_bytes = std.mem.asBytes(&header);
-            try file.writeAll(header_bytes);
-            file.close();
+            try file.writePositionalAll(utils.io(), header_bytes, 0);
+            file.close(utils.io());
             self.output_file = null;
         }
 

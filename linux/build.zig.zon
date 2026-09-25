@@ -23,20 +23,9 @@
     // on the following line intact, so that it shows up in code reviews that
     // modify the field.
     .fingerprint = 0x9211474f1c30f485, // Changing this has security and trust implications.
-    // Tracks the earliest Zig version that the package considers to be a
-    // supported use case.
-    .minimum_zig_version = "0.16.0-dev.1484+d0ba6642b",
-    // This field is optional.
-    // Each dependency must either provide a `url` and `hash`, or a `path`.
-    // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
-    // Once all dependencies are fetched, `zig build` no longer requires
-    // internet connectivity.
-    .dependencies = .{
-        .websocket = .{
-            .url = "https://github.com/karlseguin/websocket.zig/archive/refs/heads/master.tar.gz",
-            .hash = "websocket-0.1.0-ZPISdRNzAwAGszh62EpRtoQxu8wb1MSMVI6Ow0o2dmyJ",
-        },
-    },
+    // Minimum nightly supporting the current package metadata and build APIs.
+    // CI/release intentionally follow master so compiler breakages are caught early.
+    .minimum_zig_version = "0.17.0-dev.1778+767d25269",
     .paths = .{
         "build.zig",
         "build.zig.zon",

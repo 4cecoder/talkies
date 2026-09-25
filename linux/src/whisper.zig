@@ -2,17 +2,17 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 // C FFI bindings for whisper.cpp
-const c = @cImport({
-    @cInclude("whisper.h");
-});
+const c = @import("c_whisper");
 
-/// Whisper model URLs from Hugging Face
-const ModelUrls = std.StaticStringMap([]const u8).initComptime(.{
-    .{ "tiny", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin" },
-    .{ "base", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" },
-    .{ "small", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" },
-    .{ "medium", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin" },
-    .{ "large", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin" },
+/// Hugging Face models are tied to this revision and checked before use.
+pub const model_revision = "5359861c739e955e79d9a303bcbc70fb988958b1";
+const ModelInfo = struct { filename: []const u8, size: u64, sha256: []const u8 };
+const ModelCatalog = std.StaticStringMap(ModelInfo).initComptime(.{
+    .{ "tiny", @as(ModelInfo, .{ .filename = "ggml-tiny.bin", .size = 77_691_713, .sha256 = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21" }) },
+    .{ "base", @as(ModelInfo, .{ .filename = "ggml-base.bin", .size = 147_951_465, .sha256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe" }) },
+    .{ "small", @as(ModelInfo, .{ .filename = "ggml-small.bin", .size = 487_601_967, .sha256 = "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b" }) },
+    .{ "medium", @as(ModelInfo, .{ .filename = "ggml-medium.bin", .size = 1_533_763_059, .sha256 = "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208" }) },
+    .{ "large", @as(ModelInfo, .{ .filename = "ggml-large-v3.bin", .size = 3_095_033_483, .sha256 = "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2" }) },
 });
 
 /// Transcription segment with timing information
@@ -50,22 +50,26 @@ pub const WhisperService = struct {
 
     /// Load a whisper model from disk
     pub fn loadModel(self: *WhisperService, model_name: []const u8) !void {
+        const model = ModelCatalog.get(model_name) orelse return error.UnknownModel;
+        try self.downloadModel(model_name);
+
         const data_dir = try utils.getDataDir(self.allocator);
         defer self.allocator.free(data_dir);
 
         const model_path = try std.fmt.allocPrint(
             self.allocator,
-            "{s}/models/ggml-{s}.bin",
-            .{ data_dir, model_name },
+            "{s}/models/{s}",
+            .{ data_dir, model.filename },
         );
         errdefer self.allocator.free(model_path);
 
         // Check if model file exists
-        const file = std.fs.openFileAbsolute(model_path, .{}) catch |err| {
+        const file_io = utils.io();
+        const file = std.Io.Dir.openFileAbsolute(file_io, model_path, .{}) catch |err| {
             self.allocator.free(model_path);
             return err;
         };
-        file.close();
+        file.close(file_io);
 
         // Free previous model if loaded
         if (self.ctx) |ctx| {
@@ -76,7 +80,7 @@ pub const WhisperService = struct {
         }
 
         // Load model with whisper.cpp C API
-        const model_path_z = try self.allocator.dupeZ(u8, model_path);
+        const model_path_z = try utils.dupeZ(self.allocator, model_path);
         defer self.allocator.free(model_path_z);
 
         // Initialize with default context parameters
@@ -94,7 +98,7 @@ pub const WhisperService = struct {
     }
 
     /// Transcribe an audio file (WAV format, 16kHz mono PCM)
-    pub fn transcribe(self: *WhisperService, audio_path: []const u8) ![]const u8 {
+    pub fn transcribe(self: *WhisperService, audio_path: []const u8, vocabulary_prompt: []const u8) ![]const u8 {
         if (self.ctx == null) {
             return error.ModelNotLoaded;
         }
@@ -106,7 +110,13 @@ pub const WhisperService = struct {
         defer self.allocator.free(audio_data);
 
         // Setup whisper parameters
-        const params = c.whisper_full_default_params(c.WHISPER_SAMPLING_GREEDY);
+        var params = c.whisper_full_default_params(c.WHISPER_SAMPLING_GREEDY);
+        const prompt_z = if (vocabulary_prompt.len > 0) try utils.dupeZ(self.allocator, vocabulary_prompt) else null;
+        defer if (prompt_z) |prompt| self.allocator.free(prompt);
+        if (prompt_z) |prompt| {
+            params.initial_prompt = prompt.ptr;
+            params.carry_initial_prompt = true;
+        }
 
         // Run transcription
         const result = c.whisper_full(
@@ -196,15 +206,14 @@ pub const WhisperService = struct {
         // 2. Verify it's 16kHz mono PCM
         // 3. Convert int16 samples to float32 normalized to [-1, 1]
 
-        const file = try std.fs.cwd().openFile(audio_path, .{});
-        defer file.close();
+        const file_io = utils.io();
+        const file = try std.Io.Dir.cwd().openFile(file_io, audio_path, .{});
+        defer file.close(file_io);
 
         // Read file size
-        const file_size = try file.getEndPos();
+        const file_size = try file.length(file_io);
 
         // Skip WAV header (44 bytes for standard PCM WAV)
-        try file.seekTo(44);
-
         const data_size = file_size - 44;
         const n_samples = data_size / 2; // 16-bit samples
 
@@ -213,12 +222,7 @@ pub const WhisperService = struct {
         defer self.allocator.free(int16_data);
 
         const buffer = std.mem.sliceAsBytes(int16_data);
-        var bytes_read: usize = 0;
-        while (bytes_read < buffer.len) {
-            const n = try file.read(buffer[bytes_read..]);
-            if (n == 0) return error.UnexpectedEndOfFile;
-            bytes_read += n;
-        }
+        _ = try file.readPositionalAll(file_io, buffer, 44);
 
         // Convert to float32
         const float_data = try self.allocator.alloc(f32, n_samples);
@@ -231,6 +235,7 @@ pub const WhisperService = struct {
 
     /// Download a model if it doesn't exist
     pub fn downloadModel(self: *WhisperService, model_name: []const u8) !void {
+        const model = ModelCatalog.get(model_name) orelse return error.UnknownModel;
         const data_dir = try utils.getDataDir(self.allocator);
         defer self.allocator.free(data_dir);
 
@@ -241,47 +246,55 @@ pub const WhisperService = struct {
         );
         defer self.allocator.free(models_dir);
 
-        try utils.ensureDir(models_dir);
+        try std.Io.Dir.cwd().createDirPath(utils.io(), models_dir);
 
-        const model_filename = try std.fmt.allocPrint(
+        const destination = try std.fmt.allocPrint(
             self.allocator,
-            "{s}/ggml-{s}.bin",
-            .{ models_dir, model_name },
+            "{s}/{s}",
+            .{ models_dir, model.filename },
         );
-        defer self.allocator.free(model_filename);
+        defer self.allocator.free(destination);
 
-        // Check if already exists
-        if (std.fs.openFileAbsolute(model_filename, .{})) |file| {
-            file.close();
-            utils.log("Model {s} already exists", .{model_name});
+        if (try isVerified(destination, model)) {
+            utils.log("Verified Whisper model {s} already exists", .{model_name});
             return;
-        } else |_| {
-            // File doesn't exist, proceed with download
         }
+        if (utils.getEnv("TALKIES_OFFLINE_ACCEPTANCE") != null) return error.OfflineModelUnavailable;
 
-        const url = ModelUrls.get(model_name) orelse return error.UnknownModel;
+        const partial = try std.fmt.allocPrint(self.allocator, "{s}.partial", .{destination});
+        defer self.allocator.free(partial);
+        errdefer std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch {};
+        std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch {};
+        const url = try std.fmt.allocPrint(
+            self.allocator,
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/{s}/{s}?download=true",
+            .{ model_revision, model.filename },
+        );
+        defer self.allocator.free(url);
 
         utils.log("Downloading model {s} from {s}", .{ model_name, url });
 
-        // Download using curl (simpler than dealing with Zig 0.16 HTTP API changes)
         const argv = &[_][]const u8{
             "curl",
-            "-L", // Follow redirects
+            "--fail",
+            "--location",
+            "--retry",
+            "3",
             "-o",
-            model_filename,
+            partial,
             "--progress-bar",
             url,
         };
 
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdout_behavior = .Inherit;
-        child.stderr_behavior = .Inherit;
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv });
+        const term = try child.wait(utils.io());
+        if (!term.success()) return error.DownloadFailed;
+        if (!try isVerified(partial, model)) return error.ModelIntegrityCheckFailed;
 
-        const term = try child.spawnAndWait();
-        if (term != .Exited or term.Exited != 0) {
-            return error.DownloadFailed;
-        }
-
+        std.Io.Dir.deleteFileAbsolute(utils.io(), destination) catch |err| {
+            if (err != error.FileNotFound) return err;
+        };
+        try std.Io.Dir.renameAbsolute(partial, destination, utils.io());
         utils.log("Model {s} downloaded successfully", .{model_name});
     }
 
@@ -294,6 +307,33 @@ pub const WhisperService = struct {
     }
 };
 
+fn isVerified(path: []const u8, model: ModelInfo) !bool {
+    const file = std.Io.Dir.openFileAbsolute(utils.io(), path, .{}) catch return false;
+    defer file.close(utils.io());
+    if ((try file.stat(utils.io())).size != model.size) return false;
+
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    var buffer: [1024 * 1024]u8 = undefined;
+    while (true) {
+        const count = file.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
+        if (count == 0) break;
+        hasher.update(buffer[0..count]);
+    }
+
+    var digest: [32]u8 = undefined;
+    hasher.final(&digest);
+    const hex_chars = "0123456789abcdef";
+    var hex: [64]u8 = undefined;
+    for (digest, 0..) |byte, index| {
+        hex[index * 2] = hex_chars[byte >> 4];
+        hex[index * 2 + 1] = hex_chars[byte & 0x0f];
+    }
+    return std.mem.eql(u8, &hex, model.sha256);
+}
+
 test "whisper service initialization" {
     const allocator = std.testing.allocator;
     var service = WhisperService.init(allocator);
@@ -304,8 +344,28 @@ test "whisper service initialization" {
 }
 
 test "whisper model path construction" {
-    // Test model name mapping
-    try std.testing.expect(ModelUrls.get("base") != null);
-    try std.testing.expect(ModelUrls.get("tiny") != null);
-    try std.testing.expect(ModelUrls.get("invalid") == null);
+    const base = ModelCatalog.get("base") orelse return error.MissingBaseModel;
+    const tiny = ModelCatalog.get("tiny") orelse return error.MissingTinyModel;
+    const large = ModelCatalog.get("large") orelse return error.MissingLargeModel;
+    try std.testing.expectEqualStrings("ggml-base.bin", base.filename);
+    try std.testing.expectEqualStrings("ggml-tiny.bin", tiny.filename);
+    try std.testing.expectEqualStrings("ggml-large-v3.bin", large.filename);
+    try std.testing.expect(ModelCatalog.get("invalid") == null);
+    try std.testing.expectEqual(@as(u64, 77_691_713), tiny.size);
+    try std.testing.expectEqualStrings("be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21", tiny.sha256);
+}
+
+test "pinned Whisper tiny recognizes the shared JFK sample offline on CPU" {
+    if (utils.getEnv("TALKIES_TEST_WHISPER") == null) return error.SkipZigTest;
+    utils.setIoAllocator(std.testing.allocator);
+    defer utils.setIoAllocator(.failing);
+
+    var service = WhisperService.init(std.testing.allocator);
+    defer service.deinit();
+    try service.loadModel("tiny");
+    const text = try service.transcribe("../tests/fixtures/jfk.wav", "");
+    defer std.testing.allocator.free(text);
+    const lower = try std.ascii.allocLowerString(std.testing.allocator, text);
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "country") != null);
 }

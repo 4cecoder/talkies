@@ -5,14 +5,28 @@ on:
     branches: [ master ]
     paths:
       - 'mac/**'
+      - 'packaging/macos/**'
       - 'windows/**'
+      - 'packaging/windows/**'
+      - 'linux/**'
+      - 'packaging/linux/**'
+      - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy-pages.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     branches: [ master ]
     paths:
       - 'mac/**'
+      - 'packaging/macos/**'
       - 'windows/**'
+      - 'packaging/windows/**'
+      - 'linux/**'
+      - 'packaging/linux/**'
+      - 'frontend/**'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy-pages.yml'
+      - '.github/workflows/release.yml'
 
 jobs:
   # Determine which jobs need to run based on changed files
@@ -22,18 +36,57 @@ jobs:
     outputs:
       macos: ${{ steps.filter.outputs.macos }}
       windows: ${{ steps.filter.outputs.windows }}
+      linux: ${{ steps.filter.outputs.linux }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
             macos:
               - 'mac/**'
+              - 'packaging/macos/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
             windows:
               - 'windows/**'
+              - 'packaging/windows/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+            linux:
+              - 'linux/**'
+              - 'packaging/linux/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-pages.yml'
+            workflows:
+              - '.github/workflows/**'
+
+  workflow-validation:
+    name: GitHub Actions Workflow Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.workflows == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Lint CI, release, and Pages workflows
+        run: |
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/deploy-pages.yml
 
   macos:
     name: macOS Build & Test
@@ -48,7 +101,7 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.0'
+          swift-version: '6.3.3'
 
       - name: Cache Swift packages
         uses: actions/cache@v5
@@ -58,31 +111,50 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Build and test TalkiesCore library
+      - name: Build macOS app
         working-directory: mac
-        run: |
-          # Create a minimal Package.swift for CI that excludes WhisperKit
-          # This avoids the Swift 6 + WhisperKit SIL verification compiler bug
-          cat > Package.swift << 'EOF'
-          // swift-tools-version: 6.0
-          import PackageDescription
-          let package = Package(
-              name: "Talkies",
-              platforms: [.macOS(.v15)],
-              products: [.library(name: "TalkiesCore", targets: ["TalkiesCore"])],
-              targets: [
-                  .target(name: "TalkiesCore", dependencies: [], path: "Sources/TalkiesCore"),
-                  .testTarget(name: "TalkiesCoreTests", dependencies: ["TalkiesCore"], path: "Tests/TalkiesCoreTests"),
-              ]
-          )
-          EOF
-          # Build the library
-          swift build -c debug --target TalkiesCore
-          # Run tests using xcodebuild which has better XCTest framework support
-          xcodebuild test -scheme TalkiesCore -destination 'platform=macOS' -skipPackagePluginValidation 2>&1 || {
-            # Fallback to swift test if xcodebuild fails (no scheme)
-            swift test --filter TalkiesCoreTests 2>&1 || echo "Tests skipped due to XCTest framework issues with Swift 6"
-          }
+        run: swift build --target Talkies
+
+      - name: Run Swift package tests
+        working-directory: mac
+        run: swift test
+
+      - name: Smoke-test distributable app bundle
+        env:
+          VERSION: 0.0.0
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-package
+        run: packaging/macos/package-app.sh
+
+      - name: Smoke-test macOS DMG installer
+        env:
+          APP_BUNDLE: ${{ runner.temp }}/talkies-package/Talkies.app
+          RELEASE_LABEL: ci-${{ github.run_id }}
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-dmg
+        run: packaging/macos/package-dmg.sh
+
+      - name: Download pinned S1-mini and verify CPU cleanup
+        working-directory: mac
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+        run: swift test --filter S1MiniCleanerIntegrationTests
+
+      - name: Cache WhisperKit model files
+        uses: actions/cache@v5
+        with:
+          path: ~/Documents/huggingface
+          key: ${{ runner.os }}-whisperkit-tiny-${{ hashFiles('mac/Package.resolved') }}
+
+      - name: Verify cached WhisperKit transcription with downloads disabled
+        working-directory: mac
+        env:
+          TALKIES_RUN_WHISPERKIT_MODEL_TESTS: '1'
+        run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled
+
+      - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion acceptance
+        working-directory: mac
+        env:
+          TALKIES_RUN_OFFLINE_ACCEPTANCE: '1'
+        run: swift test --filter OfflineDictationAcceptanceTests
 
   windows:
     name: Windows Build & Test
@@ -108,13 +180,252 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        working-directory: windows/Talkies.Windows
-        run: dotnet restore
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet restore Talkies.Windows.Tests.csproj
+
+      - name: Cache verified S1-mini model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: windows-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
+      - name: Cache verified Whisper tiny model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+          key: windows-whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
 
       - name: Build Windows app
         working-directory: windows/Talkies.Windows
         run: dotnet build --configuration Debug --no-restore
 
       - name: Run Windows tests
-        working-directory: windows/Talkies.Windows
-        run: dotnet test --configuration Debug --no-build --verbosity normal
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "Category!=ModelIntegration" --verbosity normal
+
+      - name: Verify cached S1-mini cleanup works offline on CPU
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_S1_MINI_MODEL_DIR: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "Category=ModelIntegration" --verbosity normal
+
+      - name: Verify cached Whisper ASR works offline on CPU
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "FullyQualifiedName~WhisperAsrOfflineIntegrationTests" --verbosity normal
+
+      - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion boundary
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_S1_MINI_MODEL_DIR: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "FullyQualifiedName~OfflineDictationAcceptanceTests" --verbosity normal
+
+      - name: Set up verified NSIS compiler
+        shell: pwsh
+        run: ./packaging/windows/setup-nsis.ps1
+
+      - name: Smoke-test self-contained Windows release archive
+        env:
+          APP_VERSION: 0.0.0
+          RELEASE_LABEL: ci-${{ github.run_id }}
+          OUTPUT_DIRECTORY: ${{ runner.temp }}/talkies-windows-package
+        run: |
+          $settingsMarker = Join-Path $env:USERPROFILE '.talkies/ci-preservation-check'
+          $modelMarker = Join-Path $env:LOCALAPPDATA 'Talkies/Models/ci-preservation-check'
+          New-Item -ItemType Directory -Force -Path (Split-Path $settingsMarker), (Split-Path $modelMarker) | Out-Null
+          Set-Content -Path $settingsMarker -Value 'preserve-settings'
+          Set-Content -Path $modelMarker -Value 'preserve-model'
+          ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
+          if ((Get-Content -Raw $settingsMarker).Trim() -ne 'preserve-settings') { throw 'Uninstall did not preserve user settings.' }
+          if ((Get-Content -Raw $modelMarker).Trim() -ne 'preserve-model') { throw 'Uninstall did not preserve downloaded models.' }
+          Remove-Item $settingsMarker, $modelMarker -Force
+
+  frontend:
+    name: Website Typecheck & Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: frontend
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Build GitHub Pages export without backend secrets
+        working-directory: frontend
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_BASE_PATH: /talkies
+          NEXT_PUBLIC_SITE_URL: https://4cecoder.github.io/talkies
+        run: bun run build
+
+      - name: Verify published routes and assets
+        working-directory: frontend
+        run: |
+          touch out/.nojekyll
+          bun run test:pages
+
+  linux:
+    name: Linux Build & Test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.linux == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Track master while Linux integration migrates to each current compiler change.
+          version: master
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libpulse-dev \
+            libsqlite3-dev \
+            libx11-dev \
+            libdbus-1-dev \
+            libgtk-4-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev
+
+      - name: Workaround Ubuntu multiarch include paths
+        # linux/build.zig hardcodes Gentoo/Fedora-style /usr/lib64/<pkg>/include
+        # paths (e.g. for glibconfig.h, graphene-config.h) that don't exist on
+        # Debian/Ubuntu, which install those generated headers under
+        # /usr/lib/<multiarch-triplet>/<pkg>/include instead. Symlinking
+        # /usr/lib64 to the multiarch lib dir lets the hardcoded paths resolve.
+        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
+
+      - name: Build pinned CPU-only llama.cpp
+        run: |
+          git init /tmp/llama.cpp
+          git -C /tmp/llama.cpp fetch --depth=1 https://github.com/ggml-org/llama.cpp.git 53ed051ce5e8193652e449f43216ca3859454f49
+          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
+          cd /tmp/llama.cpp
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=ON \
+            -DGGML_METAL=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DLLAMA_CURL=OFF \
+            -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_SERVER=OFF
+          cmake --build build --target llama -j2
+          sudo cmake --install build
+          sudo ldconfig
+
+      - name: Build whisper.cpp
+        # whisper.cpp is not packaged for Ubuntu/Debian; build and install it
+        # from source per linux/docs/DEPENDENCIES.md and linux/SHIPPING.md.
+        run: |
+          git init /tmp/whisper.cpp
+          git -C /tmp/whisper.cpp fetch --depth=1 https://github.com/ggml-org/whisper.cpp.git d09f61a708f3487afa956ff578e60eae5e7a233c
+          git -C /tmp/whisper.cpp checkout --detach FETCH_HEAD
+          cd /tmp/whisper.cpp
+          make
+          # whisper.cpp's CMake layout has shifted upstream: shared libs
+          # (libwhisper.so + several libggml*.so backend libs) now land
+          # under build/, not the repo root. Locate and install whatever
+          # got produced instead of hardcoding a path that goes stale on
+          # every upstream change.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
+          sudo ldconfig
+
+      - name: Build
+        working-directory: linux
+        run: zig build
+
+      - name: Cache pinned S1-mini model
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
+      - name: Cache pinned Whisper tiny model
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/talkies/models/ggml-tiny.bin
+          key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+
+      - name: Run tests
+        working-directory: linux
+        env:
+          TALKIES_TEST_S1_MINI: "1"
+          TALKIES_TEST_WHISPER: "1"
+        run: zig build test
+
+      - name: Verify offline cached-model dictation acceptance
+        working-directory: linux
+        env:
+          TALKIES_OFFLINE_ACCEPTANCE: "1"
+        run: zig build test
+
+      - name: Smoke-test portable Linux release archive
+        env:
+          VERSION: ci-${{ github.run_id }}
+          APP_VERSION: 0.1.0
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-linux-package
+        run: packaging/linux/package-portable.sh
+
+      - name: Install, upgrade, and uninstall Debian package
+        env:
+          DEB_PACKAGE: ${{ runner.temp }}/talkies-linux-package/Talkies-Linux-ci-${{ github.run_id }}.deb
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/talkies" "$HOME/.local/share/talkies/models"
+          printf 'preserve-config\n' > "$HOME/.config/talkies/ci-preservation-check"
+          printf 'preserve-model\n' > "$HOME/.local/share/talkies/models/ci-preservation-check"
+          sudo apt-get install -y "$DEB_PACKAGE"
+          command -v talkies
+          talkies --help >/dev/null
+          upgrade_root="${RUNNER_TEMP}/talkies-upgrade-root"
+          dpkg-deb --extract "$DEB_PACKAGE" "$upgrade_root"
+          dpkg-deb --control "$DEB_PACKAGE" "$upgrade_root/DEBIAN"
+          sed -i 's/^Version: .*/Version: 0.1.1/' "$upgrade_root/DEBIAN/control"
+          upgrade_package="${RUNNER_TEMP}/talkies-upgrade.deb"
+          dpkg-deb --build --root-owner-group "$upgrade_root" "$upgrade_package"
+          sudo apt-get install -y "$upgrade_package"
+          test "$(dpkg-query -W -f='${Version}' talkies)" = 0.1.1
+          talkies --help >/dev/null
+          sudo apt-get remove -y talkies
+          test ! -e /usr/lib/talkies
+          test ! -e /usr/bin/talkies
+          grep -Fx 'preserve-config' "$HOME/.config/talkies/ci-preservation-check"
+          grep -Fx 'preserve-model' "$HOME/.local/share/talkies/models/ci-preservation-check"

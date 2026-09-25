@@ -3,9 +3,7 @@ const utils = @import("utils.zig");
 const icons = @import("icons.zig");
 
 // DBus C bindings for StatusNotifierItem protocol
-const c = @cImport({
-    @cInclude("dbus/dbus.h");
-});
+const c = @import("c_tray");
 
 // Define DBusError struct manually since cImport makes it opaque
 const DBusError = extern struct {

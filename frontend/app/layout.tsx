@@ -1,46 +1,35 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "./components/Toast/useToast";
-import { Providers } from "./components/providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
+const publicBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const publicAsset = (path: string) => `${publicBasePath}${path}`;
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://talkies.app";
 
 export const metadata: Metadata = {
-  title: "Talkies - Voice-Powered Writing Assistant",
-  description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS, with Windows and mobile coming soon.",
+  title: "Talkies — Open-source offline dictation",
+  description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux, free under MIT.",
   keywords: ["voice to text", "transcription", "writing assistant", "productivity", "AI", "speech to text", "dictation"],
   authors: [{ name: "Talkies Team" }],
   creator: "Talkies",
   publisher: "Talkies",
-  metadataBase: new URL('https://talkies.app'), // Update with actual domain
+  // Keep the base at the host root because metadata asset paths include /talkies.
+  metadataBase: new URL(new URL(siteUrl).origin),
 
   // Open Graph
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://talkies.app",
-    title: "Talkies - Voice-Powered Writing Assistant",
-    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly. Available now for macOS.",
+    url: siteUrl,
+    title: "Talkies — Open-source offline dictation",
+    description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux.",
     siteName: "Talkies",
     images: [
       {
-        url: "/og-image.svg",
+        url: publicAsset("/og-image.svg"),
         width: 1200,
         height: 630,
-        alt: "Talkies - Voice-Powered Writing Assistant",
+        alt: "Talkies — Open-source offline dictation",
         type: "image/svg+xml",
       },
     ],
@@ -49,9 +38,9 @@ export const metadata: Metadata = {
   // Twitter Card
   twitter: {
     card: "summary_large_image",
-    title: "Talkies - Voice-Powered Writing Assistant",
-    description: "Write 3x faster with Talkies. Voice-powered writing assistant that helps you capture ideas instantly.",
-    images: ["/og-image.svg"],
+    title: "Talkies — Open-source offline dictation",
+    description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux.",
+    images: [publicAsset("/og-image.svg")],
     creator: "@talkiesapp", // Update with actual Twitter handle
     site: "@talkiesapp", // Update with actual Twitter handle
   },
@@ -59,11 +48,11 @@ export const metadata: Metadata = {
   // Icons
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-      { url: "/talkies-logo.svg", type: "image/svg+xml", sizes: "any" },
+      { url: publicAsset("/favicon.svg"), type: "image/svg+xml" },
+      { url: publicAsset("/talkies-logo.svg"), type: "image/svg+xml", sizes: "any" },
     ],
     apple: [
-      { url: "/talkies-logo.svg", type: "image/svg+xml" },
+      { url: publicAsset("/talkies-logo.svg"), type: "image/svg+xml" },
     ],
   },
 
@@ -95,13 +84,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="antialiased"
       >
-        <Providers>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
-        </Providers>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

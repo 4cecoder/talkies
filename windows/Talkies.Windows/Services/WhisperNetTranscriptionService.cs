@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using Whisper.net;
@@ -17,17 +15,10 @@ namespace Talkies.Windows.Services
     /// </summary>
     public class WhisperNetTranscriptionService : ITranscriptionService
     {
-        // OpenAI Whisper model URLs (GGML format from ggerganov/whisper.cpp)
-        private static readonly Dictionary<string, string> ModelUrls = new()
-        {
-            { "tiny", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin" },
-            { "base", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" },
-            { "small", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" },
-            { "medium", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin" },
-            { "large", "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large.bin" }
-        };
+        private readonly WhisperModelStore _modelStore;
 
-        private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromMinutes(30) };
+        public WhisperNetTranscriptionService(WhisperModelStore? modelStore = null) =>
+            _modelStore = modelStore ?? new WhisperModelStore();
 
         public async Task<TranscriptionResult> TranscribeAsync(
             string filePath,
@@ -84,6 +75,12 @@ namespace Talkies.Windows.Services
                 if (!string.IsNullOrWhiteSpace(language) && language != "auto")
                 {
                     builder.WithLanguage(language);
+                }
+
+                if (!string.IsNullOrWhiteSpace(decodingOptions?.Prompt))
+                {
+                    builder.WithPrompt(decodingOptions.Prompt);
+                    builder.WithCarryInitialPrompt();
                 }
 
                 // Apply decoding options if provided
@@ -175,7 +172,7 @@ namespace Talkies.Windows.Services
         /// <summary>
         /// Resolves the model path with dynamic download if needed.
         /// </summary>
-        private static async Task<string> ResolveModelPathAsync(string model, IProgress<TranscriptionProgress>? progress = null)
+        private async Task<string> ResolveModelPathAsync(string model, IProgress<TranscriptionProgress>? progress = null)
         {
             // Allow env override
             var env = Environment.GetEnvironmentVariable("TALKIES_MODEL_PATH");
@@ -184,106 +181,7 @@ namespace Talkies.Windows.Services
                 return env!;
             }
 
-            // Map model names to filenames
-            var name = model switch
-            {
-                "tiny" => "ggml-tiny.bin",
-                "base" => "ggml-base.bin",
-                "small" => "ggml-small.bin",
-                "medium" => "ggml-medium.bin",
-                "large" => "ggml-large.bin",
-                _ => "ggml-tiny.bin"
-            };
-
-            // Place models under user profile .talkies/models
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var modelsDir = Path.Combine(home, ".talkies", "models");
-            var modelPath = Path.Combine(modelsDir, name);
-
-            // If model doesn't exist, try to download it
-            if (!File.Exists(modelPath))
-            {
-                Logger.Info($"Model not found at {modelPath}, attempting to download...");
-                progress?.Report(new TranscriptionProgress(TranscriptionStage.DownloadModel, 0, $"Downloading {name}...", IsIndeterminate: true));
-                await DownloadModelAsync(model, modelPath, progress);
-            }
-
-            return modelPath;
-        }
-
-        /// <summary>
-        /// Downloads a model from HuggingFace if not already present.
-        /// </summary>
-        private static async Task DownloadModelAsync(string modelName, string targetPath, IProgress<TranscriptionProgress>? progress = null)
-        {
-            if (!ModelUrls.TryGetValue(modelName, out var url))
-            {
-                Logger.Error($"Unknown model: {modelName}");
-                return;
-            }
-
-            try
-            {
-                // Ensure directory exists
-                var directory = Path.GetDirectoryName(targetPath);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                Logger.Info($"Downloading model {modelName} from {url}");
-
-                using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
-
-                var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-                var canReportProgress = totalBytes != -1;
-
-                using var contentStream = await response.Content.ReadAsStreamAsync();
-                using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
-
-                var totalRead = 0L;
-                var buffer = new byte[8192];
-                int read;
-
-                if (!canReportProgress)
-                {
-                    progress?.Report(new TranscriptionProgress(
-                        TranscriptionStage.DownloadModel,
-                        0,
-                        "Downloading model (size unknown)...",
-                        IsIndeterminate: true));
-                }
-
-                while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
-                {
-                    await fileStream.WriteAsync(buffer, 0, read);
-                    totalRead += read;
-
-                    if (canReportProgress)
-                    {
-                        var progressPercent = (totalRead * 100d) / totalBytes;
-                        Logger.Info($"Download progress: {progressPercent:F1}%");
-                        progress?.Report(new TranscriptionProgress(
-                            TranscriptionStage.DownloadModel,
-                            progressPercent,
-                            $"Downloading model... {progressPercent:F0}%",
-                            IsIndeterminate: false));
-                    }
-                }
-
-                Logger.Info($"Model {modelName} downloaded successfully to {targetPath}");
-                progress?.Report(new TranscriptionProgress(
-                    TranscriptionStage.DownloadModel,
-                    100,
-                    "Model download complete",
-                    IsIndeterminate: false));
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Failed to download model {modelName}: {ex.Message}");
-                throw;
-            }
+            return await _modelStore.EnsureAvailableAsync(model, progress).ConfigureAwait(false);
         }
 
         private static string ConvertTo16kMono(string inputPath)

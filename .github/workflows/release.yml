@@ -2,13 +2,54 @@ name: Release
 
 on:
   push:
+    branches: [master]
     tags:
       - 'v*'
 
+concurrency:
+  group: talkies-release-${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+  cancel-in-progress: false
+
 jobs:
+  resolve-version:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      release_label: ${{ steps.version.outputs.release_label }}
+    steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v6
+
+      - name: Validate and normalize release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_label="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            app_version="${release_label#v}"
+            if [[ ! "${app_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must be vMAJOR.MINOR.PATCH (for example v1.2.3); got ${release_label}" >&2
+              exit 1
+            fi
+          else
+            app_version="$(tr -d '[:space:]' < packaging/shared/version.txt)"
+            if [[ ! "${app_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "packaging/shared/version.txt must contain MAJOR.MINOR.PATCH; got ${app_version}" >&2
+              exit 1
+            fi
+            release_label="latest"
+          fi
+          {
+            echo "app_version=${app_version}"
+            echo "release_label=${release_label}"
+          } >> "${GITHUB_OUTPUT}"
+
   build-macos:
     name: Build macOS Release
     runs-on: macos-latest
+    needs: resolve-version
 
     steps:
       - name: Checkout code
@@ -17,30 +58,44 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v3
         with:
-          swift-version: '6.0'
+          swift-version: '6.3.3'
 
-      - name: Build macOS release binary
+      - name: Run macOS tests
         working-directory: mac
-        run: swift build -c release
+        run: swift test
 
-      - name: Package macOS binary
-        working-directory: mac
-        run: |
-          mkdir -p dist
-          cp .build/release/Talkies dist/
-          cd dist
-          tar -czf Talkies-macOS-${{ github.ref_name }}.tar.gz Talkies
+      - name: Build macOS app bundle and zip
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          OUTPUT_DIR: ${{ github.workspace }}/dist
+        run: packaging/macos/package-app.sh
+
+      - name: Apply release artifact label
+        env:
+          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+        run: mv "dist/Talkies-macOS-${APP_VERSION}.zip" "dist/Talkies-macOS-${RELEASE_LABEL}.zip"
+
+      - name: Build and smoke-test macOS DMG installer
+        env:
+          APP_BUNDLE: ${{ github.workspace }}/dist/Talkies.app
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+          OUTPUT_DIR: ${{ github.workspace }}/dist
+        run: packaging/macos/package-dmg.sh
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: macos-release
-          path: mac/dist/Talkies-macOS-${{ github.ref_name }}.tar.gz
+          path: |
+            dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
           retention-days: 1
 
   build-windows:
     name: Build Windows Release
     runs-on: windows-latest
+    needs: resolve-version
 
     steps:
       - name: Checkout code
@@ -52,28 +107,145 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        working-directory: windows/Talkies.Windows
-        run: dotnet restore
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet restore Talkies.Windows.Tests.csproj
 
-      - name: Build Windows release binary
-        working-directory: windows/Talkies.Windows
-        run: dotnet publish -c Release -r win-x64 --self-contained true -o dist
+      - name: Run Windows tests
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore
 
-      - name: Package Windows binary
-        working-directory: windows/Talkies.Windows
-        run: |
-          Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ github.ref_name }}.zip
+      - name: Set up verified NSIS compiler
+        shell: pwsh
+        run: ./packaging/windows/setup-nsis.ps1
+
+      - name: Package and smoke-test Windows release archive
+        env:
+          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+          OUTPUT_DIRECTORY: ${{ github.workspace }}/dist
+        run: ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-release
-          path: windows/Talkies.Windows/Talkies-Windows-${{ github.ref_name }}.zip
+          path: |
+            dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
+          retention-days: 1
+
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
+    needs: resolve-version
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          # Keep Linux releases aligned with the compiler used by CI.
+          version: master
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git pkg-config \
+            libpulse-dev \
+            libsqlite3-dev \
+            libx11-dev \
+            libdbus-1-dev \
+            libgtk-4-dev \
+            libglib2.0-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libgraphene-1.0-dev \
+            libharfbuzz-dev
+
+      - name: Workaround Ubuntu multiarch include paths
+        # See matching step in ci.yml: linux/build.zig hardcodes
+        # /usr/lib64/<pkg>/include paths that only exist on Gentoo/Fedora.
+        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
+
+      - name: Build pinned CPU-only llama.cpp
+        run: |
+          git init /tmp/llama.cpp
+          git -C /tmp/llama.cpp fetch --depth=1 https://github.com/ggml-org/llama.cpp.git 53ed051ce5e8193652e449f43216ca3859454f49
+          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
+          cd /tmp/llama.cpp
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=ON \
+            -DGGML_METAL=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DLLAMA_CURL=OFF \
+            -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_SERVER=OFF
+          cmake --build build --target llama -j2
+          sudo cmake --install build
+          sudo ldconfig
+
+      - name: Build whisper.cpp
+        run: |
+          git init /tmp/whisper.cpp
+          git -C /tmp/whisper.cpp fetch --depth=1 https://github.com/ggml-org/whisper.cpp.git d09f61a708f3487afa956ff578e60eae5e7a233c
+          git -C /tmp/whisper.cpp checkout --detach FETCH_HEAD
+          cd /tmp/whisper.cpp
+          make
+          # See matching comment in ci.yml: whisper.cpp's shared libs now
+          # land under build/, not the repo root, and depend on multiple
+          # libggml*.so backend libs — install whatever it actually built.
+          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
+          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
+          sudo ldconfig
+
+      - name: Build Linux release binary
+        working-directory: linux
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Cache pinned S1-mini model
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
+      - name: Run Linux tests
+        working-directory: linux
+        env:
+          TALKIES_TEST_S1_MINI: "1"
+        run: zig build test
+
+      - name: Package Linux binary
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.release_label }}
+          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          OUTPUT_DIR: ${{ github.workspace }}/linux/dist
+        run: |
+          packaging/linux/package-portable.sh
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: linux-release
+          path: |
+            linux/dist/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
+            linux/dist/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb
           retention-days: 1
 
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows]
+    needs: [resolve-version, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -83,26 +255,61 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.1
         with:
           name: macos-release
           path: artifacts
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.1
         with:
           name: windows-release
           path: artifacts
 
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: linux-release
+          path: artifacts
+
+      - name: Generate SHA-256 checksums
+        working-directory: artifacts
+        run: |
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "ref=$GITHUB_REF"
+            echo "release=${{ needs.resolve-version.outputs.release_label }}"
+            echo "app_version=${{ needs.resolve-version.outputs.app_version }}"
+            echo "platforms=macOS,windows-x64,linux-x86_64"
+          } > BUILD-INFO.txt
+
+      - name: Point rolling latest at the tested commit
+        if: ${{ github.ref_type != 'tag' }}
+        run: |
+          git tag --force latest "$GITHUB_SHA"
+          git push --force origin refs/tags/latest
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ needs.resolve-version.outputs.release_label }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ github.ref_type == 'tag' && format('Release {0}', github.ref_name) || format('Talkies Latest ({0})', github.sha) }}
           draft: false
-          prerelease: false
+          prerelease: ${{ github.ref_type != 'tag' }}
           generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
           files: |
-            artifacts/Talkies-macOS-${{ github.ref_name }}.tar.gz
-            artifacts/Talkies-Windows-${{ github.ref_name }}.zip
+            artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
+            artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
+            artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
+            artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb
+            artifacts/SHA256SUMS
+            artifacts/BUILD-INFO.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

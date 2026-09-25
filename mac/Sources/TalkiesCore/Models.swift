@@ -1,5 +1,59 @@
 import Foundation
 
+/// Supported single-key activation shortcuts for the macOS menu-bar app.
+/// These key codes match the hardware key codes reported by NSEvent.
+public enum ActivationKey: Int, CaseIterable, Codable, Sendable, Identifiable {
+    case leftOption = 58
+    case rightOption = 61
+
+    public var id: Int { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .leftOption: "Left Option (⌥)"
+        case .rightOption: "Right Option (⌥)"
+        }
+    }
+}
+
+/// A serializable copy of one representation on a system clipboard item.
+public struct ClipboardRepresentation: Codable, Equatable, Sendable {
+    public let type: String
+    public let data: Data
+
+    public init(type: String, data: Data) {
+        self.type = type
+        self.data = data
+    }
+}
+
+/// Preserves every item and representation while Talkies temporarily uses the clipboard to paste text.
+public struct ClipboardSnapshot: Codable, Equatable, Sendable {
+    public let items: [[ClipboardRepresentation]]
+
+    public init(items: [[ClipboardRepresentation]]) {
+        self.items = items
+    }
+}
+
+/// Normalizes local recognition vocabulary while preserving the user's first spelling of each term.
+public struct LocalVocabulary: Equatable, Sendable {
+    public let terms: [String]
+
+    public init(terms: [String]) {
+        var seen = Set<String>()
+        self.terms = terms.compactMap { term in
+            let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, seen.insert(normalized.lowercased()).inserted else { return nil }
+            return normalized
+        }
+    }
+
+    public var recognitionPrompt: String {
+        terms.joined(separator: ", ")
+    }
+}
+
 /// Represents a single segment of transcribed audio
 public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID

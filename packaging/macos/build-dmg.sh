@@ -36,6 +36,7 @@ MIN_MACOS_VERSION="15.0"
 # Paths (relative to script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../mac" && pwd)"
+REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 DMG_OUTPUT_DIR="${SCRIPT_DIR}"
 
@@ -126,7 +127,7 @@ log_info "Building ${APP_NAME} in release mode..."
 
 cd "${PROJECT_ROOT}"
 
-swift build -c release --arch arm64 --arch x86_64 2>&1 | tee "${BUILD_DIR}/build.log" || {
+swift build -c release 2>&1 | tee "${BUILD_DIR}/build.log" || {
     log_error "Swift build failed. Check ${BUILD_DIR}/build.log for details."
     exit 1
 }
@@ -135,10 +136,17 @@ log_success "Build completed successfully"
 
 # Note: Swift Package Manager doesn't support universal binaries directly
 # For now, build for current architecture. For universal binary, use xcodebuild
-BINARY_PATH="${PROJECT_ROOT}/.build/release/${APP_NAME}"
+BIN_DIR="$(swift build -c release --show-bin-path)"
+BINARY_PATH="${BIN_DIR}/${APP_NAME}"
+LLAMA_FRAMEWORK="${BIN_DIR}/llama.framework"
 
 if [ ! -f "${BINARY_PATH}" ]; then
     log_error "Binary not found at ${BINARY_PATH}"
+    exit 1
+fi
+
+if [ ! -d "${LLAMA_FRAMEWORK}" ]; then
+    log_error "llama.framework not found at ${LLAMA_FRAMEWORK}"
     exit 1
 fi
 
@@ -150,10 +158,13 @@ log_info "Creating application bundle structure..."
 
 mkdir -p "${APP_MACOS}"
 mkdir -p "${APP_RESOURCES}"
+mkdir -p "${APP_CONTENTS}/Frameworks"
 
 # Copy binary
 cp "${BINARY_PATH}" "${APP_MACOS}/${APP_NAME}"
 chmod +x "${APP_MACOS}/${APP_NAME}"
+ditto "${LLAMA_FRAMEWORK}" "${APP_CONTENTS}/Frameworks/llama.framework"
+install_name_tool -add_rpath '@loader_path/../Frameworks' "${APP_MACOS}/${APP_NAME}"
 
 log_success "Copied binary to app bundle"
 
@@ -176,6 +187,8 @@ cat > "${APP_CONTENTS}/Info.plist" <<EOF
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>Talkies.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -202,17 +215,10 @@ log_success "Created Info.plist"
 # Add Application Icon (if available)
 ################################################################################
 
-ICON_SOURCE="${PROJECT_ROOT}/Resources/AppIcon.icns"
-if [ -f "${ICON_SOURCE}" ]; then
-    log_info "Adding application icon..."
-    cp "${ICON_SOURCE}" "${APP_RESOURCES}/AppIcon.icns"
-
-    # Update Info.plist to reference icon
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon.icns" "${APP_CONTENTS}/Info.plist" 2>/dev/null || true
-    log_success "Added application icon"
-else
-    log_warning "No icon found at ${ICON_SOURCE}, skipping"
-fi
+ICON_SOURCE="${REPOSITORY_ROOT}/branding/icons/talkies-app-icon.icns"
+log_info "Adding application icon..."
+cp "${ICON_SOURCE}" "${APP_RESOURCES}/Talkies.icns"
+log_success "Added application icon"
 
 ################################################################################
 # Create Entitlements (for signing)

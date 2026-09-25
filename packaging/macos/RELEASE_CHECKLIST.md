@@ -23,7 +23,7 @@ Use this checklist when preparing a new Talkies release for macOS.
 
 ### Assets Preparation
 
-- [ ] Application icon ready (`mac/Resources/AppIcon.icns`)
+- [ ] Application icon bundled from `branding/icons/talkies-app-icon.icns`
 - [ ] DMG background image prepared (optional, `packaging/macos/dmg-background.png`)
 - [ ] Release notes drafted
 - [ ] Marketing materials prepared (if needed)

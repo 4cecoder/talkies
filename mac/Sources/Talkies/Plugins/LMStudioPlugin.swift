@@ -1,5 +1,7 @@
 import SwiftUI
 import Foundation
+import TalkiesCore
+import TalkiesInference
 
 // MARK: - LM Studio Plugin
 @MainActor
@@ -194,7 +196,8 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
             stream: false
         )
 
-        guard let url = URL(string: "\(endpoint)/v1/chat/completions") else {
+        guard let localEndpoint = LocalModelEndpoint.url(endpoint),
+              let url = URL(string: "/v1/chat/completions", relativeTo: localEndpoint)?.absoluteURL else {
             throw LMStudioError.invalidURL
         }
 
@@ -207,7 +210,7 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
         encoder.keyEncodingStrategy = .convertToSnakeCase
         urlRequest.httpBody = try encoder.encode(request)
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let (data, response) = try await LocalInferenceURLSession.shared.data(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LMStudioError.invalidResponse
@@ -237,7 +240,8 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
         }
 
         // Try to connect to LM Studio
-        guard let url = URL(string: "\(endpoint)/v1/models") else {
+        guard let localEndpoint = LocalModelEndpoint.url(endpoint),
+              let url = URL(string: "/v1/models", relativeTo: localEndpoint)?.absoluteURL else {
             await MainActor.run {
                 status = .notRunning
                 isCheckingStatus = false
@@ -246,7 +250,7 @@ class LMStudioPlugin: TalkiesPlugin, ObservableObject {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await LocalInferenceURLSession.shared.data(from: url)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {

@@ -56,6 +56,9 @@ namespace Talkies.Windows.Services
         /// </summary>
         public bool WithoutTimestamps { get; set; } = false;
 
+        /// <summary>Optional local vocabulary used to condition Whisper recognition.</summary>
+        public string? Prompt { get; set; }
+
         /// <summary>
         /// Whether to enable verbose output.
         /// </summary>

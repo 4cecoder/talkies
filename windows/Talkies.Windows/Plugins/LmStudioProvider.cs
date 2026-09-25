@@ -52,14 +52,19 @@ namespace Talkies.Windows.Plugins
 
         public LmStudioProvider()
         {
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            _httpClient = LocalModelEndpoint.CreateClient(TimeSpan.FromSeconds(120));
         }
 
         public async Task<bool> IsAvailableAsync()
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(Endpoint, "/v1/models", out var requestUri))
+            {
+                return false;
+            }
+
             try
             {
-                var response = await _httpClient.GetAsync($"{Endpoint}/v1/models");
+                var response = await _httpClient.GetAsync(requestUri);
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -70,9 +75,18 @@ namespace Talkies.Windows.Plugins
 
         public async Task<bool> FetchModelsAsync(bool silent = false)
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(Endpoint, "/v1/models", out var requestUri))
+            {
+                if (!silent)
+                {
+                    Services.Logger.Error("LM Studio endpoint must use localhost or a loopback IP address.");
+                }
+                return false;
+            }
+
             try
             {
-                var response = await _httpClient.GetAsync($"{Endpoint}/v1/models");
+                var response = await _httpClient.GetAsync(requestUri);
                 if (!response.IsSuccessStatusCode)
                 {
                     Services.Logger.Warn($"LM Studio: Failed to fetch models - {response.StatusCode}");
@@ -167,6 +181,12 @@ namespace Talkies.Windows.Plugins
 
         private async Task<string> EnhanceWithPromptInternalAsync(string text, string systemPrompt)
         {
+            if (!LocalModelEndpoint.TryCreateRequestUri(Endpoint, "/v1/chat/completions", out var requestUri))
+            {
+                Services.Logger.Error("LM Studio endpoint must use localhost or a loopback IP address.");
+                return text;
+            }
+
             var payload = new
             {
                 model = _selectedModel,
@@ -187,7 +207,7 @@ namespace Talkies.Windows.Plugins
                 "application/json"
             );
 
-            var response = await _httpClient.PostAsync($"{Endpoint}/v1/chat/completions", jsonContent);
+            var response = await _httpClient.PostAsync(requestUri, jsonContent);
             response.EnsureSuccessStatusCode();
 
             var responseJson = await response.Content.ReadAsStringAsync();

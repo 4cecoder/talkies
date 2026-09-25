@@ -145,7 +145,8 @@ zig-out/bin/talkies daemon 2>&1 | grep -i vulkan
 - [ ] Test end-to-end recording workflow
 - [ ] Customize overlay appearance (colors, size)
 - [ ] Add custom prompts for LLM enhancement
-- [ ] Configure export formats (SRT, VTT, TXT)
+- Export an existing WAV to a timed subtitle/transcript file:
+  `talkies transcribe speech.wav --format srt --output speech.srt`
 
 ## Files You Care About
 

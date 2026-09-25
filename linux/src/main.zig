@@ -1,4 +1,14 @@
 const std = @import("std");
+const cleanup = @import("cleanup.zig");
+const transcript_export = @import("transcript_export.zig");
+const offline_acceptance = @import("offline_acceptance.zig");
+
+test {
+    _ = cleanup;
+    _ = local_diagnostics;
+    _ = transcript_export;
+    _ = offline_acceptance;
+}
 const audio = @import("audio.zig");
 const whisper = @import("whisper.zig");
 const clipboard = @import("clipboard.zig");
@@ -14,6 +24,7 @@ const yap_window = @import("yap_window.zig");
 const daemon_status_window = @import("daemon_status_window.zig");
 const vad = @import("vad.zig");
 const audio_processing = @import("audio_processing.zig");
+const local_diagnostics = @import("local_diagnostics.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -45,21 +56,32 @@ fn onSettingsCallback() void {
     daemon_show_settings = true;
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init.Minimal) !void {
+    const allocator = std.heap.smp_allocator;
+    utils.setIoAllocator(allocator);
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    run(init, allocator) catch |err| {
+        local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
+        return err;
+    };
+}
 
-    if (args.len < 2) {
+fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
+    var args_iterator = try std.process.Args.Iterator.initAllocator(init.args, allocator);
+    defer args_iterator.deinit();
+
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(allocator);
+    while (args_iterator.next()) |arg| try args.append(allocator, arg);
+    const arguments = args.items;
+
+    if (arguments.len < 2) {
         try printHelp();
         return;
     }
 
-    const command = parseCommand(args[1]) orelse {
-        std.debug.print("Unknown command: {s}\n", .{args[1]});
+    const command = parseCommand(arguments[1]) orelse {
+        std.debug.print("Unknown command: {s}\n", .{arguments[1]});
         try printHelp();
         return;
     };
@@ -71,8 +93,8 @@ pub fn main() !void {
         .config_show => try runConfigShow(allocator),
         .audio_test => try runAudioTest(allocator),
         .audio_list => try runAudioList(allocator),
-        .audio_set => try runAudioSet(allocator, args),
-        .transcribe_test => try runTranscribeTest(allocator, args),
+        .audio_set => try runAudioSet(allocator, arguments),
+        .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
         .help => try printHelp(),
     }
@@ -111,6 +133,9 @@ fn runQuick(allocator: std.mem.Allocator) !void {
 
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
+
+    var cleanup_service = cleanup.Cleaner{ .allocator = allocator, .threads = cfg.threads };
+    defer cleanup_service.deinit();
 
     var clip = clipboard.Clipboard.init(allocator);
     defer clip.deinit();
@@ -151,7 +176,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -166,8 +191,17 @@ fn runQuick(allocator: std.mem.Allocator) !void {
 
     // Transcribe
     std.debug.print("Transcribing audio...\n", .{});
-    const transcription = try whisper_service.transcribe(temp_path);
-    defer allocator.free(transcription);
+    const raw_transcription = try whisper_service.transcribe(temp_path, cfg.vocabulary_prompt);
+    defer allocator.free(raw_transcription);
+    const cleaned_transcription = if (cfg.s1_cleanup_enabled)
+        cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
+            utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
+            break :blk null;
+        }
+    else
+        null;
+    defer if (cleaned_transcription) |cleaned| allocator.free(cleaned);
+    const transcription = cleaned_transcription orelse raw_transcription;
 
     std.debug.print("\nTranscription:\n{s}\n\n", .{transcription});
 
@@ -183,7 +217,7 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     }
 
     // Cleanup temp file
-    std.fs.deleteFileAbsolute(temp_path) catch |err| {
+    std.Io.Dir.deleteFileAbsolute(utils.io(), temp_path) catch |err| {
         std.debug.print("Warning: Failed to delete temp file: {}\n", .{err});
     };
 
@@ -235,7 +269,7 @@ fn runRecord(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -323,7 +357,7 @@ fn runAudioTest(allocator: std.mem.Allocator) !void {
         }
         std.debug.print("] {d:.2}", .{level});
 
-        std.posix.nanosleep(0, chunk_ms * std.time.ns_per_ms);
+        utils.sleepNanoseconds(chunk_ms * std.time.ns_per_ms);
     }
 
     std.debug.print("\n", .{});
@@ -340,11 +374,7 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
 
     // Run pactl list sources short to get all audio sources
     const argv = &[_][]const u8{ "pactl", "list", "sources", "short" };
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
+    var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdout = .pipe, .stderr = .pipe });
 
     const stdout = child.stdout orelse return error.NoStdout;
 
@@ -354,13 +384,16 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
 
     var buffer: [4096]u8 = undefined;
     while (true) {
-        const n = try stdout.read(&buffer);
+        const n = stdout.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
         if (n == 0) break;
         try output_list.appendSlice(allocator, buffer[0..n]);
     }
 
-    const term = try child.wait();
-    if (term != .Exited or term.Exited != 0) {
+    const term = try child.wait(utils.io());
+    if (!term.success()) {
         std.debug.print("Error: Failed to list audio devices\n", .{});
         return error.PactlFailed;
     }
@@ -398,7 +431,7 @@ fn runAudioList(allocator: std.mem.Allocator) !void {
     std.debug.print("  talkies audio-set <device-name>\n\n", .{});
 }
 
-fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runAudioSet(allocator: std.mem.Allocator, args: []const []const u8) !void {
     if (args.len < 3) {
         std.debug.print("Usage: talkies audio-set <device-name>\n", .{});
         std.debug.print("Run 'talkies audio-list' to see available devices\n", .{});
@@ -429,7 +462,7 @@ fn runAudioSet(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("\nYou can test it with: talkies audio\n", .{});
 }
 
-fn runTranscribeTest(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !void {
     // Get audio file from args or use default
     const audio_file = if (args.len > 2) args[2] else "anime_16k.wav";
 
@@ -448,10 +481,32 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     try whisper_service.loadModel(cfg.model);
 
     std.debug.print("Transcribing {s}...\n", .{audio_file});
-    const transcription = try whisper_service.transcribe(audio_file);
+    const transcription = try whisper_service.transcribe(audio_file, cfg.vocabulary_prompt);
     defer allocator.free(transcription);
 
-    std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
+    const export_args = if (args.len > 3) args[3..] else &.{};
+    if (try transcript_export.parseRequest(export_args)) |request| {
+        const source_segments = try whisper_service.getSegments();
+        defer if (source_segments.len > 0) whisper_service.freeSegments(source_segments);
+        const export_segments = try allocator.alloc(transcript_export.Segment, source_segments.len);
+        defer allocator.free(export_segments);
+        for (source_segments, export_segments) |source, *target| {
+            target.* = .{ .start = source.start, .end = source.end, .text = source.text };
+        }
+
+        const content = try transcript_export.render(allocator, request.format, export_segments);
+        defer allocator.free(content);
+        const file = try std.Io.Dir.cwd().createFile(utils.io(), request.output_path, .{
+            .exclusive = true,
+            .permissions = @fromBackingInt(@as(u32, 0o600)),
+        });
+        defer file.close(utils.io());
+        errdefer std.Io.Dir.cwd().deleteFile(utils.io(), request.output_path) catch {};
+        try file.writeStreamingAll(utils.io(), content);
+        std.debug.print("Exported local ASR transcript to: {s}\n", .{request.output_path});
+    } else {
+        std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
+    }
 }
 
 fn runDaemon(allocator: std.mem.Allocator) !void {
@@ -461,11 +516,6 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     var cfg = config.Config.init(allocator);
     defer cfg.deinit();
     try cfg.load();
-
-    // Create shared Io instance for HTTP client (YAP mode Ollama calls)
-    var io_threaded = std.Io.Threaded.init(allocator);
-    defer io_threaded.deinit();
-    const io = io_threaded.io();
 
     // Initialize GTK and create daemon status window (if enabled)
     // GTK init is handled in C layer when first window is created
@@ -529,6 +579,9 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
     // Initialize services
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
+
+    var cleanup_service = cleanup.Cleaner{ .allocator = allocator, .threads = cfg.threads };
+    defer cleanup_service.deinit();
 
     var inserter = input.TextInserter.init(allocator);
     defer inserter.deinit();
@@ -597,7 +650,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
         try daemon_state.setState(.idle);
 
         // Clean up state file from previous run
-        std.fs.deleteFileAbsolute("/tmp/talkies-state") catch {};
+        std.Io.Dir.deleteFileAbsolute(utils.io(), "/tmp/talkies-state") catch {};
 
         std.debug.print("WebSocket server ready!\n\n", .{});
 
@@ -635,8 +688,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     win.setActivity("Recording audio...");
                 }
 
-                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const start_ms = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+                const start_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const start_ms = start_ts.toMilliseconds();
 
                 recorder.startRecording(recording_file, device) catch |err| {
                     std.debug.print("Error starting recording: {}\n", .{err});
@@ -655,13 +708,13 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     continue;
                 };
 
-                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const end_ms = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                const end_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const end_ms = end_ts.toMilliseconds();
                 std.debug.print("✅ RECORDING ACTIVE - took {d}ms to initialize PulseAudio\n", .{end_ms - start_ms});
 
                 // Play activation sound (2x speed for faster feedback)
-                const sound_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const sound_ms = @as(i64, sound_ts.sec) * 1000 + @divTrunc(sound_ts.nsec, std.time.ns_per_ms);
+                const sound_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const sound_ms = sound_ts.toMilliseconds();
                 utils.playSound("assets/start-fast.wav");
                 std.debug.print("🔊 Sound triggered at +{d}ms from state change\n", .{sound_ms - start_ms});
 
@@ -680,8 +733,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
             // Handle state: processing -> stop recording and transcribe
             if (current_state == .processing and last_state == .recording) {
-                const stop_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const stop_start_ms = @as(i64, stop_start.sec) * 1000 + @divTrunc(stop_start.nsec, std.time.ns_per_ms);
+                const stop_start = std.Io.Timestamp.now(utils.io(), .awake);
+                const stop_start_ms = stop_start.toMilliseconds();
 
                 std.debug.print("🔴 STOP COMMAND RECEIVED - Recording 350ms more to capture trailing words\n", .{});
 
@@ -689,8 +742,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 const extra_ms: i64 = 350;
                 const deadline = stop_start_ms + extra_ms;
                 while (true) {
-                    const now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                    const now_ms = @as(i64, now.sec) * 1000 + @divTrunc(now.nsec, std.time.ns_per_ms);
+                    const now = std.Io.Timestamp.now(utils.io(), .awake);
+                    const now_ms = now.toMilliseconds();
                     if (now_ms >= deadline) break;
 
                     // Continue recording chunks
@@ -706,8 +759,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     continue;
                 };
 
-                const stop_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const stop_end_ms = @as(i64, stop_end.sec) * 1000 + @divTrunc(stop_end.nsec, std.time.ns_per_ms);
+                const stop_end = std.Io.Timestamp.now(utils.io(), .awake);
+                const stop_end_ms = stop_end.toMilliseconds();
                 std.debug.print("✅ STOPPED - took {d}ms to finalize recording\n", .{stop_end_ms - stop_start_ms});
 
                 // Play deactivation sound
@@ -721,8 +774,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     win.setActivity("Running Whisper model...");
                 }
 
-                const start_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const start_time = @as(i64, start_ts.sec) * 1000 + @divTrunc(start_ts.nsec, std.time.ns_per_ms);
+                const start_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const start_time = start_ts.toMilliseconds();
 
                 // Apply VAD to trim silence (if enabled in config)
                 var audio_file_to_transcribe: []const u8 = recording_file;
@@ -766,7 +819,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 }
 
                 // Transcribe the recording (possibly VAD-trimmed)
-                const transcription = whisper_service.transcribe(audio_file_to_transcribe) catch |err| {
+                const raw_transcription = whisper_service.transcribe(audio_file_to_transcribe, cfg.vocabulary_prompt) catch |err| {
                     std.debug.print("Error transcribing: {}\n", .{err});
 
                     if (daemon_status_win) |win| {
@@ -781,10 +834,20 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     daemon_state.setState(.idle) catch {};
                     continue;
                 };
-                defer allocator.free(transcription);
+                defer allocator.free(raw_transcription);
 
-                const end_ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-                const end_time = @as(i64, end_ts.sec) * 1000 + @divTrunc(end_ts.nsec, std.time.ns_per_ms);
+                const cleaned_transcription: ?[]u8 = if (cfg.s1_cleanup_enabled)
+                    cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
+                        utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
+                        break :blk null;
+                    }
+                else
+                    null;
+                defer if (cleaned_transcription) |cleaned| allocator.free(cleaned);
+                const transcription = cleaned_transcription orelse raw_transcription;
+
+                const end_ts = std.Io.Timestamp.now(utils.io(), .awake);
+                const end_time = end_ts.toMilliseconds();
                 const duration_ms = end_time - start_time;
 
                 std.debug.print("📝 Transcription ({d} chars): {s}\n", .{ transcription.len, transcription });
@@ -866,7 +929,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         null, // No initial context
                         cfg.yap_ollama_url,
                         cfg.yap_system_prompt,
-                        io,
+                        utils.io(),
                     ) catch |err| {
                         allocator.destroy(sb_ptr);
                         utils.logError("Failed to create sandbox: {}", .{err});
@@ -950,7 +1013,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 std.debug.print("✅ Done!\n\n", .{});
 
                 // Cleanup recording file
-                std.fs.deleteFileAbsolute(recording_file) catch {};
+                std.Io.Dir.deleteFileAbsolute(utils.io(), recording_file) catch {};
 
                 // Reset state to idle
                 try daemon_state.setState(.idle);
@@ -1035,16 +1098,19 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             const c_questions = allocator.alloc(yap_window.c.YapClarificationQuestion, questions.len) catch continue;
                             defer allocator.free(c_questions);
 
-                            // Convert options to NULL-terminated arrays
-                            var options_arrays = allocator.alloc([*c]const [*c]const u8, questions.len) catch continue;
+                            // Convert options to C-compatible arrays. Track the
+                            // successfully allocated prefix so an allocation
+                            // failure never passes uninitialized structs to GTK.
+                            var options_arrays = allocator.alloc([][*c]const u8, questions.len) catch continue;
                             defer allocator.free(options_arrays);
 
+                            var options_array_count: usize = 0;
                             for (questions, 0..) |q, i| {
-                                const opts = allocator.alloc([*c]const u8, q.options.len) catch continue;
+                                const opts = allocator.alloc([*c]const u8, q.options.len) catch break;
                                 for (q.options, 0..) |opt, j| {
                                     opts[j] = opt.ptr;
                                 }
-                                options_arrays[i] = opts.ptr;
+                                options_arrays[i] = opts;
 
                                 c_questions[i] = .{
                                     .id = q.id.ptr,
@@ -1052,6 +1118,14 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                                     .options = opts.ptr,
                                     .option_count = @intCast(q.options.len),
                                 };
+                                options_array_count += 1;
+                            }
+
+                            if (options_array_count != questions.len) {
+                                for (options_arrays[0..options_array_count]) |opts| {
+                                    allocator.free(opts);
+                                }
+                                continue;
                             }
 
                             // Show in UI
@@ -1065,7 +1139,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                             // Clean up options arrays
                             for (options_arrays) |opts| {
-                                allocator.free(opts[0 .. questions[0].options.len]);
+                                allocator.free(opts);
                             }
                         },
 
@@ -1197,7 +1271,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
             last_state = current_state;
 
             // Sleep to avoid busy-wait (0.5ms for ultra-fast response)
-            std.posix.nanosleep(0, 500 * std.time.ns_per_us);
+            utils.sleepNanoseconds(500 * std.time.ns_per_us);
         }
 
         utils.log("Daemon shutting down...", .{});
@@ -1215,7 +1289,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
     // State tracking
     var is_recording = false;
-    var key_press_time: std.time.Instant = undefined;
+    var key_press_time: std.Io.Timestamp = undefined;
     const temp_path = "/tmp/talkies_daemon_recording.wav";
 
     // Main event loop
@@ -1237,7 +1311,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                     if (!is_recording) {
                         // Start recording
                         is_recording = true;
-                        key_press_time = try std.time.Instant.now();
+                        key_press_time = utils.monotonicTimestamp();
 
                         const device = if (cfg.audio_device.len > 0) cfg.audio_device else null;
                         recorder.startRecording(temp_path, device) catch |err| {
@@ -1259,7 +1333,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             };
 
                             // Small sleep to match chunk rate (100ms chunks at 16kHz = 4096 bytes)
-                            std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+                            utils.sleepNanoseconds(100 * std.time.ns_per_ms);
 
                             // Check if there's a pending key release event
                             if (listener.hasPendingEvents()) {
@@ -1271,9 +1345,8 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                 .release => {
                     if (is_recording) {
                         // Calculate hold duration
-                        const now = try std.time.Instant.now();
-                        const hold_duration_ns = now.since(key_press_time);
-                        const hold_duration = hold_duration_ns / std.time.ns_per_ms;
+                        const now = utils.monotonicTimestamp();
+                        const hold_duration = key_press_time.durationTo(now).toMilliseconds();
 
                         // Stop recording
                         recorder.stopRecording() catch |err| {
@@ -1293,7 +1366,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                         // Transcribe
                         std.debug.print("⚙️  Transcribing...\n", .{});
-                        const transcription = whisper_service.transcribe(temp_path) catch |err| {
+                        const transcription = whisper_service.transcribe(temp_path, cfg.vocabulary_prompt) catch |err| {
                             std.debug.print("Error transcribing: {}\n", .{err});
                             continue;
                         };
@@ -1320,7 +1393,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                         std.debug.print("✅ Done!\n\n", .{});
 
                         // Cleanup temp file
-                        std.fs.deleteFileAbsolute(temp_path) catch {};
+                        std.Io.Dir.deleteFileAbsolute(utils.io(), temp_path) catch {};
                     }
                 },
             }
@@ -1344,7 +1417,7 @@ fn printHelp() !void {
         \\  audio              Test audio recording (5 seconds)
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
-        \\  transcribe         Test transcription on anime_16k.wav
+        \\  transcribe [wav]   Transcribe a WAV, optionally exporting TXT/VTT/SRT
         \\  help               Show this help message
         \\
         \\Examples:
@@ -1353,6 +1426,7 @@ fn printHelp() !void {
         \\  talkies audio-set alsa_input.usb... # Set input device
         \\  talkies quick                       # One-shot recording workflow
         \\  talkies models                      # Download model from config
+        \\  talkies transcribe speech.wav --format srt --output speech.srt
         \\
     ;
 

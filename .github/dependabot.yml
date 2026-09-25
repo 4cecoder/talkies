@@ -30,8 +30,8 @@ updates:
       prefix-development: "chore(deps-dev)"
       include: "scope"
 
-  # Frontend npm dependencies
-  - package-ecosystem: "npm"
+  # Frontend Bun dependencies
+  - package-ecosystem: "bun"
     directory: "/frontend"
     schedule:
       interval: "weekly"
@@ -40,22 +40,6 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
-    commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
-      include: "scope"
-    versioning-strategy: "increase"
-
-  # Flutter mobile dependencies
-  - package-ecosystem: "pub"
-    directory: "/mobile"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "mobile"
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"

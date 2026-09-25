@@ -13,7 +13,7 @@ This directory contains the official Talkies brand assets.
 
 ## Usage Guidelines
 
-See the complete brand kit documentation at `/BRAND_KIT.md` for:
+See the complete brand kit documentation at `/docs/BRAND_KIT.md` for:
 - Color palette and gradients
 - Typography guidelines
 - Logo usage rules
@@ -48,4 +48,4 @@ The logo is displayed in the site header at `app/components/sections/Header.tsx`
 
 ---
 
-For questions or updates, see `/BRAND_KIT.md` or open an issue.
+For questions or updates, see `/docs/BRAND_KIT.md` or open an issue.

@@ -20,9 +20,10 @@ namespace Talkies.Windows.Models
         public bool InsertEnabled { get; set; }
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
+        public List<string> PersonalVocabulary { get; set; } = new();
 
         // LLM Provider Settings
-        public string SelectedLlmProvider { get; set; } = "LM Studio";
+        public string SelectedLlmProvider { get; set; } = "S1-mini (on-device)";
         public string LlmEndpoint { get; set; } = "http://127.0.0.1:1234";
         public string? SelectedLlmModelName { get; set; } = "openai/gpt-oss-20b";
         public string SelectedEnhancementMode { get; set; } = "Grammar";
@@ -34,10 +35,6 @@ namespace Talkies.Windows.Models
         public AdvancedTtsSettings AdvancedTts { get; set; } = new();
         public SentimentSettings Sentiment { get; set; } = new();
 
-        // Crash reporting settings
-        public bool CrashReportingEnabled { get; set; } = false;
-        public string CrashReportingEndpoint { get; set; } = string.Empty;
-        public bool CrashReportingPrivacyAccepted { get; set; } = false;
         public bool LmStudioAvailabilityChecked { get; set; } = false;
         public bool OllamaAvailabilityChecked { get; set; } = false;
 

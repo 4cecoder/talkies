@@ -33,7 +33,7 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<string> Models { get; } = new(new[] { "tiny", "base", "small", "medium", "large" });
         public ObservableCollection<string> Languages { get; } = new(new[] { "auto", "en", "es", "fr", "de", "it", "pt", "ja", "zh" });
         public ObservableCollection<AudioDeviceInfo> Microphones { get; } = new();
-        public ObservableCollection<string> LlmProviders { get; } = new(new[] { "Ollama", "LM Studio" });
+        public ObservableCollection<string> LlmProviders { get; } = new(new[] { "S1-mini (on-device)", "Ollama", "LM Studio" });
         public ObservableCollection<Plugins.LlmModel> AvailableLlmModels { get; } = new();
         public ObservableCollection<string> EnhancementModes { get; } = new();
         public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
@@ -49,6 +49,15 @@ namespace Talkies.Windows.ViewModels
         private string _selectedModel = "base";
         public string SelectedLanguage { get => _selectedLanguage; set { _selectedLanguage = value; OnPropertyChanged(); } }
         private string _selectedLanguage = "auto";
+        public string VocabularyText
+        {
+            get => string.Join(Environment.NewLine, LocalVocabulary.Normalize(_settings.PersonalVocabulary));
+            set
+            {
+                _settings.PersonalVocabulary = LocalVocabulary.Normalize(value.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
+                OnPropertyChanged();
+            }
+        }
         public bool VadEnabled { get => _vadEnabled; set { _vadEnabled = value; OnPropertyChanged(); } }
         private bool _vadEnabled = true;
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }
@@ -144,7 +153,7 @@ namespace Talkies.Windows.ViewModels
         private bool _insertEnabled;
 
         public string SelectedLlmProvider { get => _selectedLlmProvider; set { _selectedLlmProvider = value; OnPropertyChanged(); OnLlmProviderChanged(); } }
-        private string _selectedLlmProvider = "LM Studio";
+        private string _selectedLlmProvider = "S1-mini (on-device)";
 
         public string LlmEndpoint { get => _llmEndpoint; set { _llmEndpoint = value; OnPropertyChanged(); } }
         private string _llmEndpoint = "http://127.0.0.1:1234";
@@ -177,6 +186,7 @@ namespace Talkies.Windows.ViewModels
         private string _selectedEnhancementMode = nameof(EnhancementMode.Grammar);
 
         private ILlmProvider? _currentLlmProvider;
+        private S1MiniProvider? _s1MiniProvider;
         private bool _loadingSettings;
 
         public int SegmentCount => Segments.Count;
@@ -399,13 +409,23 @@ namespace Talkies.Windows.ViewModels
             {
                 LlmEndpoint = "http://127.0.0.1:1234";
             }
+            else if (SelectedLlmProvider == "S1-mini (on-device)")
+            {
+                LlmEndpoint = "";
+            }
             AvailableLlmModels.Clear();
+            InitializeLlmProvider();
         }
 
         private void InitializeLlmProvider()
         {
             // Create initial LLM provider
-            _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = "openai/gpt-oss-20b" };
+            _currentLlmProvider = SelectedLlmProvider switch
+            {
+                "S1-mini (on-device)" => GetS1MiniProvider(),
+                "Ollama" => new OllamaEnhancer(LlmEndpoint, _settings.OllamaModel),
+                _ => new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = "openai/gpt-oss-20b" }
+            };
         }
 
         private async System.Threading.Tasks.Task FetchLlmModelsAsync(bool silent = false)
@@ -416,7 +436,7 @@ namespace Talkies.Windows.ViewModels
                 Logger.OperationStart("Fetching LLM models");
 
                 // Validate endpoint
-                if (string.IsNullOrWhiteSpace(LlmEndpoint))
+                if (SelectedLlmProvider != "S1-mini (on-device)" && string.IsNullOrWhiteSpace(LlmEndpoint))
                 {
                     Logger.Error("LLM endpoint is not configured");
                     DialogHelper.ShowWarning("Configuration Error", "Please enter a valid LLM endpoint.");
@@ -431,6 +451,10 @@ namespace Talkies.Windows.ViewModels
                 else if (SelectedLlmProvider == "LM Studio")
                 {
                     _currentLlmProvider = new LmStudioProvider { Endpoint = LlmEndpoint, SelectedModel = _settings.SelectedLlmModelName ?? DefaultLlmModel };
+                }
+                else if (SelectedLlmProvider == "S1-mini (on-device)")
+                {
+                    _currentLlmProvider = GetS1MiniProvider();
                 }
 
                 if (_currentLlmProvider == null)
@@ -495,6 +519,27 @@ namespace Talkies.Windows.ViewModels
             {
                 IsFetchingModels = false;
             }
+        }
+
+        private S1MiniProvider GetS1MiniProvider()
+        {
+            if (_s1MiniProvider != null) return _s1MiniProvider;
+
+            _s1MiniProvider = new S1MiniProvider();
+            _s1MiniProvider.StatusChanged += (message, fraction, indeterminate) =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+                dispatcher.BeginInvoke(() =>
+                {
+                    ShowOverlay = true;
+                    OverlayTitle = "Preparing on-device cleanup";
+                    OverlayMessage = message;
+                    OverlayIsIndeterminate = indeterminate;
+                    OverlayProgress = indeterminate ? 0 : Math.Clamp(fraction * 100, 0, 100);
+                    HotkeyStatus = message;
+                });
+            };
+            return _s1MiniProvider;
         }
 
         private async void OnRecordingCompleted(object? sender, RecordingCompletedEventArgs e)
@@ -567,7 +612,8 @@ namespace Talkies.Windows.ViewModels
                     UsePrefillCache = true,
                     SkipSpecialTokens = true,
                     WithoutTimestamps = false,
-                    Verbose = false
+                    Verbose = false,
+                    Prompt = LocalVocabulary.ToPrompt(_settings.PersonalVocabulary)
                 };
 
                 var result = await _transcriber.TranscribeAsync(
@@ -929,6 +975,7 @@ namespace Talkies.Windows.ViewModels
         public void Dispose()
         {
             SaveSettings();
+            _s1MiniProvider?.Dispose();
             _hotkey.Dispose();
             _recorder.Dispose();
         }
@@ -954,6 +1001,8 @@ namespace Talkies.Windows.ViewModels
             _settings = _settingsService.Load();
             SelectedModel = _settings.Model;
             SelectedLanguage = _settings.Language;
+            _settings.PersonalVocabulary ??= new List<string>();
+            OnPropertyChanged(nameof(VocabularyText));
             EnhanceEnabled = _settings.EnhanceEnabled;
             OllamaUrl = _settings.OllamaUrl;
             OllamaModel = _settings.OllamaModel;
@@ -981,8 +1030,8 @@ namespace Talkies.Windows.ViewModels
                 _settings.SelectedLlmModelName = DefaultLlmModel;
             }
 
-            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "LM Studio";
-            LlmEndpoint = _settings.LlmEndpoint ?? "http://127.0.0.1:1234";
+            SelectedLlmProvider = _settings.SelectedLlmProvider ?? "S1-mini (on-device)";
+            LlmEndpoint = SelectedLlmProvider == "S1-mini (on-device)" ? "" : _settings.LlmEndpoint ?? "http://127.0.0.1:1234";
             SelectedEnhancementMode = _settings.SelectedEnhancementMode ?? "Grammar";
 
             // Load Advanced TTS settings
@@ -1015,6 +1064,7 @@ namespace Talkies.Windows.ViewModels
         {
             _settings.Model = SelectedModel;
             _settings.Language = SelectedLanguage;
+            _settings.PersonalVocabulary = LocalVocabulary.Normalize(_settings.PersonalVocabulary);
             _settings.MicrophoneId = SelectedMicrophone?.Id;
             _settings.EnhanceEnabled = EnhanceEnabled;
             _settings.OllamaUrl = OllamaUrl;

@@ -1,8 +1,9 @@
 const std = @import("std");
 const ollama = @import("ollama.zig");
 const daemon_ws = @import("daemon_ws.zig");
+const utils = @import("utils.zig");
 
-/// YAP Sandbox: Interactive refinement session  
+/// YAP Sandbox: Interactive refinement session
 /// Workflow: User provides initial context → records yapping → LLM refines → final message
 pub const Sandbox = struct {
     allocator: std.mem.Allocator,
@@ -53,8 +54,8 @@ pub const Sandbox = struct {
         system_prompt: []const u8,
         io: std.Io,
     ) !Sandbox {
-        const revisions: std.ArrayListUnmanaged(Revision) = .{};
-        var conversation: std.ArrayListUnmanaged(Message) = .{};
+        const revisions: std.ArrayListUnmanaged(Revision) = .empty;
+        var conversation: std.ArrayListUnmanaged(Message) = .empty;
 
         // Add system prompt to conversation
         const system_msg = Message{
@@ -144,8 +145,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store as new revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
@@ -194,8 +195,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
@@ -227,7 +228,7 @@ pub const Sandbox = struct {
     /// Format revision history for display
     pub fn formatHistory(self: *Sandbox) ![]const u8 {
         // Build format string parts
-        var parts: std.ArrayList([]const u8) = .{};
+        var parts: std.ArrayList([]const u8) = .empty;
         defer parts.deinit(self.allocator);
 
         try parts.append(self.allocator, "\n╔════════════════════════════════════════════════════════╗\n");
@@ -288,7 +289,7 @@ pub const Sandbox = struct {
                 \\B) [Option 2]
                 \\
                 \\Keep questions concise and relevant. Focus on: purpose (explain/ask/share), audience (technical/casual), tone (formal/friendly), or key missing details.
-                ,
+            ,
                 .{ ctx, self.yapping },
             )
         else
@@ -310,7 +311,7 @@ pub const Sandbox = struct {
                 \\B) [Option 2]
                 \\
                 \\Keep questions concise and relevant. Focus on: purpose (explain/ask/share), audience (technical/casual), tone (formal/friendly), or key missing details.
-                ,
+            ,
                 .{self.yapping},
             );
         defer self.allocator.free(prompt);
@@ -332,7 +333,7 @@ pub const Sandbox = struct {
         clarification_answers: ?[]const daemon_ws.ClarificationAnswer,
     ) ![]const u8 {
         // Build prompt with context + yapping + clarification answers
-        var prompt_parts: std.ArrayListUnmanaged([]const u8) = .{};
+        var prompt_parts: std.ArrayListUnmanaged([]const u8) = .empty;
         defer {
             for (prompt_parts.items) |part| {
                 self.allocator.free(part);
@@ -369,7 +370,8 @@ pub const Sandbox = struct {
             }
         }
 
-        try prompt_parts.append(self.allocator, try self.allocator.dupe(u8,
+        try prompt_parts.append(self.allocator, try self.allocator.dupe(
+            u8,
             "Refine these thoughts into a clear, cohesive message. Keep technical terms precise " ++
                 "and business language natural. Remove filler words and redundancy while preserving " ++
                 "key details. Use the clarification context to better match the user's intent.",
@@ -397,8 +399,8 @@ pub const Sandbox = struct {
         try self.conversation.append(self.allocator, assistant_msg);
 
         // Store as new revision
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch unreachable;
-        const now = @as(i64, ts.sec);
+        const ts = std.Io.Timestamp.now(utils.io(), .real);
+        const now = ts.toSeconds();
         const revision = Revision{
             .text = try self.allocator.dupe(u8, refined),
             .timestamp = now,
@@ -415,7 +417,7 @@ fn parseClarificationResponse(
     allocator: std.mem.Allocator,
     response: []const u8,
 ) ![]daemon_ws.ClarificationQuestion {
-    var questions: std.ArrayListUnmanaged(daemon_ws.ClarificationQuestion) = .{};
+    var questions: std.ArrayListUnmanaged(daemon_ws.ClarificationQuestion) = .empty;
     errdefer {
         for (questions.items) |*q| {
             var mutable_q = q.*;
@@ -455,7 +457,7 @@ fn parseClarificationResponse(
                 current_question = .{
                     .id = id,
                     .text = text,
-                    .options = .{},
+                    .options = .empty,
                 };
             }
         }

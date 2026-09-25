@@ -52,8 +52,11 @@ namespace Talkies.Windows.Services
             sb.AppendLine("WEBVTT");
             sb.AppendLine();
 
+            int index = 1;
             foreach (var segment in segments)
             {
+                sb.AppendLine(index.ToString());
+                index++;
                 sb.AppendLine($"{FormatVttTime(segment.Start)} --> {FormatVttTime(segment.End)}");
                 sb.AppendLine(segment.Text);
                 sb.AppendLine();
@@ -102,8 +105,12 @@ namespace Talkies.Windows.Services
         /// </summary>
         private static string FormatVttTime(double seconds)
         {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
+            var milliseconds = (long)Math.Round(Math.Max(seconds, 0) * 1_000, MidpointRounding.AwayFromZero);
+            var hours = milliseconds / 3_600_000;
+            var minutes = milliseconds / 60_000 % 60;
+            var wholeSeconds = milliseconds / 1_000 % 60;
+            var remainderMilliseconds = milliseconds % 1_000;
+            return $"{hours:D2}:{minutes:D2}:{wholeSeconds:D2}.{remainderMilliseconds:D3}";
         }
 
         /// <summary>
@@ -111,8 +118,12 @@ namespace Talkies.Windows.Services
         /// </summary>
         private static string FormatSrtTime(double seconds)
         {
-            var ts = TimeSpan.FromSeconds(seconds);
-            return $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
+            var milliseconds = (long)Math.Round(Math.Max(seconds, 0) * 1_000, MidpointRounding.AwayFromZero);
+            var hours = milliseconds / 3_600_000;
+            var minutes = milliseconds / 60_000 % 60;
+            var wholeSeconds = milliseconds / 1_000 % 60;
+            var remainderMilliseconds = milliseconds % 1_000;
+            return $"{hours:D2}:{minutes:D2}:{wholeSeconds:D2},{remainderMilliseconds:D3}";
         }
     }
 }

@@ -4,10 +4,7 @@ const Clipboard = @import("clipboard.zig").Clipboard;
 const linux = std.os.linux;
 
 // C imports for uinput
-const c = @cImport({
-    @cInclude("linux/uinput.h");
-    @cInclude("sys/ioctl.h");
-});
+const c = @import("c_input");
 
 /// Text insertion using native Linux uinput
 ///
@@ -25,7 +22,7 @@ pub const TextInserter = struct {
 
     pub fn deinit(self: *TextInserter) void {
         if (self.uinput_fd) |fd| {
-            std.posix.close(fd);
+            _ = linux.close(fd);
             self.uinput_fd = null;
         }
     }
@@ -45,7 +42,7 @@ pub const TextInserter = struct {
 
         // Longer delay to ensure clipboard is fully updated (300ms for Wayland)
         // This prevents pasting old clipboard content on subsequent recordings
-        std.posix.nanosleep(0, 300 * std.time.ns_per_ms);
+        utils.sleepNanoseconds(300 * std.time.ns_per_ms);
 
         // Simulate paste using native uinput with configured keybind
         try self.pasteNative(keybind);
@@ -80,12 +77,13 @@ pub const TextInserter = struct {
         }
 
         // Open uinput device
-        const fd = try std.posix.open(
+        const fd = try std.posix.openat(
+            std.posix.AT.FDCWD,
             "/dev/uinput",
             .{ .ACCMODE = .WRONLY, .NONBLOCK = true },
             0,
         );
-        errdefer std.posix.close(fd);
+        errdefer _ = linux.close(fd);
 
         self.uinput_fd = fd;
 
@@ -116,45 +114,45 @@ pub const TextInserter = struct {
         _ = c.ioctl(fd, c.UI_DEV_CREATE, @as(c_int, 0));
 
         // Small delay for device creation
-        std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
+        utils.sleepNanoseconds(100 * std.time.ns_per_ms);
 
         // Press modifiers
         if (has_ctrl) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 1);
             try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+            utils.sleepNanoseconds(20 * std.time.ns_per_ms);
         }
         if (has_shift) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTSHIFT, 1);
             try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+            utils.sleepNanoseconds(20 * std.time.ns_per_ms);
         }
         if (has_alt) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTALT, 1);
             try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+            utils.sleepNanoseconds(20 * std.time.ns_per_ms);
         }
 
         // Press main key
         try self.emitEvent(c.EV_KEY, main_key, 1);
         try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-        std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        utils.sleepNanoseconds(20 * std.time.ns_per_ms);
 
         // Release main key
         try self.emitEvent(c.EV_KEY, main_key, 0);
         try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-        std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+        utils.sleepNanoseconds(20 * std.time.ns_per_ms);
 
         // Release modifiers (reverse order)
         if (has_alt) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTALT, 0);
             try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+            utils.sleepNanoseconds(20 * std.time.ns_per_ms);
         }
         if (has_shift) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTSHIFT, 0);
             try self.emitEvent(c.EV_SYN, c.SYN_REPORT, 0);
-            std.posix.nanosleep(0, 20 * std.time.ns_per_ms);
+            utils.sleepNanoseconds(20 * std.time.ns_per_ms);
         }
         if (has_ctrl) {
             try self.emitEvent(c.EV_KEY, c.KEY_LEFTCTRL, 0);
@@ -163,7 +161,7 @@ pub const TextInserter = struct {
 
         // Cleanup
         _ = c.ioctl(fd, c.UI_DEV_DESTROY, @as(c_int, 0));
-        std.posix.close(fd);
+        _ = linux.close(fd);
         self.uinput_fd = null;
 
         utils.logDebug("Executed native paste command ({s})", .{keybind});
@@ -181,20 +179,22 @@ pub const TextInserter = struct {
         event.value = value;
 
         const bytes = std.mem.asBytes(&event);
-        const written = try std.posix.write(self.uinput_fd.?, bytes);
+        const written = std.c.write(self.uinput_fd.?, bytes.ptr, bytes.len);
 
-        if (written != bytes.len) {
+        if (written < 0) return error.InputOutput;
+
+        if (@as(usize, @intCast(written)) != bytes.len) {
             return error.PartialWrite;
         }
     }
 
     /// Fallback: Simulate Ctrl+V paste using xdotool (if native fails)
-    pub fn pasteFallback(self: *TextInserter) !void {
+    pub fn pasteFallback(_: *TextInserter) !void {
         const argv = &[_][]const u8{ "xdotool", "key", "ctrl+v" };
-        var child = std.process.Child.init(argv, self.allocator);
-        const term = try child.spawnAndWait();
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv });
+        const term = try child.wait(utils.io());
 
-        if (term != .Exited or term.Exited != 0) {
+        if (!term.success()) {
             return error.XdotoolFailed;
         }
 

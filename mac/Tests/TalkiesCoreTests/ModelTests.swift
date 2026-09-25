@@ -3,6 +3,38 @@ import XCTest
 
 final class ModelTests: XCTestCase {
 
+    func testActivationKeyHardwareCodesAndLabels() {
+        XCTAssertEqual(ActivationKey.leftOption.rawValue, 58)
+        XCTAssertEqual(ActivationKey.rightOption.rawValue, 61)
+        XCTAssertEqual(ActivationKey.leftOption.displayName, "Left Option (⌥)")
+        XCTAssertEqual(ActivationKey.rightOption.displayName, "Right Option (⌥)")
+    }
+
+    func testActivationKeyCodableRoundTrip() throws {
+        let data = try JSONEncoder().encode(ActivationKey.leftOption)
+        XCTAssertEqual(try JSONDecoder().decode(ActivationKey.self, from: data), .leftOption)
+    }
+
+    func testClipboardSnapshotPreservesMultipleItemsAndRepresentations() throws {
+        let snapshot = ClipboardSnapshot(items: [
+            [
+                ClipboardRepresentation(type: "public.utf8-plain-text", data: Data("copied text".utf8)),
+                ClipboardRepresentation(type: "public.rtf", data: Data([0x7B, 0x5C, 0x72, 0x74, 0x66, 0x7D]))
+            ],
+            [ClipboardRepresentation(type: "public.png", data: Data([0x89, 0x50, 0x4E, 0x47]))]
+        ])
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        XCTAssertEqual(try JSONDecoder().decode(ClipboardSnapshot.self, from: encoded), snapshot)
+    }
+
+    func testLocalVocabularyTrimsAndDeduplicatesCaseInsensitively() {
+        let vocabulary = LocalVocabulary(terms: ["  Talkies ", "talkies", "Qwen3", "", "  ", "S1-mini"])
+
+        XCTAssertEqual(vocabulary.terms, ["Talkies", "Qwen3", "S1-mini"])
+        XCTAssertEqual(vocabulary.recognitionPrompt, "Talkies, Qwen3, S1-mini")
+    }
+
     // MARK: - TranscriptSegment Init tests
 
     func testTranscriptSegment_DefaultInit() {

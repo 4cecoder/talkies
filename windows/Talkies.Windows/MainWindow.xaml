@@ -4,6 +4,7 @@
         xmlns:local="clr-namespace:Talkies.Windows.Controls"
         xmlns:conv="clr-namespace:Talkies.Windows.Converters"
         Title="Talkies Windows"
+        Icon="Resources/talkies-app-icon.ico"
         Height="700" Width="1200"
         MinHeight="600" MinWidth="900"
         Background="#1a1a1a" Foreground="White"
@@ -48,6 +49,9 @@
 
                         <TextBlock Text="Language" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" Margin="0,0,0,8" Height="32" Padding="8,6"/>
+
+                        <TextBlock Text="Personal Vocabulary (one term per line)" FontWeight="SemiBold" FontSize="11" Margin="0,2,0,4"/>
+                        <TextBox Text="{Binding VocabularyText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="68" MaxHeight="110" MaxLength="400" Padding="8,6" Margin="0,0,0,8" ToolTip="Local names and uncommon terms used as Whisper recognition hints (400 character limit)"/>
 
                         <TextBlock Text="Input Source" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}" DisplayMemberPath="Name" Margin="0,0,0,8" Height="32" Padding="8,6"/>

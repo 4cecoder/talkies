@@ -41,41 +41,37 @@ pub const Clipboard = struct {
         }
     }
 
-    fn copyWayland(self: *Clipboard, text: []const u8) !void {
+    fn copyWayland(_: *Clipboard, text: []const u8) !void {
         // Use wl-copy - pass text as stdin for better handling of special chars
         const argv = &[_][]const u8{"wl-copy"};
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdin_behavior = .Pipe;
-        try child.spawn();
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdin = .pipe });
 
         if (child.stdin) |stdin| {
-            try stdin.writeAll(text);
-            stdin.close();
-            child.stdin = null; // Prevent double-close in wait()
+            try stdin.writeStreamingAll(utils.io(), text);
+            stdin.close(utils.io());
+            child.stdin = null;
         }
 
-        const term = try child.wait();
-        if (term != .Exited or term.Exited != 0) {
+        const term = try child.wait(utils.io());
+        if (!term.success()) {
             return error.WlCopyFailed;
         }
         utils.log("Copied to Wayland clipboard", .{});
     }
 
-    fn copyX11(self: *Clipboard, text: []const u8) !void {
+    fn copyX11(_: *Clipboard, text: []const u8) !void {
         // Use xclip to copy to clipboard
         const argv = &[_][]const u8{ "xclip", "-selection", "clipboard" };
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdin_behavior = .Pipe;
-        try child.spawn();
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdin = .pipe });
 
         if (child.stdin) |stdin| {
-            try stdin.writeAll(text);
-            stdin.close();
-            child.stdin = null; // Prevent double-close in wait()
+            try stdin.writeStreamingAll(utils.io(), text);
+            stdin.close(utils.io());
+            child.stdin = null;
         }
 
-        const term = try child.wait();
-        if (term != .Exited or term.Exited != 0) {
+        const term = try child.wait(utils.io());
+        if (!term.success()) {
             return error.XClipFailed;
         }
         utils.log("Copied to X11 clipboard", .{});
@@ -84,11 +80,7 @@ pub const Clipboard = struct {
     fn getWayland(self: *Clipboard) ![]u8 {
         // Use wl-paste to read clipboard
         const argv = &[_][]const u8{"wl-paste"};
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Ignore;
-
-        try child.spawn();
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdout = .pipe, .stderr = .ignore });
 
         const stdout = child.stdout orelse return error.NoStdout;
 
@@ -98,13 +90,16 @@ pub const Clipboard = struct {
 
         var buffer: [4096]u8 = undefined;
         while (true) {
-            const n = try stdout.read(&buffer);
+            const n = stdout.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
             if (n == 0) break;
             try output_list.appendSlice(self.allocator, buffer[0..n]);
         }
 
-        const term = try child.wait();
-        if (term != .Exited or term.Exited != 0) {
+        const term = try child.wait(utils.io());
+        if (!term.success()) {
             return error.WlPasteFailed;
         }
 
@@ -115,11 +110,7 @@ pub const Clipboard = struct {
     fn getX11(self: *Clipboard) ![]u8 {
         // Use xclip to read clipboard
         const argv = &[_][]const u8{ "xclip", "-selection", "clipboard", "-o" };
-        var child = std.process.Child.init(argv, self.allocator);
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Ignore;
-
-        try child.spawn();
+        var child = try std.process.spawn(utils.io(), .{ .argv = argv, .stdout = .pipe, .stderr = .ignore });
 
         const stdout = child.stdout orelse return error.NoStdout;
 
@@ -129,13 +120,16 @@ pub const Clipboard = struct {
 
         var buffer: [4096]u8 = undefined;
         while (true) {
-            const n = try stdout.read(&buffer);
+            const n = stdout.readStreaming(utils.io(), &.{&buffer}) catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
             if (n == 0) break;
             try output_list.appendSlice(self.allocator, buffer[0..n]);
         }
 
-        const term = try child.wait();
-        if (term != .Exited or term.Exited != 0) {
+        const term = try child.wait(utils.io());
+        if (!term.success()) {
             return error.XClipFailed;
         }
 
@@ -148,12 +142,12 @@ pub const Clipboard = struct {
 /// Checks both WAYLAND_DISPLAY and XDG_SESSION_TYPE for reliability
 fn detectWayland() bool {
     // Check WAYLAND_DISPLAY first (most reliable)
-    if (std.posix.getenv("WAYLAND_DISPLAY")) |_| {
+    if (utils.getEnv("WAYLAND_DISPLAY")) |_| {
         return true;
     }
 
     // Fallback to XDG_SESSION_TYPE
-    if (std.posix.getenv("XDG_SESSION_TYPE")) |session_type| {
+    if (utils.getEnv("XDG_SESSION_TYPE")) |session_type| {
         return std.mem.eql(u8, session_type, "wayland");
     }
 

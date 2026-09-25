@@ -15,19 +15,17 @@ Complete guide to building Talkies Linux from source.
 
 #### 1. Zig Compiler
 
-**Version:** 0.16.0 or later
+**Version:** Zig master (0.17.0-dev or later)
 
 **Installation:**
 
 ```bash
-# Download from ziglang.org
-wget https://ziglang.org/download/0.16.0/zig-linux-x86_64-0.16.0.tar.xz
-tar -xf zig-linux-x86_64-0.16.0.tar.xz
-sudo mv zig-linux-x86_64-0.16.0 /opt/zig
+# Download and extract the Linux x86_64 master snapshot from https://ziglang.org/download/
+# Move the extracted directory to /opt/zig, then add its zig binary to PATH.
 sudo ln -s /opt/zig/zig /usr/local/bin/zig
 
 # Verify installation
-zig version  # Should show: 0.16.0 or later
+zig version  # Should show 0.17.0-dev or newer
 ```
 
 **Alternative (package manager):**
@@ -269,7 +267,7 @@ pkg-config --cflags libpulse-simple
 
 #### Error: "build.zig:XX:XX: error: no field named 'root_source_file'"
 
-**Solution:** Your Zig version is too old. Upgrade to 0.16.0+
+**Solution:** Your Zig version is too old. Upgrade to the latest master snapshot.
 ```bash
 zig version  # Check current version
 # Download latest from ziglang.org

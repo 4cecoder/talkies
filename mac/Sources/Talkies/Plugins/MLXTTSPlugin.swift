@@ -75,21 +75,16 @@ class MLXTTSPlugin: TalkiesPlugin, ObservableObject {
         }
     }
 
-    nonisolated private func loadNativeVoices() async {
-        let voices = NSSpeechSynthesizer.availableVoices.map { voice in
-            let attributes = NSSpeechSynthesizer.attributes(forVoice: voice)
-            return attributes[.name] as? String ?? voice.rawValue
-        }
+    private func loadNativeVoices() async {
+        let voices = AVSpeechSynthesisVoice.speechVoices().map(\.name)
 
         let savedVoice = UserDefaults.standard.string(forKey: "mlx-tts.selectedVoice")
 
-        await MainActor.run {
-            self.availableVoices = voices
-            if let savedVoice, voices.contains(savedVoice) {
-                self.selectedVoice = savedVoice
-            } else if !voices.isEmpty {
-                self.selectedVoice = voices[0]
-            }
+        self.availableVoices = voices
+        if let savedVoice, voices.contains(savedVoice) {
+            self.selectedVoice = savedVoice
+        } else if !voices.isEmpty {
+            self.selectedVoice = voices[0]
         }
     }
 
@@ -99,45 +94,38 @@ class MLXTTSPlugin: TalkiesPlugin, ObservableObject {
         return try await synthesizeNative(text: text)
     }
 
-    nonisolated private func synthesizeNative(text: String) async throws -> URL {
-        let selectedVoiceName = await selectedVoice
-        let currentSpeed = await speed
+    private func synthesizeNative(text: String) async throws -> URL {
+        let synthesizer = AVSpeechSynthesizer()
+        let utterance = AVSpeechUtterance(string: text)
+        if let voice = AVSpeechSynthesisVoice.speechVoices().first(where: { $0.name == selectedVoice }) {
+            utterance.voice = voice
+        }
+        utterance.rate = Float(min(max(speed, 0.5), 2.0)) * AVSpeechUtteranceDefaultSpeechRate
 
+        let filename = "talkies-tts-\(UUID().uuidString).caf"
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.main.async {
-                // Create speech synthesizer
-                let synthesizer = NSSpeechSynthesizer()
-
-                // Find the voice by name
-                if let voiceIdentifier = NSSpeechSynthesizer.availableVoices.first(where: { voice in
-                    let attributes = NSSpeechSynthesizer.attributes(forVoice: voice)
-                    let name = attributes[.name] as? String
-                    return name == selectedVoiceName
-                }) {
-                    synthesizer.setVoice(voiceIdentifier)
-                }
-
-                // Set rate (speed)
-                synthesizer.rate = Float(currentSpeed) * 200 // Default rate is ~200 wpm
-
-                // Generate audio file
-                let tempDir = FileManager.default.temporaryDirectory
-                let timestamp = ISO8601DateFormatter().string(from: Date())
-                let filename = "talkies-tts-\(timestamp).aiff"
-                let fileURL = tempDir.appendingPathComponent(filename)
-
-                // Start synthesizing to file
-                synthesizer.startSpeaking(text, to: fileURL)
-
-                // Wait for completion (synchronous for now, but wrapped in async)
-                while synthesizer.isSpeaking {
-                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-                }
-
-                Task { @MainActor in
+            var audioFile: AVAudioFile?
+            synthesizer.write(utterance) { buffer in
+                guard let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
+                if pcmBuffer.frameLength == 0 {
                     self.generatedAudioPath = fileURL.path
                     self.isSynthesizing = false
                     continuation.resume(returning: fileURL)
+                    return
+                }
+
+                do {
+                    if audioFile == nil {
+                        audioFile = try AVAudioFile(
+                            forWriting: fileURL,
+                            settings: pcmBuffer.format.settings
+                        )
+                    }
+                    try audioFile?.write(from: pcmBuffer)
+                } catch {
+                    self.isSynthesizing = false
+                    continuation.resume(throwing: error)
                 }
             }
         }

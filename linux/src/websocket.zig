@@ -1,6 +1,50 @@
 const std = @import("std");
-const posix = std.posix;
+const utils = @import("utils.zig");
 const linux = std.os.linux;
+
+/// Small Linux syscall adapter for APIs removed from std.posix in Zig 0.17.
+const posix = struct {
+    const socket_t = std.posix.socket_t;
+    const sockaddr = std.posix.sockaddr;
+    const socklen_t = std.posix.socklen_t;
+    const AF = std.posix.AF;
+    const SOCK = std.posix.SOCK;
+    const SOL = std.posix.SOL;
+    const SO = std.posix.SO;
+
+    fn check(result: usize) !usize {
+        if (linux.errno(result) != .SUCCESS) return error.SocketOperationFailed;
+        return result;
+    }
+
+    fn close(fd: socket_t) void {
+        _ = linux.close(fd);
+    }
+
+    fn socket(domain: u32, socket_type: u32, protocol: u32) !socket_t {
+        return @intCast(try check(linux.socket(domain, socket_type, protocol)));
+    }
+
+    fn setsockopt(fd: socket_t, level: i32, option: u32, value: []const u8) !void {
+        _ = try check(linux.setsockopt(fd, level, option, value.ptr, @intCast(value.len)));
+    }
+
+    fn bind(fd: socket_t, address: *const sockaddr, length: usize) !void {
+        _ = try check(linux.bind(fd, address, @intCast(length)));
+    }
+
+    fn listen(fd: socket_t, backlog: u32) !void {
+        _ = try check(linux.listen(fd, backlog));
+    }
+
+    fn read(fd: socket_t, buffer: []u8) !usize {
+        return try check(linux.read(fd, buffer.ptr, buffer.len));
+    }
+
+    fn write(fd: socket_t, buffer: []const u8) !usize {
+        return try check(linux.write(fd, buffer.ptr, buffer.len));
+    }
+};
 
 /// Simple WebSocket server for Talkies daemon using posix sockets
 /// Handles text messages only, no binary support needed
@@ -30,7 +74,7 @@ pub const Server = struct {
 
         pub fn send(self: *Client, message: []const u8) !void {
             // Simple WebSocket frame: FIN=1, opcode=1 (text), no mask
-            var frame: std.ArrayList(u8) = .{};
+            var frame: std.ArrayList(u8) = .empty;
             defer frame.deinit(self.allocator);
 
             // Frame header
@@ -119,7 +163,7 @@ pub const Server = struct {
             .family = posix.AF.INET,
             .port = std.mem.nativeToBig(u16, port),
             .addr = 0x0100007F, // 127.0.0.1 in network byte order
-            .zero = [_]u8{0} ** 8,
+            .zero = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
         };
         const sockaddr = @as(*const posix.sockaddr, @ptrCast(&addr));
         try posix.bind(sock, sockaddr, @sizeOf(posix.sockaddr.in));
@@ -130,7 +174,7 @@ pub const Server = struct {
         return Server{
             .allocator = allocator,
             .socket_fd = sock,
-            .clients = .{},
+            .clients = std.ArrayList(*Client).empty,
             .running = false,
         };
     }
@@ -154,9 +198,9 @@ pub const Server = struct {
 
             // Use direct syscall to work around error set mismatch
             const rc = linux.accept4(@intCast(self.socket_fd), @ptrCast(&client_addr), &addr_len, 0);
-            const client_sock: posix.socket_t = if (rc < 0) {
-                std.debug.print("Accept error: {d}\n", .{-rc});
-                posix.nanosleep(0, 100 * std.time.ns_per_ms);
+            const client_sock: posix.socket_t = if (linux.errno(rc) != .SUCCESS) {
+                std.debug.print("Accept error: {}\n", .{linux.errno(rc)});
+                utils.sleepNanoseconds(100 * std.time.ns_per_ms);
                 continue;
             } else @intCast(rc);
 
@@ -228,7 +272,8 @@ pub const Server = struct {
 
         // Send handshake response (use stack buffer for fixed-size response)
         var response_buf: [512]u8 = undefined;
-        const response = try std.fmt.bufPrint(&response_buf,
+        const response = try std.fmt.bufPrint(
+            &response_buf,
             "HTTP/1.1 101 Switching Protocols\r\n" ++
                 "Upgrade: websocket\r\n" ++
                 "Connection: Upgrade\r\n" ++

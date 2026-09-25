@@ -251,7 +251,7 @@ winget install Microsoft.WindowsSDK
 
 ## Support
 
-- **Full Documentation**: `packaging/windows/README.md`
+- **Full Documentation**: [`docs/platforms/windows.md`](../../docs/platforms/windows.md)
 - **GitHub Issues**: https://github.com/yourusername/talkies/issues
 - **Website**: https://talkies.app
 
