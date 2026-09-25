@@ -58,7 +58,7 @@ jobs:
       contents: write
     steps:
       - name: Download static site artifact
-        uses: actions/download-artifact@v7.0.1
+        uses: actions/download-artifact@v8.0.1
         with:
           name: talkies-pages
           path: public
