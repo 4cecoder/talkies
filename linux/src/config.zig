@@ -239,7 +239,8 @@ pub const Config = struct {
     fn setConfigValue(self: *Config, section: []const u8, key: []const u8, value_raw: []const u8) !void {
         if (std.mem.eql(u8, section, "audio")) {
             if (std.mem.eql(u8, key, "device")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.audio_device_owned) {
                     self.allocator.free(self.audio_device);
                 }
@@ -248,14 +249,16 @@ pub const Config = struct {
             }
         } else if (std.mem.eql(u8, section, "transcription")) {
             if (std.mem.eql(u8, key, "model")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.model_owned) {
                     self.allocator.free(self.model);
                 }
                 self.model = try self.allocator.dupe(u8, value);
                 self.model_owned = true;
             } else if (std.mem.eql(u8, key, "language")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.language_owned) {
                     self.allocator.free(self.language);
                 }
@@ -264,7 +267,8 @@ pub const Config = struct {
             } else if (std.mem.eql(u8, key, "threads")) {
                 self.threads = try parseIntValue(u8, value_raw);
             } else if (std.mem.eql(u8, key, "vocabulary_prompt")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.vocabulary_prompt_owned) self.allocator.free(self.vocabulary_prompt);
                 self.vocabulary_prompt = try self.allocator.dupe(u8, value);
                 self.vocabulary_prompt_owned = true;
@@ -273,14 +277,16 @@ pub const Config = struct {
             if (std.mem.eql(u8, key, "auto_paste")) {
                 self.auto_paste = try parseBoolValue(value_raw);
             } else if (std.mem.eql(u8, key, "export_format")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.export_format_owned) {
                     self.allocator.free(self.export_format);
                 }
                 self.export_format = try self.allocator.dupe(u8, value);
                 self.export_format_owned = true;
             } else if (std.mem.eql(u8, key, "paste_keybind")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.paste_keybind_owned) {
                     self.allocator.free(self.paste_keybind);
                 }
@@ -293,7 +299,8 @@ pub const Config = struct {
             }
         } else if (std.mem.eql(u8, section, "platform")) {
             if (std.mem.eql(u8, key, "mode")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.platform_owned) {
                     self.allocator.free(self.platform);
                 }
@@ -304,21 +311,24 @@ pub const Config = struct {
             if (std.mem.eql(u8, key, "enabled")) {
                 self.yap_mode_enabled = try parseBoolValue(value_raw);
             } else if (std.mem.eql(u8, key, "llm_model")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_llm_model_owned) {
                     self.allocator.free(self.yap_llm_model);
                 }
                 self.yap_llm_model = try self.allocator.dupe(u8, value);
                 self.yap_llm_model_owned = true;
             } else if (std.mem.eql(u8, key, "ollama_url")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_ollama_url_owned) {
                     self.allocator.free(self.yap_ollama_url);
                 }
                 self.yap_ollama_url = try self.allocator.dupe(u8, value);
                 self.yap_ollama_url_owned = true;
             } else if (std.mem.eql(u8, key, "system_prompt")) {
-                const value = try parseStringValue(value_raw);
+                const value = try parseStringValue(self.allocator, value_raw);
+                defer self.allocator.free(value);
                 if (self.yap_system_prompt_owned) {
                     self.allocator.free(self.yap_system_prompt);
                 }
@@ -349,6 +359,27 @@ pub const Config = struct {
         );
         defer self.allocator.free(config_path);
 
+        const audio_device = try escapeTomlString(self.allocator, self.audio_device);
+        defer self.allocator.free(audio_device);
+        const model = try escapeTomlString(self.allocator, self.model);
+        defer self.allocator.free(model);
+        const language = try escapeTomlString(self.allocator, self.language);
+        defer self.allocator.free(language);
+        const vocabulary_prompt = try escapeTomlString(self.allocator, self.vocabulary_prompt);
+        defer self.allocator.free(vocabulary_prompt);
+        const export_format = try escapeTomlString(self.allocator, self.export_format);
+        defer self.allocator.free(export_format);
+        const paste_keybind = try escapeTomlString(self.allocator, self.paste_keybind);
+        defer self.allocator.free(paste_keybind);
+        const platform = try escapeTomlString(self.allocator, self.platform);
+        defer self.allocator.free(platform);
+        const yap_llm_model = try escapeTomlString(self.allocator, self.yap_llm_model);
+        defer self.allocator.free(yap_llm_model);
+        const yap_ollama_url = try escapeTomlString(self.allocator, self.yap_ollama_url);
+        defer self.allocator.free(yap_ollama_url);
+        const yap_system_prompt = try escapeTomlString(self.allocator, self.yap_system_prompt);
+        defer self.allocator.free(yap_system_prompt);
+
         // Create/overwrite file
         const file = try std.Io.Dir.cwd().createFile(file_io, config_path, .{});
         defer file.close(file_io);
@@ -371,9 +402,16 @@ pub const Config = struct {
             \\[output]
             \\auto_paste = {s}
             \\export_format = "{s}"
+            \\paste_keybind = "{s}"
             \\
             \\[platform]
             \\mode = "{s}"
+            \\
+            \\[yap]
+            \\enabled = {s}
+            \\llm_model = "{s}"
+            \\ollama_url = "{s}"
+            \\system_prompt = "{s}"
             \\
             \\[vad]
             \\enabled = {s}
@@ -381,15 +419,20 @@ pub const Config = struct {
             \\
         ,
             .{
-                self.audio_device,
-                self.model,
-                self.language,
+                audio_device,
+                model,
+                language,
                 self.threads,
-                self.vocabulary_prompt,
+                vocabulary_prompt,
                 if (self.s1_cleanup_enabled) "true" else "false",
                 if (self.auto_paste) "true" else "false",
-                self.export_format,
-                self.platform,
+                export_format,
+                paste_keybind,
+                platform,
+                if (self.yap_mode_enabled) "true" else "false",
+                yap_llm_model,
+                yap_ollama_url,
+                yap_system_prompt,
                 if (self.vad_enabled) "true" else "false",
                 self.vad_mode,
             },
@@ -477,11 +520,83 @@ pub const Config = struct {
 };
 
 /// Parse a string value from TOML (removes quotes)
-fn parseStringValue(raw: []const u8) ![]const u8 {
-    if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
-        return raw[1 .. raw.len - 1];
+fn parseStringValue(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+    if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') {
+        return allocator.dupe(u8, raw);
     }
-    return raw;
+
+    const encoded = raw[1 .. raw.len - 1];
+    var decoded_len: usize = 0;
+    var i: usize = 0;
+    while (i < encoded.len) : (i += 1) {
+        if (encoded[i] == '\\') {
+            i += 1;
+            if (i == encoded.len) return error.InvalidStringEscape;
+            if (encoded[i] != '"' and encoded[i] != '\\' and encoded[i] != 'b' and encoded[i] != 't' and encoded[i] != 'n' and encoded[i] != 'f' and encoded[i] != 'r') {
+                return error.InvalidStringEscape;
+            }
+        }
+        decoded_len += 1;
+    }
+
+    const decoded = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(decoded);
+    i = 0;
+    var out_index: usize = 0;
+    while (i < encoded.len) : (i += 1) {
+        if (encoded[i] == '\\') {
+            i += 1;
+            decoded[out_index] = switch (encoded[i]) {
+                '"' => '"',
+                '\\' => '\\',
+                'b' => 0x08,
+                't' => '\t',
+                'n' => '\n',
+                'f' => 0x0c,
+                'r' => '\r',
+                else => unreachable,
+            };
+        } else {
+            decoded[out_index] = encoded[i];
+        }
+        out_index += 1;
+    }
+    return decoded;
+}
+
+fn escapeTomlString(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+    var escaped_len: usize = 0;
+    for (value) |byte| {
+        escaped_len += switch (byte) {
+            '"', '\\', '\t', '\n', '\r', 0x08, 0x0c => 2,
+            0...0x07, 0x0b, 0x0e...0x1f, 0x7f => return error.InvalidTomlStringValue,
+            else => 1,
+        };
+    }
+
+    const escaped = try allocator.alloc(u8, escaped_len);
+    var index: usize = 0;
+    for (value) |byte| {
+        if (byte == '"' or byte == '\\') {
+            escaped[index] = '\\';
+            escaped[index + 1] = byte;
+            index += 2;
+        } else if (byte == '\t' or byte == '\n' or byte == '\r' or byte == 0x08 or byte == 0x0c) {
+            escaped[index] = '\\';
+            escaped[index + 1] = switch (byte) {
+                '\t' => 't',
+                '\n' => 'n',
+                '\r' => 'r',
+                0x08 => 'b',
+                else => 'f',
+            };
+            index += 2;
+        } else {
+            escaped[index] = byte;
+            index += 1;
+        }
+    }
+    return escaped;
 }
 
 /// Parse a boolean value from TOML
@@ -513,11 +628,28 @@ test "config initialization" {
 }
 
 test "parse string value" {
-    const result1 = try parseStringValue("\"hello\"");
+    const allocator = std.testing.allocator;
+    const result1 = try parseStringValue(allocator, "\"hello\"");
+    defer allocator.free(result1);
     try std.testing.expectEqualStrings("hello", result1);
 
-    const result2 = try parseStringValue("world");
+    const result2 = try parseStringValue(allocator, "world");
+    defer allocator.free(result2);
     try std.testing.expectEqualStrings("world", result2);
+}
+
+test "TOML string escaping round trips quotes, slashes, and line breaks" {
+    const allocator = std.testing.allocator;
+    const original = "Talkies says: \"hello\"\\world\nnext line";
+    const escaped = try escapeTomlString(allocator, original);
+    defer allocator.free(escaped);
+
+    const quoted = try std.fmt.allocPrint(allocator, "\"{s}\"", .{escaped});
+    defer allocator.free(quoted);
+    const parsed = try parseStringValue(allocator, quoted);
+    defer allocator.free(parsed);
+
+    try std.testing.expectEqualStrings(original, parsed);
 }
 
 test "parse bool value" {
