@@ -24,6 +24,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\tests\fixtures\jfk.wav" Link="Fixtures\jfk.wav" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\tests\fixtures\transcript-export-golden.json" Link="Fixtures\transcript-export-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\testdata\transcript-export-golden.json" Link="Fixtures\transcript-export-golden.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -9,7 +9,7 @@ final class GoldenExportTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let fixtureURL = repositoryRoot.appending(path: "tests/fixtures/transcript-export-golden.json")
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/transcript-export-golden.json")
         let fixture = try JSONDecoder().decode(ExportGoldenFixture.self, from: Data(contentsOf: fixtureURL))
         let segments = fixture.segments.map {
             TranscriptSegment(timestamp: $0.timestamp, text: $0.text, start: $0.start, end: $0.end)

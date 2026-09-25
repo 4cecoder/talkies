@@ -188,8 +188,15 @@ auto_paste = true     # true = paste at cursor, false = copy to clipboard
 ```
 
 Linux currently inserts the transcript at the cursor or copies it to the clipboard.
-Transcript file export (TXT, WebVTT, and SRT) is not implemented yet.
-The old `export_format` config key is ignored; remove it from existing config files.
+To explicitly export a WAV file with local Whisper timestamps, run:
+
+```sh
+talkies transcribe speech.wav --format vtt --output speech.vtt
+```
+
+The format can be `txt`, `vtt`, or `srt`. Export writes raw ASR segments without
+inserting them or touching the clipboard; the chosen output file must not already
+exist. The legacy `export_format` config key is ignored.
 
 The vocabulary prompt is passed to the on-device whisper.cpp recognizer. It supports names
 and uncommon terms and is stored in this local config file.

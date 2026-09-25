@@ -1,9 +1,11 @@
 const std = @import("std");
 const cleanup = @import("cleanup.zig");
+const transcript_export = @import("transcript_export.zig");
 
 test {
     _ = cleanup;
     _ = local_diagnostics;
+    _ = transcript_export;
 }
 const audio = @import("audio.zig");
 const whisper = @import("whisper.zig");
@@ -480,7 +482,29 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
     const transcription = try whisper_service.transcribe(audio_file, cfg.vocabulary_prompt);
     defer allocator.free(transcription);
 
-    std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
+    const export_args = if (args.len > 3) args[3..] else &.{};
+    if (try transcript_export.parseRequest(export_args)) |request| {
+        const source_segments = try whisper_service.getSegments();
+        defer if (source_segments.len > 0) whisper_service.freeSegments(source_segments);
+        const export_segments = try allocator.alloc(transcript_export.Segment, source_segments.len);
+        defer allocator.free(export_segments);
+        for (source_segments, export_segments) |source, *target| {
+            target.* = .{ .start = source.start, .end = source.end, .text = source.text };
+        }
+
+        const content = try transcript_export.render(allocator, request.format, export_segments);
+        defer allocator.free(content);
+        const file = try std.Io.Dir.cwd().createFile(utils.io(), request.output_path, .{
+            .exclusive = true,
+            .permissions = @fromBackingInt(@as(u32, 0o600)),
+        });
+        defer file.close(utils.io());
+        errdefer std.Io.Dir.cwd().deleteFile(utils.io(), request.output_path) catch {};
+        try file.writeStreamingAll(utils.io(), content);
+        std.debug.print("Exported local ASR transcript to: {s}\n", .{request.output_path});
+    } else {
+        std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
+    }
 }
 
 fn runDaemon(allocator: std.mem.Allocator) !void {
@@ -1391,7 +1415,7 @@ fn printHelp() !void {
         \\  audio              Test audio recording (5 seconds)
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
-        \\  transcribe         Test transcription on anime_16k.wav
+        \\  transcribe [wav]   Transcribe a WAV, optionally exporting TXT/VTT/SRT
         \\  help               Show this help message
         \\
         \\Examples:
@@ -1400,6 +1424,7 @@ fn printHelp() !void {
         \\  talkies audio-set alsa_input.usb... # Set input device
         \\  talkies quick                       # One-shot recording workflow
         \\  talkies models                      # Download model from config
+        \\  talkies transcribe speech.wav --format srt --output speech.srt
         \\
     ;
 
