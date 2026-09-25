@@ -73,6 +73,18 @@ Verify the macOS DMG against `SHA256SUMS`, open it, and drag `Talkies.app` to
 app bundle, so replacing the app does not delete them. ZIP downloads contain the same app bundle if
 you prefer to install without mounting a DMG.
 
+## Local crash diagnostics
+
+Talkies may write a small local exception report containing only the exception
+name, reason, timestamp, and stack trace. Reports are stored under
+`~/Library/Application Support/Talkies/Diagnostics/`, limited to 32 KiB each,
+and rotated to keep at most five reports. They are never uploaded. To delete
+them, quit Talkies and remove that `Diagnostics` folder in Finder or with:
+
+```sh
+rm -rf "$HOME/Library/Application Support/Talkies/Diagnostics"
+```
+
 ## Usage
 
 ### First Time Setup
