@@ -1,7 +1,7 @@
 # Talkies releases and packaging
 
-Talkies currently publishes portable desktop archives through GitHub Releases. Builds, tests,
-artifact checksums, and release metadata are handled by
+Talkies publishes desktop downloads through GitHub Releases. Builds, tests, artifact checksums,
+and release metadata are handled by
 [`.github/workflows/release.yml`](../.github/workflows/release.yml). The app and its inference
 runtimes are packaged; speech and cleanup model weights are downloaded and verified on first use,
 then kept in user storage for offline inference.
@@ -16,16 +16,15 @@ numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` 
 
 | Platform | Release asset | Contents | Current install method |
 |---|---|---|---|
-| macOS | `Talkies-macOS-{LABEL}.zip` | `Talkies.app` and `llama.framework` | Expand the archive and move `Talkies.app` to `/Applications`. |
+| macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
 | Windows x64 | `Talkies-Windows-{LABEL}.zip` | Self-contained published app directory | Expand to a folder and run `Talkies.Windows.exe`. |
 | Linux x86_64 | `Talkies-Linux-{LABEL}.tar.gz` | `talkies-linux/`, app binary, whisper/llama runtime libraries, and their licenses | Extract the archive and run `talkies-linux/talkies`; GTK4, PulseAudio, D-Bus, SQLite, and X11 system libraries are required. |
 | All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 
-The public macOS artifact is unsigned because CI has no maintainer certificate. Local packaging can
-sign with an Apple Development identity; that does not make the public build notarized. Windows
-archives are unsigned. No `.dmg`, `.pkg`, `.msi`, or `.deb` is currently produced by the release
-workflow, and there is no automatic updater. These remain release work, not current download
-formats.
+The public macOS DMG and ZIP are unsigned because CI has no maintainer certificate. Local packaging
+can sign with an Apple Development identity; that does not make the public build notarized. Windows
+archives are unsigned. The release workflow does not currently produce `.pkg`, `.msi`, or `.deb`
+installers, and there is no automatic updater.
 
 ## Verify and install a release
 
@@ -36,7 +35,8 @@ Download all files from the same GitHub Release. In a directory containing the a
 shasum -a 256 -c SHA256SUMS
 ```
 
-On Linux, `sha256sum -c SHA256SUMS` is also available. Expand only the archive for your platform.
+On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG and drag Talkies to
+Applications, or expand the ZIP. For Windows and Linux, expand the platform archive.
 Follow the platform guides for supported OS versions, system dependencies, model downloads, and
 offline operation:
 
@@ -50,7 +50,7 @@ required.
 
 ## Uninstall and remove local data
 
-The archives do not install system services. Quit Talkies before removing its app or extracted
+The downloads do not install system services. Quit Talkies before removing its app or extracted
 folder. Removing the application does not remove model downloads or settings:
 
 - **macOS:** remove `/Applications/Talkies.app`. To also delete S1-mini weights, remove

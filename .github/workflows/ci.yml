@@ -125,6 +125,13 @@ jobs:
           OUTPUT_DIR: ${{ runner.temp }}/talkies-package
         run: packaging/macos/package-app.sh
 
+      - name: Smoke-test macOS DMG installer
+        env:
+          APP_BUNDLE: ${{ runner.temp }}/talkies-package/Talkies.app
+          RELEASE_LABEL: ci-${{ github.run_id }}
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-dmg
+        run: packaging/macos/package-dmg.sh
+
       - name: Download pinned S1-mini and verify CPU cleanup
         working-directory: mac
         env:

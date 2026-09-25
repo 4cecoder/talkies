@@ -76,11 +76,20 @@ jobs:
           RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
         run: mv "dist/Talkies-macOS-${APP_VERSION}.zip" "dist/Talkies-macOS-${RELEASE_LABEL}.zip"
 
+      - name: Build and smoke-test macOS DMG installer
+        env:
+          APP_BUNDLE: ${{ github.workspace }}/dist/Talkies.app
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+          OUTPUT_DIR: ${{ github.workspace }}/dist
+        run: packaging/macos/package-dmg.sh
+
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: macos-release
-          path: dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+          path: |
+            dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
           retention-days: 1
 
   build-windows:
@@ -257,7 +266,7 @@ jobs:
       - name: Generate SHA-256 checksums
         working-directory: artifacts
         run: |
-          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz > SHA256SUMS
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz > SHA256SUMS
           sha256sum --check SHA256SUMS
           {
             echo "commit=$GITHUB_SHA"
@@ -286,6 +295,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
             artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
             artifacts/SHA256SUMS
