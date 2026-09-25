@@ -39,8 +39,6 @@ export function LiveTranscriptionDemo() {
           return prev + 1;
         });
       }, 1000);
-    } else {
-      setRecordingTime(0);
     }
 
     return () => {
@@ -66,6 +64,11 @@ export function LiveTranscriptionDemo() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartListening = async () => {
+    setRecordingTime(0);
+    await startListening();
   };
 
   return (
@@ -177,7 +180,7 @@ export function LiveTranscriptionDemo() {
               {/* Record Button */}
               {!isListening ? (
                 <button
-                  onClick={startListening}
+                  onClick={handleStartListening}
                   disabled={isLoading}
                   className="group relative inline-flex items-center justify-center gap-3 overflow-hidden rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-8 py-4 text-base font-semibold text-white shadow-lg shadow-purple-500/50 transition-all hover:scale-105 hover:shadow-xl hover:shadow-purple-500/60 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                 >
