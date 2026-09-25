@@ -1,6 +1,6 @@
 # Frontend Optimization Guide
 
-This document outlines the comprehensive UI/UX optimization work completed to achieve Vercel/GitHub-level quality.
+This document outlines the comprehensive UI/UX optimization work completed to achieve static-site quality.
 
 ## Performance Optimizations
 
@@ -197,8 +197,7 @@ bun run test:a11y
 # Linting
 bun run lint
 
-# Deploy to Vercel
-bun run vercel
+# GitHub Pages deployment is handled by .github/workflows/deploy-pages.yml
 ```
 
 ## File Structure
@@ -254,6 +253,6 @@ frontend/
 
 ---
 
-**Target Achievement**: Vercel/GitHub-level performance ✓
+**Target Achievement**: static-site performance ✓
 **Standards**: WCAG 2.1 AAA compliance ✓
 **Performance**: 90+ Lighthouse score ✓
