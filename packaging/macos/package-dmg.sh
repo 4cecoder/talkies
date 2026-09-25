@@ -51,6 +51,25 @@ test -f "${MOUNTED_APP}/Contents/Frameworks/llama.framework/Versions/Current/lla
 test -L "${MOUNT_POINT}/Applications"
 plutil -lint "${MOUNTED_APP}/Contents/Info.plist" >/dev/null
 
+# Exercise the documented drag-install and replacement-upgrade operations in an
+# isolated Applications directory; never write to the runner's real /Applications.
+INSTALL_ROOT="${TEMP_DIR}/install/Applications"
+INSTALLED_APP="${INSTALL_ROOT}/Talkies.app"
+UPGRADE_APP="${TEMP_DIR}/Talkies.app.upgrade"
+PREVIOUS_APP="${TEMP_DIR}/Talkies.app.previous"
+mkdir -p "${INSTALL_ROOT}"
+ditto "${MOUNTED_APP}" "${INSTALLED_APP}"
+test -x "${INSTALLED_APP}/Contents/MacOS/Talkies"
+test -f "${INSTALLED_APP}/Contents/Frameworks/llama.framework/Versions/Current/llama"
+
+touch "${INSTALLED_APP}/Contents/Resources/old-install-sentinel"
+ditto "${MOUNTED_APP}" "${UPGRADE_APP}"
+mv "${INSTALLED_APP}" "${PREVIOUS_APP}"
+mv "${UPGRADE_APP}" "${INSTALLED_APP}"
+test ! -e "${INSTALLED_APP}/Contents/Resources/old-install-sentinel"
+test -x "${INSTALLED_APP}/Contents/MacOS/Talkies"
+test -f "${INSTALLED_APP}/Contents/Frameworks/llama.framework/Versions/Current/llama"
+
 hdiutil detach "${MOUNT_POINT}" -quiet
 ATTACHED=0
 mv -f "${TEMP_DMG}" "${OUTPUT_DMG}"

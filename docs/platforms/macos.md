@@ -65,6 +65,14 @@ swift run Talkies
 
 The package manifest requires Swift tools 6.3. CI and release builds use Swift 6.3.3.
 
+## Install and update from a release
+
+Verify the macOS DMG against `SHA256SUMS`, open it, and drag `Talkies.app` to
+`/Applications`. For a manual update, quit Talkies, open the newer DMG, and replace the existing
+`/Applications/Talkies.app` with the new copy. Model weights and preferences are stored outside the
+app bundle, so replacing the app does not delete them. ZIP downloads contain the same app bundle if
+you prefer to install without mounting a DMG.
+
 ## Usage
 
 ### First Time Setup
