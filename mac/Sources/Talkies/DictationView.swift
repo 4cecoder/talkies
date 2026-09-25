@@ -50,6 +50,7 @@ struct DictationView: View {
 struct MainDictationContent: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
     @EnvironmentObject var transcriptionService: TranscriptionService
+    @State private var didCopyTranscript = false
     let onToggleRecording: () -> Void
     let onShowHistory: () -> Void
 
@@ -126,11 +127,12 @@ struct MainDictationContent: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(1)
-                    if case .clipboardFallback = transcriptionService.pipelineStage {
+                    if showsCopyAction {
                         Button {
                             TextInserter.shared.copyToClipboard(transcriptionService.currentText)
+                            didCopyTranscript = true
                         } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
+                            Label(didCopyTranscript ? "Copied" : "Copy", systemImage: didCopyTranscript ? "checkmark" : "doc.on.doc")
                                 .font(.system(size: 10, weight: .semibold))
                         }
                         .buttonStyle(.plain)
@@ -158,6 +160,9 @@ struct MainDictationContent: View {
         .padding(.horizontal, 20)
         .padding(.top, 17)
         .padding(.bottom, 15)
+        .onChange(of: transcriptionService.pipelineStage) { _, stage in
+            if stage == .recording { didCopyTranscript = false }
+        }
     }
 
     private var statusColor: Color {
@@ -193,6 +198,15 @@ struct MainDictationContent: View {
         }
     }
 
+    private var showsCopyAction: Bool {
+        switch transcriptionService.pipelineStage {
+        case .complete, .cleanupFallback, .clipboardFallback:
+            return !transcriptionService.currentText.isEmpty
+        default:
+            return false
+        }
+    }
+
     private var statusText: String {
         switch transcriptionService.pipelineStage {
         case .loadingModel:
@@ -214,7 +228,7 @@ struct MainDictationContent: View {
         case .insertingText:
             return "Inserting text..."
         case .complete:
-            return "Text sent to the input"
+            return "Paste shortcut sent"
         case .clipboardFallback:
             return "Text ready to paste"
         case .noSpeech:
@@ -250,7 +264,7 @@ struct MainDictationContent: View {
         case .noSpeech:
             return "Try a longer phrase and speak toward your selected microphone."
         case .complete:
-            return "Your transcript is ready. The original clipboard was restored."
+            return "If it did not appear in the target field, choose Copy and press ⌘V."
         case .error(let message):
             return message
         case .idle:
@@ -267,7 +281,7 @@ struct MainDictationContent: View {
         case .noSpeech:
             return "Speak clearly and try again."
         case .cleanupFallback:
-            return "Using the uncleaned transcript."
+            return transcriptionService.statusMessage.isEmpty ? "Using the uncleaned transcript." : transcriptionService.statusMessage
         default:
             break
         }

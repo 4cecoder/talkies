@@ -123,7 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     switch result {
                     case .inserted(let applicationName):
                         self.transcriptionService.pipelineStage = cleanupFailed ? .cleanupFallback : .complete
-                        self.transcriptionService.statusMessage = "Paste sent to \(applicationName)."
+                        self.transcriptionService.statusMessage = "Paste shortcut sent to \(applicationName)."
                     case .copiedForManualPaste(let reason):
                         self.transcriptionService.pipelineStage = .clipboardFallback(reason)
                         self.transcriptionService.statusMessage = reason
