@@ -1,3 +1,5 @@
+using System.IO;
+using System.Text.Json;
 using System.Collections.Generic;
 using Talkies.Windows.Models;
 using Xunit;
@@ -34,5 +36,33 @@ public class LocalVocabularyTests
         var prompt = LocalVocabulary.ToPrompt(new[] { new string('a', 399), "discarded" });
 
         Assert.Equal(new string('a', 399), prompt);
+    }
+
+    [Fact]
+    public void ToPrompt_MatchesSharedCrossPlatformGoldenFixture()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "local-vocabulary-golden.json");
+        var fixture = JsonSerializer.Deserialize<VocabularyGoldenFixture>(File.ReadAllText(fixturePath), new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })!;
+
+        foreach (var testCase in fixture.Cases)
+        {
+            Assert.Equal(testCase.ExpectedPrompt, LocalVocabulary.ToPrompt(testCase.Terms));
+        }
+    }
+
+    private sealed class VocabularyGoldenFixture
+    {
+        public VocabularyGoldenFixture() { }
+        public List<VocabularyCase> Cases { get; init; } = [];
+    }
+
+    private sealed class VocabularyCase
+    {
+        public VocabularyCase() { }
+        public List<string> Terms { get; init; } = [];
+        public string ExpectedPrompt { get; init; } = string.Empty;
     }
 }
