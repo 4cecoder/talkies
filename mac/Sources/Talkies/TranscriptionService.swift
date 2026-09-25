@@ -33,7 +33,7 @@ enum PipelineStage: Equatable {
         case .cleaningS1Mini: return "Cleaning with S1-mini..."
         case .cleanupFallback: return "Using the raw transcript"
         case .insertingText: return "Inserting text..."
-        case .clipboardFallback: return "Transcript copied for manual paste"
+        case .clipboardFallback: return "Manual paste needed"
         case .noSpeech: return "No speech detected"
         case .complete: return "Complete"
         case .error(let msg): return "Error: \(msg)"

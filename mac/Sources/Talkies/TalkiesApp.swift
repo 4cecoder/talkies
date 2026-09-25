@@ -27,6 +27,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var transcriptionService = TranscriptionService()
     var eventMonitor: Any?
     var localEventMonitor: Any?
+    private var outsideClickMonitor: Any?
+    private var localClickMonitor: Any?
+    private var isDismissingFloatingWindow = false
     var activationKeyWasPressed = false
     private var insertionDestination: TextInsertionDestination?
 
@@ -123,8 +126,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     switch result {
                     case .inserted(let applicationName):
                         self.transcriptionService.pipelineStage = cleanupFailed ? .cleanupFallback : .complete
-                        self.transcriptionService.statusMessage = "Paste shortcut sent to \(applicationName)."
-                    case .copiedForManualPaste(let reason):
+                        self.transcriptionService.statusMessage = "Text inserted into \(applicationName)."
+                    case .manualPasteRequired(let reason):
                         self.transcriptionService.pipelineStage = .clipboardFallback(reason)
                         self.transcriptionService.statusMessage = reason
                         return
@@ -161,6 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup global keyboard shortcut (Cmd+Shift+Space)
         setupKeyboardShortcut()
+        setupFloatingWindowDismissal()
 
         // Hide dock icon and make menu bar only
         NSApp.setActivationPolicy(.accessory)
@@ -211,10 +215,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
     func showWindow() {
+        isDismissingFloatingWindow = false
         if floatingWindow == nil {
             // Create floating window
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 184),
+                contentRect: NSRect(
+                    x: 0,
+                    y: 0,
+                    width: settingsService.settings.useMinimalDictationWindow == true ? 360 : 560,
+                    height: settingsService.settings.useMinimalDictationWindow == true ? 126 : 184
+                ),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -241,6 +251,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Set content view
             let contentView = DictationView(onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
+            }, onResize: { [weak self] size in
+                self?.resizeFloatingWindow(to: size)
             })
                 .environmentObject(audioRecorder)
                 .environmentObject(transcriptionService)
@@ -265,8 +277,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Show window WITHOUT stealing focus
+        floatingWindow?.alphaValue = 1
         floatingWindow?.orderFront(nil)
         // DO NOT call makeKeyAndOrderFront or NSApp.activate - that steals focus!
+    }
+
+    private func resizeFloatingWindow(to size: CGSize) {
+        guard let window = floatingWindow else { return }
+        let frame = window.frame
+        let origin = NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2)
+        window.setFrame(NSRect(origin: origin, size: size), display: true, animate: true)
     }
 
     func toggleRecordingFromFloatingWindow() {
@@ -287,7 +307,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
     func hideWindow() {
-        floatingWindow?.orderOut(nil)
+        guard let window = floatingWindow, window.isVisible, !isDismissingFloatingWindow else { return }
+        isDismissingFloatingWindow = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self, weak window] in
+            Task { @MainActor in
+                window?.orderOut(nil)
+                window?.alphaValue = 1
+                self?.isDismissingFloatingWindow = false
+            }
+        }
+    }
+
+    private func setupFloatingWindowDismissal() {
+        let dismissIfSafe: (NSEvent) -> Void = { [weak self] event in
+            guard let self,
+                  let window = self.floatingWindow,
+                  window.isVisible,
+                  self.canDismissFloatingWindow else { return }
+
+            let click = NSEvent.mouseLocation
+            guard !window.frame.contains(click) else { return }
+            self.hideWindow()
+        }
+
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: dismissIfSafe)
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            dismissIfSafe(event)
+            return event
+        }
+    }
+
+    private var canDismissFloatingWindow: Bool {
+        guard !audioRecorder.isRecording else { return false }
+        switch transcriptionService.pipelineStage {
+        case .idle, .complete:
+            return true
+        case .loadingModel, .requestingMicrophonePermission, .recording, .transcribing,
+             .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini, .cleanupFallback,
+             .insertingText, .clipboardFallback, .noSpeech, .error:
+            return false
+        }
     }
 
     func setupKeyboardShortcut() {
@@ -473,6 +536,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localClickMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }

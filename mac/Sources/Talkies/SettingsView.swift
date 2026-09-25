@@ -263,6 +263,17 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section(header: Text("Dictation Window")) {
+                Toggle("Use mini window", isOn: Binding(
+                    get: { settingsService.settings.useMinimalDictationWindow ?? false },
+                    set: { settingsService.settings.useMinimalDictationWindow = $0 }
+                ))
+                .help("Use a smaller floating panel with the waveform, status, and recording controls")
+                Text("Turn this off to use the larger transcript panel.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(header: Text("Transcript Cleanup")) {
                 Toggle("Clean up with S1-mini", isOn: s1MiniCleanupEnabled)
                     .help("Run the S1-mini text normalizer on this Mac after transcription")

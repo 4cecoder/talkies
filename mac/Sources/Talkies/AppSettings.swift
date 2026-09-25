@@ -12,6 +12,8 @@ struct AppSettings: Codable {
     var voiceAssistantMode: Bool = false
     var insertTextInAssistantMode: Bool = false
     var debugMode: Bool = false
+    /// Optional for backward compatibility with existing config.json files.
+    var useMinimalDictationWindow: Bool? = false
     var s1Mini: S1MiniSettings?
 
     // MARK: - Plugin Settings
@@ -29,6 +31,7 @@ struct AppSettings: Codable {
         case voiceAssistantMode
         case insertTextInAssistantMode
         case debugMode
+        case useMinimalDictationWindow
         case s1Mini
         case ollama
         case lmStudio
