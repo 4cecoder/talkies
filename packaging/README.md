@@ -27,7 +27,9 @@ the public macOS build notarized. The Windows setup installs per-user under
 `%LOCALAPPDATA%\Programs\Talkies`; it does not need administrator access. Re-running the installer
 updates that install and removes obsolete application files. Uninstalling removes the application
 files and shortcuts while preserving settings and model downloads. The ZIP remains available as a
-portable fallback. There is no automatic updater.
+portable fallback. There is no automatic updater or background release check. Open the GitHub
+Releases page yourself when you want to check for an update; Talkies does not contact GitHub during
+startup, recording, transcription, cleanup, or insertion.
 
 ## Verify and install a release
 
@@ -42,6 +44,13 @@ On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG an
 Applications, or expand the ZIP. On Windows, run the setup EXE for the per-user install, or expand
 the ZIP for portable use. On Debian/Ubuntu, install the `.deb` with
 `sudo apt install ./Talkies-Linux-{LABEL}.deb`; other distributions can use the Linux tarball.
+If downloading only one artifact, calculate its SHA-256 with `shasum -a 256 path/to/artifact` on
+macOS, `Get-FileHash path/to/artifact -Algorithm SHA256` in PowerShell, or
+`sha256sum path/to/artifact` on Linux, then
+compare the resulting hash with that artifact's filename entry in the same release's `SHA256SUMS`.
+Do not install the artifact if the hash differs or the manifest is unavailable. Public macOS and
+Windows builds are currently unsigned and macOS builds are not notarized; hashes detect corruption
+but do not replace a code signature or prove publisher identity.
 Follow the platform guides for supported OS versions, system dependencies, model downloads, and
 offline operation:
 
@@ -65,6 +74,25 @@ verify it against that release's `SHA256SUMS`, and update using the same install
   directory with the new archive contents.
 - **Debian/Ubuntu:** run `sudo apt install ./Talkies-Linux-{LABEL}.deb`; apt upgrades the installed
   package. For the portable tarball, replace the extracted `talkies-linux/` directory.
+
+## Roll back to a previous release
+
+Download the previous version from [GitHub Releases](https://github.com/4cecoder/talkies/releases),
+verify the artifact against that release's `SHA256SUMS`, and install it using the same method as an
+update:
+
+- **macOS:** quit Talkies, open the older DMG, and replace `/Applications/Talkies.app` with the
+  older copy. You can also restore the app bundle from the older ZIP.
+- **Windows:** quit Talkies and run the older per-user setup EXE, or replace the portable app
+  directory with the older ZIP contents.
+- **Debian/Ubuntu:** install the older package with
+  `sudo apt install --allow-downgrades ./Talkies-Linux-{LABEL}.deb`. For a portable installation,
+  replace the extracted `talkies-linux/` directory with the older archive contents.
+
+These operations replace application files only. Settings and downloaded models remain in their
+user-data directories, so the previous release can be restored without reinstalling models. If an
+installation fails, leave the existing user-data directories in place, reinstall the last known-good
+release, and use the platform-specific uninstall guide only if you intend to remove local data.
 
 Releases are published on GitHub with generated release notes; the website's downloads page links
 to the latest GitHub Release.
