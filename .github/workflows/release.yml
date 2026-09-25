@@ -38,7 +38,7 @@ jobs:
         run: packaging/macos/package-app.sh
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: macos-release
           path: dist/Talkies-macOS-${{ env.RELEASE_VERSION }}.zip
@@ -75,7 +75,7 @@ jobs:
           Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ env.RELEASE_VERSION }}.zip
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-release
           path: windows/Talkies.Windows/Talkies-Windows-${{ env.RELEASE_VERSION }}.zip
@@ -191,7 +191,7 @@ jobs:
           tar -czf ../Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz .
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: linux-release
           path: linux/dist/Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz
@@ -209,19 +209,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.1
         with:
           name: macos-release
           path: artifacts
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.1
         with:
           name: windows-release
           path: artifacts
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8.0.1
         with:
           name: linux-release
           path: artifacts
