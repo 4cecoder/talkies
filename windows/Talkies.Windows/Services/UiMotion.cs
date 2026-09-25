@@ -51,7 +51,7 @@ namespace Talkies.Windows.Services
 
             var transform = control.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
             control.RenderTransform = transform;
-            control.RenderTransformOrigin = new Point(0.5, 0.5);
+            control.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
             transform.ScaleX = 0.97;
             transform.ScaleY = 0.97;
             var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };
