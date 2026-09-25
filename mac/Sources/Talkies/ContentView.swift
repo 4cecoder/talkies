@@ -168,11 +168,11 @@ struct CompactRecordingView: View {
                                 .scaleEffect(0.8)
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
 
-                            Text("Downloading Whisper model...")
+                            Text("Preparing local Whisper model…")
                                 .font(.system(size: 14))
                                 .foregroundColor(.white.opacity(0.7))
 
-                            Text("This only happens once")
+                            Text("First use can take a moment. Your recording continues while the model loads.")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.5))
                         }

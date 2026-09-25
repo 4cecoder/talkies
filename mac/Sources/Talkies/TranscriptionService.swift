@@ -80,19 +80,17 @@ class TranscriptionService: ObservableObject {
     @Published var isDownloadingModel = false
     @Published var downloadProgress: Double = 0.0
     @Published var transcriptionProgress: Double?
-    @Published var statusMessage: String = "Initializing..."
+    @Published var statusMessage: String = "Ready to dictate"
     @Published var pipelineStage: PipelineStage = .idle
 
     private let recognizer = WhisperKitRecognizer(modelName: "openai_whisper-base")
     private var transcriptionTask: Task<Void, Never>?
+    private var modelInitializationTask: Task<Void, Never>?
+    private var modelInitializationError: Error?
     private var isInitialized = false
 
     var onTranscriptionComplete: ((String) -> Void)?
 
-    var canTranscribe: Bool {
-        isInitialized && recognizer.isReady
-    }
-    
     // Statistics
     var totalWords: Int {
         segments.flatMap { $0.text.components(separatedBy: .whitespacesAndNewlines) }
@@ -109,35 +107,42 @@ class TranscriptionService: ObservableObject {
         return Int((Double(totalWords) / totalDuration) * 60)
     }
     
-    init() {
-        Task {
-            await initializeWhisperKit()
+    init() {}
+
+    private func beginModelInitializationIfNeeded() {
+        guard !isInitialized, modelInitializationTask == nil else { return }
+        isDownloadingModel = true
+        modelInitializationError = nil
+        print("📥 Preparing local WhisperKit recognizer on first use")
+
+        modelInitializationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.recognizer.initialize()
+                self.isInitialized = true
+                self.modelInitializationError = nil
+                self.error = nil
+                print("✅ WhisperKit initialized successfully")
+            } catch {
+                self.modelInitializationError = error
+                self.error = "Failed to initialize: \(error.localizedDescription)"
+                print("❌ WhisperKit initialization error: \(error)")
+            }
+            self.isDownloadingModel = false
         }
     }
 
-    private func initializeWhisperKit() async {
-        pipelineStage = .loadingModel
-        statusMessage = "Checking for Whisper model..."
-
-        do {
-            isDownloadingModel = true
-            statusMessage = "Loading Whisper model..."
-            print("📥 Initializing local WhisperKit recognizer")
-            try await recognizer.initialize()
-
-            isInitialized = true
-            isDownloadingModel = false
-            statusMessage = "Ready to transcribe"
-            pipelineStage = .idle
-            error = nil
-            print("✅ WhisperKit initialized successfully")
-
-        } catch {
-            isDownloadingModel = false
-            self.error = "Failed to initialize: \(error.localizedDescription)"
-            statusMessage = "Initialization failed"
-            pipelineStage = .error("Speech model failed to load")
-            print("❌ WhisperKit initialization error: \(error)")
+    private func ensureModelInitialized() async throws {
+        if isInitialized && recognizer.isReady { return }
+        beginModelInitializationIfNeeded()
+        if let modelInitializationTask {
+            await modelInitializationTask.value
+        }
+        if let modelInitializationError {
+            throw modelInitializationError
+        }
+        guard isInitialized && recognizer.isReady else {
+            throw WhisperKitRecognizerError.notInitialized
         }
     }
 
@@ -146,16 +151,14 @@ class TranscriptionService: ObservableObject {
         print("         isInitialized: \(isInitialized)")
         print("         recognizer ready: \(recognizer.isReady)")
 
-        guard isInitialized, recognizer.isReady else {
-            print("         ❌ Local speech recognizer not initialized yet")
-            error = "Speech recognizer not initialized yet. Please wait..."
-            pipelineStage = .error("Speech model is still loading")
-            return
+        if !isInitialized, modelInitializationError != nil {
+            modelInitializationTask = nil
+            modelInitializationError = nil
         }
 
-        print("         ✓ Setting isTranscribing = true")
         isTranscribing = true
         error = nil
+        beginModelInitializationIfNeeded()
         print("      TranscriptionService.startTranscription() - DONE")
     }
 
@@ -166,17 +169,29 @@ class TranscriptionService: ObservableObject {
     }
 
     func transcribeAudioFile(_ audioURL: URL) async {
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
         await MainActor.run {
             isTranscribing = true
             transcriptionProgress = 0
-            statusMessage = "Transcribing audio..."
             error = nil
-            pipelineStage = .transcribing
+            if recognizer.isReady {
+                statusMessage = "Transcribing audio..."
+                pipelineStage = .transcribing
+            } else {
+                statusMessage = "Preparing the speech model locally…"
+                pipelineStage = .loadingModel
+            }
         }
 
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
 
         do {
+            try await ensureModelInitialized()
+            isDownloadingModel = false
+            statusMessage = "Transcribing audio..."
+            pipelineStage = .transcribing
+
             let recognizedSegments = try await recognizer.transcribe(
                 audioURL,
                 deleteAudioAfterProcessing: true,

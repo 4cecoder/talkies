@@ -13,6 +13,7 @@ This project used to track work items in an internal issue-tracker tool (Beads, 
 ## Completed in current branch
 
 - **Zig master Linux build restored** — `linux/build.zig` now generates C bindings with `zig translate-c` and wires them into the modules. Current CI builds and tests successfully with Zig master; keep this toolchain tracking active and investigate regressions against the compiler revision reported by CI. The old blocker description in [#146](https://github.com/4cecoder/talkies/issues/146) predates the migration and passing CI evidence.
+- **WhisperKit startup is lazy** — app construction no longer initializes the speech model. The first recording starts model preparation in the background while audio capture continues; transcription waits for the local model before decoding. Existing user model files remain in persistent storage.
 
 ## Open
 

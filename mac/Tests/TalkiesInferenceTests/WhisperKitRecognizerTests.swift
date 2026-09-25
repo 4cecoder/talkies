@@ -3,6 +3,13 @@ import TalkiesInference
 import WhisperKit
 
 final class WhisperKitRecognizerTests: XCTestCase {
+    func testRecognizerConstructionDoesNotLoadModel() async {
+        let recognizer = await MainActor.run { WhisperKitRecognizer() }
+        let isReady = await MainActor.run { recognizer.isReady }
+
+        XCTAssertFalse(isReady)
+    }
+
     func testRecordingIsDeletedWhenRecognizerIsNotReady() async throws {
         let audioURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("talkies-recording-\(UUID().uuidString).wav")

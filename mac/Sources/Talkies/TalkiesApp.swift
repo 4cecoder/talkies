@@ -526,12 +526,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard transcriptionService.canTranscribe else {
-            transcriptionService.pipelineStage = .loadingModel
-            transcriptionService.statusMessage = "Speech model is still loading. Try again shortly."
-            return
-        }
-
         // Set pipeline stage to recording
         insertionDestination = TextInserter.shared.captureDestination()
         transcriptionService.currentText = ""
