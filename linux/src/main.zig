@@ -3,6 +3,7 @@ const cleanup = @import("cleanup.zig");
 
 test {
     _ = cleanup;
+    _ = local_diagnostics;
 }
 const audio = @import("audio.zig");
 const whisper = @import("whisper.zig");
@@ -19,6 +20,7 @@ const yap_window = @import("yap_window.zig");
 const daemon_status_window = @import("daemon_status_window.zig");
 const vad = @import("vad.zig");
 const audio_processing = @import("audio_processing.zig");
+const local_diagnostics = @import("local_diagnostics.zig");
 // TODO: Re-enable after Ghostty bindings support Zig 0.16 (currently requires 0.15.2)
 // const settings_ui = @import("settings_ui.zig");
 // const tray = @import("tray.zig");
@@ -54,6 +56,13 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = std.heap.smp_allocator;
     utils.setIoAllocator(allocator);
 
+    run(init, allocator) catch |err| {
+        local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
+        return err;
+    };
+}
+
+fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
     var args_iterator = try std.process.Args.Iterator.initAllocator(init.args, allocator);
     defer args_iterator.deinit();
 

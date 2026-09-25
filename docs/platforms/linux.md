@@ -15,6 +15,19 @@ Ollama transcript cleanup accepts only `localhost`, `127.0.0.0/8`, or IPv6 `::1`
 Remote endpoints are rejected and HTTP redirects are disabled to keep transcript requests on
 the local machine.
 
+## Local crash diagnostics
+
+If a command exits with an unhandled error, Talkies best-effort writes a local
+report containing the error name, timestamp, and available Zig error-return
+stack addresses. Reports are stored under
+`${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics/`, with private
+directory and file permissions, a 32 KiB report limit, and five rotating files.
+Reports are never uploaded. To remove them, quit Talkies and run:
+
+```sh
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics"
+```
+
 ## Quick Start
 
 ### Option A: Install a Debian/Ubuntu release
