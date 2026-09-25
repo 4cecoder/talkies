@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
@@ -45,7 +44,7 @@ namespace Talkies.Windows.Services
         }
 
         /// <summary>Gives a newly enabled control a small, restrained scale transition.</summary>
-        public static void Emphasize(Control control)
+        public static void Emphasize(System.Windows.Controls.Control control)
         {
             var duration = GetDuration(ControlDuration, SystemParameters.ClientAreaAnimation);
             if (duration == TimeSpan.Zero) return;
