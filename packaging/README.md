@@ -18,7 +18,7 @@ numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` 
 |---|---|---|---|
 | macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
 | Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe` and `.zip` | Per-user NSIS installer and self-contained published app directory | Run the setup wizard, or expand the ZIP and run `Talkies.Windows.exe`. |
-| Linux x86_64 | `Talkies-Linux-{LABEL}.tar.gz` | `talkies-linux/`, app binary, whisper/llama runtime libraries, and their licenses | Extract the archive and run `talkies-linux/talkies`; GTK4, PulseAudio, D-Bus, SQLite, and X11 system libraries are required. |
+| Linux x86_64 | `Talkies-Linux-{LABEL}.deb` and `.tar.gz` | Debian package or portable `talkies-linux/` directory, with app binary, whisper/llama runtime libraries, and their licenses | Debian/Ubuntu: `sudo apt install ./Talkies-Linux-{LABEL}.deb`. Other distributions: extract the archive and run `talkies-linux/talkies`. |
 | All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 
 The public macOS DMG and ZIP and the Windows setup EXE are unsigned because CI has no maintainer
@@ -40,7 +40,8 @@ shasum -a 256 -c SHA256SUMS
 
 On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG and drag Talkies to
 Applications, or expand the ZIP. On Windows, run the setup EXE for the per-user install, or expand
-the ZIP for portable use. On Linux, expand the platform archive.
+the ZIP for portable use. On Debian/Ubuntu, install the `.deb` with
+`sudo apt install ./Talkies-Linux-{LABEL}.deb`; other distributions can use the Linux tarball.
 Follow the platform guides for supported OS versions, system dependencies, model downloads, and
 offline operation:
 
@@ -97,7 +98,7 @@ are not required for public open-source builds.
 
 ## Release work still outstanding
 
-- Native macOS and Linux installable formats and clean-machine install/upgrade/uninstall smoke tests.
+- Native macOS installable format and clean-machine install/upgrade/uninstall smoke tests.
 - Documented signing and notarization choices for maintainers, while keeping unsigned builds
   available.
 - A tested release run on clean machines for every OS and architecture.

@@ -371,5 +371,32 @@ jobs:
       - name: Smoke-test portable Linux release archive
         env:
           VERSION: ci-${{ github.run_id }}
+          APP_VERSION: 0.1.0
           OUTPUT_DIR: ${{ runner.temp }}/talkies-linux-package
         run: packaging/linux/package-portable.sh
+
+      - name: Install, upgrade, and uninstall Debian package
+        env:
+          DEB_PACKAGE: ${{ runner.temp }}/talkies-linux-package/Talkies-Linux-ci-${{ github.run_id }}.deb
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/talkies" "$HOME/.local/share/talkies/models"
+          printf 'preserve-config\n' > "$HOME/.config/talkies/ci-preservation-check"
+          printf 'preserve-model\n' > "$HOME/.local/share/talkies/models/ci-preservation-check"
+          sudo apt-get install -y "$DEB_PACKAGE"
+          command -v talkies
+          talkies --help >/dev/null
+          upgrade_root="${RUNNER_TEMP}/talkies-upgrade-root"
+          dpkg-deb --extract "$DEB_PACKAGE" "$upgrade_root"
+          dpkg-deb --control "$DEB_PACKAGE" "$upgrade_root/DEBIAN"
+          sed -i 's/^Version: .*/Version: 0.1.1/' "$upgrade_root/DEBIAN/control"
+          upgrade_package="${RUNNER_TEMP}/talkies-upgrade.deb"
+          dpkg-deb --build --root-owner-group "$upgrade_root" "$upgrade_package"
+          sudo apt-get install -y "$upgrade_package"
+          test "$(dpkg-query -W -f='${Version}' talkies)" = 0.1.1
+          talkies --help >/dev/null
+          sudo apt-get remove -y talkies
+          test ! -e /usr/lib/talkies
+          test ! -e /usr/bin/talkies
+          grep -Fx 'preserve-config' "$HOME/.config/talkies/ci-preservation-check"
+          grep -Fx 'preserve-model' "$HOME/.local/share/talkies/models/ci-preservation-check"

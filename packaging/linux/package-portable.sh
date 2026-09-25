@@ -5,11 +5,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 LINUX_DIR="${REPOSITORY_ROOT}/linux"
 VERSION="${VERSION:?Set VERSION to the release label (for example v0.1.0 or ci-123)}"
+APP_VERSION="${APP_VERSION:?Set APP_VERSION to a numeric version (for example 0.1.0)}"
 OUTPUT_DIR="${OUTPUT_DIR:-${LINUX_DIR}/dist}"
 WHISPER_BUILD_DIR="${WHISPER_BUILD_DIR:-/tmp/whisper.cpp/build}"
 WHISPER_LICENSE="${WHISPER_LICENSE:-/tmp/whisper.cpp/LICENSE}"
 LLAMA_LIBRARY_DIR="${LLAMA_LIBRARY_DIR:-/usr/local/lib}"
 LLAMA_LICENSE="${LLAMA_LICENSE:-/tmp/llama.cpp/LICENSE}"
+
+if [[ ! "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "APP_VERSION must be MAJOR.MINOR.PATCH; got ${APP_VERSION}" >&2
+    exit 1
+fi
 
 for required_file in \
     "${LINUX_DIR}/zig-out/bin/talkies" \
@@ -66,4 +72,46 @@ fi
 LD_LIBRARY_PATH="${EXTRACTED_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
     "${EXTRACTED_DIR}/talkies" --help >/dev/null
 
-echo "Created and smoke-tested ${ARCHIVE}"
+# Debian/Ubuntu package: keep the real binary beside its private libraries so
+# its $ORIGIN/lib rpath remains valid, and expose stable commands in /usr/bin.
+DEB_ROOT="${STAGING_DIR}/deb-root"
+install -d "${DEB_ROOT}/usr/lib/talkies" "${DEB_ROOT}/usr/bin" "${DEB_ROOT}/DEBIAN"
+cp -a "${PACKAGE_DIR}/." "${DEB_ROOT}/usr/lib/talkies/"
+ln -s ../lib/talkies/talkies "${DEB_ROOT}/usr/bin/talkies"
+ln -s ../lib/talkies/talkies-overlay-gtk "${DEB_ROOT}/usr/bin/talkies-overlay-gtk"
+
+SHLIBS_DEPENDS="$(dpkg-shlibdeps -O -l"${DEB_ROOT}/usr/lib/talkies/lib" \
+    -e"${DEB_ROOT}/usr/lib/talkies/talkies" | sed -n 's/^shlibs:Depends=//p')"
+if [[ -z "${SHLIBS_DEPENDS}" ]]; then
+    echo "Could not determine the Linux runtime library dependencies." >&2
+    exit 1
+fi
+cat > "${DEB_ROOT}/DEBIAN/control" <<EOF
+Package: talkies
+Version: ${APP_VERSION}
+Section: sound
+Priority: optional
+Architecture: amd64
+Depends: ${SHLIBS_DEPENDS}, python3, python3-gi, gir1.2-gtk-4.0
+Maintainer: Talkies contributors <opensource@talkies.app>
+Description: Offline voice transcription for Linux
+ Talkies records speech and transcribes it locally. Model files are stored in
+ the user's data directory and can be downloaded once for offline use.
+EOF
+
+DEB="${OUTPUT_DIR}/Talkies-Linux-${VERSION}.deb"
+dpkg-deb --build --root-owner-group "${DEB_ROOT}" "${DEB}"
+dpkg-deb --info "${DEB}" >/dev/null
+dpkg-deb --extract "${DEB}" "${SMOKE_DIR}/deb"
+test -x "${SMOKE_DIR}/deb/usr/lib/talkies/talkies"
+test -L "${SMOKE_DIR}/deb/usr/bin/talkies"
+test -s "${SMOKE_DIR}/deb/usr/lib/talkies/licenses/whisper.cpp-MIT.txt"
+test -s "${SMOKE_DIR}/deb/usr/lib/talkies/licenses/llama.cpp-MIT.txt"
+if ldd "${SMOKE_DIR}/deb/usr/lib/talkies/talkies" | grep -F 'not found'; then
+    echo "Debian Talkies binary has unresolved shared-library dependencies." >&2
+    exit 1
+fi
+LD_LIBRARY_PATH="${SMOKE_DIR}/deb/usr/lib/talkies/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+    "${SMOKE_DIR}/deb/usr/lib/talkies/talkies" --help >/dev/null
+
+echo "Created and smoke-tested ${ARCHIVE} and ${DEB}"

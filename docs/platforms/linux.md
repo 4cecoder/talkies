@@ -17,7 +17,21 @@ the local machine.
 
 ## Quick Start
 
-### Option A: Download a release
+### Option A: Install a Debian/Ubuntu release
+
+Download `Talkies-Linux-*.deb` from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest)
+and install it with apt. Apt installs the system library dependencies; Talkies' Whisper and llama
+runtimes are bundled. Model weights are downloaded once into your user data directory and then run
+offline.
+
+```bash
+sudo apt install ./Talkies-Linux-*.deb
+talkies audio-list
+```
+
+Remove the app with `sudo apt remove talkies`; this preserves configuration and downloaded models.
+
+### Option B: Download a portable release
 
 Grab `Talkies-Linux-*.tar.gz` from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest)
 and extract it. The tarball bundles `libwhisper`/`libggml` (built from source at release time,
@@ -33,7 +47,7 @@ cd talkies-linux
 ./talkies audio-list
 ```
 
-### Option B: Build from source
+### Option C: Build from source
 
 ```bash
 # Build
