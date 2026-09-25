@@ -19,21 +19,34 @@ actor S1MiniModelStore {
         Artifact(name: "NOTICE", size: nil, sha256: nil),
     ]
 
-    private let session: URLSession = {
+    private let session: URLSession
+    private let modelDirectoryOverride: URL?
+    private var cachedModelURL: URL?
+
+    init(session: URLSession? = nil, modelDirectory: URL? = nil) {
+        self.session = session ?? Self.makeSession()
+        modelDirectoryOverride = modelDirectory
+    }
+
+    private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 3_600
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
-    }()
-    private var cachedModelURL: URL?
+    }
 
     func ensureModelAvailable() async throws -> URL {
         if let cachedModelURL, FileManager.default.fileExists(atPath: cachedModelURL.path) {
             return cachedModelURL
         }
 
-        let directory = try Self.modelDirectory()
+        let directory: URL
+        if let modelDirectoryOverride {
+            directory = modelDirectoryOverride
+        } else {
+            directory = try Self.modelDirectory()
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         for artifact in Self.artifacts {

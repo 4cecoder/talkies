@@ -1,6 +1,7 @@
 import XCTest
 import TalkiesCore
-import TalkiesInference
+@testable import TalkiesInference
+import Foundation
 
 final class S1MiniCleanerIntegrationTests: XCTestCase {
     func testCleansTranscriptWithPinnedS1MiniModel() async throws {
@@ -8,7 +9,17 @@ final class S1MiniCleanerIntegrationTests: XCTestCase {
             throw XCTSkip("Set TALKIES_RUN_MODEL_TESTS=1 to download and run the pinned S1-mini weights.")
         }
 
-        let cleaner = S1MiniCleaner()
+        let provisioningStore = S1MiniModelStore()
+        let modelURL = try await provisioningStore.ensureModelAvailable()
+
+        let networkDeniedConfiguration = URLSessionConfiguration.ephemeral
+        networkDeniedConfiguration.protocolClasses = [NetworkDeniedURLProtocol.self]
+        let networkDeniedSession = URLSession(configuration: networkDeniedConfiguration)
+        let networkDeniedStore = S1MiniModelStore(
+            session: networkDeniedSession,
+            modelDirectory: modelURL.deletingLastPathComponent()
+        )
+        let cleaner = S1MiniCleaner(modelStore: networkDeniedStore)
         let cleaned = try await cleaner.clean(
             "so um i need to like send the the report by uh friday no wait make that thursday",
             options: TranscriptCleanupOptions()
@@ -29,4 +40,16 @@ final class S1MiniCleanerIntegrationTests: XCTestCase {
         XCTAssertFalse(followUp.localizedCaseInsensitiveContains("Wednesday"), followUp)
         XCTAssertFalse(followUp.localizedCaseInsensitiveContains("um"), followUp)
     }
+}
+
+private final class NetworkDeniedURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+
+    override func stopLoading() {}
 }

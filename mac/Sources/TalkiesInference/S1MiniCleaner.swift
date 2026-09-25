@@ -7,7 +7,7 @@ public actor S1MiniCleaner: TranscriptCleaner {
     public static let modelID = "superwhisper/s1-mini-GGUF"
     public static let modelRevision = "34add00a48a2e5d24e5a4ee5405a99620a3a240c"
 
-    private let modelStore = S1MiniModelStore()
+    private let modelStore: S1MiniModelStore
     fileprivate static let backendInitialization: Void = {
         ggml_backend_register(ggml_backend_cpu_reg())
 #if os(macOS) && arch(arm64)
@@ -19,7 +19,13 @@ public actor S1MiniCleaner: TranscriptCleaner {
     }()
     private var runtime: S1MiniRuntime?
 
-    public init() {}
+    public init() {
+        modelStore = S1MiniModelStore()
+    }
+
+    init(modelStore: S1MiniModelStore) {
+        self.modelStore = modelStore
+    }
 
     public func clean(
         _ transcript: String,
