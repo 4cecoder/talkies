@@ -53,6 +53,22 @@ First-run model provisioning needs network access. When each required model is d
 checksum verified, transcription and cleanup use local inference; no hosted inference service is
 required.
 
+## Manual updates
+
+Use the newest asset from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest),
+verify it against that release's `SHA256SUMS`, and update using the same install method:
+
+- **macOS:** quit Talkies, open the new DMG, and replace `/Applications/Talkies.app` with the new
+  copy. The app bundle can also be replaced from the ZIP.
+- **Windows:** close Talkies and run the new setup EXE. It updates the per-user installation and
+  replaces obsolete app files. For a portable ZIP, close Talkies and replace the extracted app
+  directory with the new archive contents.
+- **Debian/Ubuntu:** run `sudo apt install ./Talkies-Linux-{LABEL}.deb`; apt upgrades the installed
+  package. For the portable tarball, replace the extracted `talkies-linux/` directory.
+
+Releases are published on GitHub with generated release notes; the website's downloads page links
+to the latest GitHub Release.
+
 ## Uninstall and remove local data
 
 The downloads do not install system services. Quit Talkies before removing its app or extracted
@@ -98,8 +114,6 @@ are not required for public open-source builds.
 
 ## Release work still outstanding
 
-- Native macOS installable format and clean-machine install/upgrade/uninstall smoke tests.
 - Documented signing and notarization choices for maintainers, while keeping unsigned builds
   available.
-- A tested release run on clean machines for every OS and architecture.
-- Manual update instructions and a user-facing release-notes path.
+- A tested public release run on clean machines for every OS and architecture.

@@ -57,7 +57,12 @@ INSTALL_ROOT="${TEMP_DIR}/install/Applications"
 INSTALLED_APP="${INSTALL_ROOT}/Talkies.app"
 UPGRADE_APP="${TEMP_DIR}/Talkies.app.upgrade"
 PREVIOUS_APP="${TEMP_DIR}/Talkies.app.previous"
+USER_CONFIG="${TEMP_DIR}/user-data/config/talkies"
+USER_MODELS="${TEMP_DIR}/user-data/data/talkies/Models"
 mkdir -p "${INSTALL_ROOT}"
+mkdir -p "${USER_CONFIG}" "${USER_MODELS}"
+printf 'preserve-config\n' > "${USER_CONFIG}/ci-preservation-check"
+printf 'preserve-model\n' > "${USER_MODELS}/ci-preservation-check"
 ditto "${MOUNTED_APP}" "${INSTALLED_APP}"
 test -x "${INSTALLED_APP}/Contents/MacOS/Talkies"
 test -f "${INSTALLED_APP}/Contents/Frameworks/llama.framework/Versions/Current/llama"
@@ -69,6 +74,15 @@ mv "${UPGRADE_APP}" "${INSTALLED_APP}"
 test ! -e "${INSTALLED_APP}/Contents/Resources/old-install-sentinel"
 test -x "${INSTALLED_APP}/Contents/MacOS/Talkies"
 test -f "${INSTALLED_APP}/Contents/Frameworks/llama.framework/Versions/Current/llama"
+grep -Fx 'preserve-config' "${USER_CONFIG}/ci-preservation-check"
+grep -Fx 'preserve-model' "${USER_MODELS}/ci-preservation-check"
+
+# Drag-install removal is just removing the app bundle. Assert that user data
+# outside Applications remains intact after uninstalling in the isolated test.
+rm -rf "${INSTALLED_APP}"
+test ! -e "${INSTALLED_APP}"
+grep -Fx 'preserve-config' "${USER_CONFIG}/ci-preservation-check"
+grep -Fx 'preserve-model' "${USER_MODELS}/ci-preservation-check"
 
 hdiutil detach "${MOUNT_POINT}" -quiet
 ATTACHED=0

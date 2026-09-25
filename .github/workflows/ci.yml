@@ -220,7 +220,16 @@ jobs:
           APP_VERSION: 0.0.0
           RELEASE_LABEL: ci-${{ github.run_id }}
           OUTPUT_DIRECTORY: ${{ runner.temp }}/talkies-windows-package
-        run: ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
+        run: |
+          $settingsMarker = Join-Path $env:USERPROFILE '.talkies/ci-preservation-check'
+          $modelMarker = Join-Path $env:LOCALAPPDATA 'Talkies/Models/ci-preservation-check'
+          New-Item -ItemType Directory -Force -Path (Split-Path $settingsMarker), (Split-Path $modelMarker) | Out-Null
+          Set-Content -Path $settingsMarker -Value 'preserve-settings'
+          Set-Content -Path $modelMarker -Value 'preserve-model'
+          ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
+          if ((Get-Content -Raw $settingsMarker).Trim() -ne 'preserve-settings') { throw 'Uninstall did not preserve user settings.' }
+          if ((Get-Content -Raw $modelMarker).Trim() -ne 'preserve-model') { throw 'Uninstall did not preserve downloaded models.' }
+          Remove-Item $settingsMarker, $modelMarker -Force
 
   frontend:
     name: Website Typecheck & Lint
