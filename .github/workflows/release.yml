@@ -215,7 +215,7 @@ jobs:
         run: zig build -Doptimize=ReleaseFast
 
       - name: Cache pinned S1-mini model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634

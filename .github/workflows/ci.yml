@@ -104,7 +104,7 @@ jobs:
           swift-version: '6.3.3'
 
       - name: Cache Swift packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: mac/.build
           key: ${{ runner.os }}-spm-${{ hashFiles('mac/Package.swift') }}
@@ -139,7 +139,7 @@ jobs:
         run: swift test --filter S1MiniCleanerIntegrationTests
 
       - name: Cache WhisperKit model files
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Documents/huggingface
           key: ${{ runner.os }}-whisperkit-tiny-${{ hashFiles('mac/Package.resolved') }}
@@ -172,7 +172,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('windows/**/*.csproj') }}
@@ -184,13 +184,13 @@ jobs:
         run: dotnet restore Talkies.Windows.Tests.csproj
 
       - name: Cache verified S1-mini model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: windows-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
 
       - name: Cache verified Whisper tiny model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
           key: windows-whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
@@ -373,13 +373,13 @@ jobs:
         run: zig build
 
       - name: Cache pinned S1-mini model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
 
       - name: Cache pinned Whisper tiny model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/talkies/models/ggml-tiny.bin
           key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
