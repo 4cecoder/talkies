@@ -10,6 +10,11 @@ public actor S1MiniCleaner: TranscriptCleaner {
     private let modelStore = S1MiniModelStore()
     fileprivate static let backendInitialization: Void = {
         ggml_backend_register(ggml_backend_cpu_reg())
+#if os(macOS) && arch(arm64)
+        // llama.swift's macOS framework includes the Metal backend. Register it
+        // before llama_backend_init so device discovery can see Apple GPUs.
+        ggml_backend_register(ggml_backend_metal_reg())
+#endif
         llama_backend_init()
     }()
     private var runtime: S1MiniRuntime?
@@ -28,7 +33,24 @@ public actor S1MiniCleaner: TranscriptCleaner {
         if let runtime {
             activeRuntime = runtime
         } else {
-            let loadedRuntime = try S1MiniRuntime(modelURL: modelURL)
+            let loadedRuntime: S1MiniRuntime
+            let metalDevice = Self.preferredMetalDevice
+            let backend = S1MiniComputeBackend.preferred(
+                isAppleSilicon: Self.isAppleSilicon,
+                metalDeviceAvailable: metalDevice != nil
+            )
+            if backend == .metal {
+                do {
+                    loadedRuntime = try S1MiniRuntime(modelURL: modelURL, backend: .metal)
+                } catch {
+                    // A Metal device can be present but unable to initialize a
+                    // particular driver/model combination. Keep dictation
+                    // usable by retrying the same local model on the CPU.
+                    loadedRuntime = try S1MiniRuntime(modelURL: modelURL, backend: .cpu)
+                }
+            } else {
+                loadedRuntime = try S1MiniRuntime(modelURL: modelURL, backend: .cpu)
+            }
             runtime = loadedRuntime
             activeRuntime = loadedRuntime
         }
@@ -36,23 +58,60 @@ public actor S1MiniCleaner: TranscriptCleaner {
             prompt: S1MiniPrompt.render(transcript: trimmedTranscript, options: options)
         )
     }
+
+    fileprivate static var preferredMetalDevice: OpaquePointer? {
+        _ = backendInitialization
+#if os(macOS) && arch(arm64)
+        return ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_GPU)
+#else
+        return nil
+#endif
+    }
+
+    private static var isAppleSilicon: Bool {
+#if os(macOS) && arch(arm64)
+        true
+#else
+        false
+#endif
+    }
 }
 
-/// Owns one resident CPU model and context. The actor above serializes access.
+enum S1MiniComputeBackend: Equatable {
+    case cpu
+    case metal
+
+    static func preferred(isAppleSilicon: Bool, metalDeviceAvailable: Bool) -> Self {
+        isAppleSilicon && metalDeviceAvailable ? .metal : .cpu
+    }
+}
+
+/// Owns one resident local model and context. The actor above serializes access.
 private final class S1MiniRuntime: @unchecked Sendable {
     private let model: OpaquePointer
     private let context: OpaquePointer
     private let vocabulary: OpaquePointer
 
-    init(modelURL: URL) throws {
+    init(modelURL: URL, backend: S1MiniComputeBackend) throws {
         _ = S1MiniCleaner.backendInitialization
         var modelParameters = llama_model_default_params()
-        modelParameters.n_gpu_layers = 0
         guard let cpuDevice = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU) else {
             throw S1MiniInferenceError.contextCreationFailed
         }
-        var cpuDevices: [OpaquePointer?] = [cpuDevice, nil]
-        let loadedModel = cpuDevices.withUnsafeMutableBufferPointer { deviceBuffer in
+        var devices: [OpaquePointer?]
+        switch backend {
+        case .cpu:
+            modelParameters.n_gpu_layers = 0
+            devices = [cpuDevice, nil]
+        case .metal:
+            guard let metalDevice = S1MiniCleaner.preferredMetalDevice else {
+                throw S1MiniInferenceError.contextCreationFailed
+            }
+            // Keep CPU in the device list for operations unsupported by Metal.
+            modelParameters.n_gpu_layers = -1
+            devices = [metalDevice, cpuDevice, nil]
+        }
+        let loadedModel = devices.withUnsafeMutableBufferPointer { deviceBuffer in
             modelParameters.devices = deviceBuffer.baseAddress
             return modelURL.path.withCString({ llama_model_load_from_file($0, modelParameters) })
         }

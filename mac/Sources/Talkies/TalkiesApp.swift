@@ -4,6 +4,7 @@ import AppKit
 import TalkiesCore
 import TalkiesInference
 import TalkiesAudio
+import Combine
 
 @main
 struct TalkiesApp: App {
@@ -30,8 +31,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var outsideClickMonitor: Any?
     private var localClickMonitor: Any?
     private var isDismissingFloatingWindow = false
+    private var isFloatingWindowCollapsed = true
     var activationKeyWasPressed = false
     private var insertionDestination: TextInsertionDestination?
+    private var statusIconSubscriptions = Set<AnyCancellable>()
 
     // Settings service
     var settingsService = SettingsService.shared
@@ -56,7 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Talkies")
+            updateStatusBarIcon()
 
             // Handle left and right clicks differently
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -66,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create menu for right-click (but don't set it yet)
         setupStatusBarMenu()
+        observeStatusIconState()
 
         // Setup transcription completion callback
         transcriptionService.onTranscriptionComplete = { [weak self] text in
@@ -147,27 +151,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 // Leave a readable success state briefly. Errors and manual-paste
                 // states stay visible until the user dismisses the panel.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
                     guard let self, self.transcriptionService.pipelineStage == .complete || self.transcriptionService.pipelineStage == .cleanupFallback else { return }
-                    self.hideWindow()
+                    self.collapseWindow()
                     self.transcriptionService.pipelineStage = .idle
                 }
-            }
-        }
-
-        // Request accessibility permissions only if not already granted
-        if !TextInserter.shared.checkAccessibilityPermissions() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                TextInserter.shared.requestAccessibilityPermissions()
             }
         }
 
         // Setup global keyboard shortcut (Cmd+Shift+Space)
         setupKeyboardShortcut()
         setupFloatingWindowDismissal()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.showWindow(expanded: false)
+        }
 
         // Hide dock icon and make menu bar only
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func observeStatusIconState() {
+        audioRecorder.$isRecording
+            .combineLatest(transcriptionService.$pipelineStage)
+            .sink { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.updateStatusBarIcon() }
+            }
+            .store(in: &statusIconSubscriptions)
+    }
+
+    private func updateStatusBarIcon() {
+        guard let button = statusItem?.button else { return }
+        let state = MenuBarStatusIcon.state(
+            isRecording: audioRecorder.isRecording,
+            stage: transcriptionService.pipelineStage
+        )
+        button.image = MenuBarStatusIcon.image(for: state)
+        button.toolTip = state.accessibilityLabel
+        button.setAccessibilityLabel(state.accessibilityLabel)
     }
 
     func setupStatusBarMenu() {
@@ -200,30 +220,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showWindowFromMenu() {
-        if floatingWindow == nil || floatingWindow?.isVisible == false {
-            showWindow()
-        }
+        expandWindow()
     }
 
     @objc func toggleWindow() {
         if let window = floatingWindow, window.isVisible {
-            hideWindow()
+            if isFloatingWindowCollapsed {
+                expandWindow()
+            } else {
+                collapseWindow()
+            }
         } else {
             showWindow()
         }
     }
 
 @MainActor
-    func showWindow() {
+    func showWindow(expanded: Bool = true) {
         isDismissingFloatingWindow = false
+        isFloatingWindowCollapsed = !expanded
         if floatingWindow == nil {
             // Create floating window
             let window = NSWindow(
                 contentRect: NSRect(
                     x: 0,
                     y: 0,
-                    width: settingsService.settings.useMinimalDictationWindow == true ? 360 : 560,
-                    height: settingsService.settings.useMinimalDictationWindow == true ? 126 : 184
+                    width: expanded ? (settingsService.settings.useMinimalDictationWindow == true ? 360 : 560) : 124,
+                    height: expanded ? (settingsService.settings.useMinimalDictationWindow == true ? 126 : 184) : 38
                 ),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
@@ -249,7 +272,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Set content view
-            let contentView = DictationView(onToggleRecording: { [weak self] in
+            let collapsedBinding = Binding(
+                get: { [weak self] in self?.isFloatingWindowCollapsed ?? true },
+                set: { [weak self] collapsed in self?.isFloatingWindowCollapsed = collapsed }
+            )
+            let contentView = DictationView(isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
@@ -267,14 +294,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             floatingWindow = window
         }
 
-        // Center window on screen
-        if let window = floatingWindow, let screen = NSScreen.main {
-            let screenFrame = screen.frame
-            let windowFrame = window.frame
-            let x = (screenFrame.width - windowFrame.width) / 2
-            let y = (screenFrame.height - windowFrame.height) / 2 + 100 // Slightly above center
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        positionFloatingWindowAtAnchor()
 
         // Show window WITHOUT stealing focus
         floatingWindow?.alphaValue = 1
@@ -284,9 +304,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func resizeFloatingWindow(to size: CGSize) {
         guard let window = floatingWindow else { return }
-        let frame = window.frame
-        let origin = NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2)
-        window.setFrame(NSRect(origin: origin, size: size), display: true, animate: true)
+        window.setFrame(NSRect(origin: window.frame.origin, size: size), display: true, animate: true)
+        positionFloatingWindowAtAnchor()
+    }
+
+    private func positionFloatingWindowAtAnchor() {
+        guard let window = floatingWindow, let screen = NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let origin = NSPoint(x: visible.midX - window.frame.width / 2, y: visible.maxY - window.frame.height - 34)
+        window.setFrameOrigin(origin)
+    }
+
+    private func expandWindow() {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+            isFloatingWindowCollapsed = false
+        }
+        if floatingWindow == nil || floatingWindow?.isVisible == false {
+            showWindow(expanded: true)
+        } else {
+            resizeFloatingWindow(to: CGSize(
+                width: settingsService.settings.useMinimalDictationWindow == true ? 360 : 560,
+                height: settingsService.settings.useMinimalDictationWindow == true ? 126 : 184
+            ))
+        }
+    }
+
+    private func collapseWindow() {
+        guard canCollapseFloatingWindow, !isFloatingWindowCollapsed,
+              let window = floatingWindow, window.isVisible else { return }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+            isFloatingWindowCollapsed = true
+        }
+        resizeFloatingWindow(to: CGSize(width: 124, height: 38))
     }
 
     func toggleRecordingFromFloatingWindow() {
@@ -327,11 +376,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self,
                   let window = self.floatingWindow,
                   window.isVisible,
-                  self.canDismissFloatingWindow else { return }
+                  self.canCollapseFloatingWindow else { return }
 
             let click = NSEvent.mouseLocation
             guard !window.frame.contains(click) else { return }
-            self.hideWindow()
+            self.collapseWindow()
         }
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: dismissIfSafe)
@@ -341,14 +390,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private var canDismissFloatingWindow: Bool {
+    private var canCollapseFloatingWindow: Bool {
         guard !audioRecorder.isRecording else { return false }
         switch transcriptionService.pipelineStage {
-        case .idle, .complete:
+        case .idle, .complete, .cleanupFallback, .clipboardFallback, .noSpeech, .error:
             return true
         case .loadingModel, .requestingMicrophonePermission, .recording, .transcribing,
-             .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini, .cleanupFallback,
-             .insertingText, .clipboardFallback, .noSpeech, .error:
+             .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini, .insertingText:
             return false
         }
     }
@@ -421,7 +469,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showWindow()
             print("   showWindow() completed")
         } else {
-            print("   Window already visible")
+            expandWindow()
+            print("   Expanded the anchored Talkies panel")
         }
 
         // Start recording immediately

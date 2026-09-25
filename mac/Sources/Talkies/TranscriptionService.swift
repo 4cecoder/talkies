@@ -79,6 +79,7 @@ class TranscriptionService: ObservableObject {
     @Published var error: String?
     @Published var isDownloadingModel = false
     @Published var downloadProgress: Double = 0.0
+    @Published var transcriptionProgress: Double?
     @Published var statusMessage: String = "Initializing..."
     @Published var pipelineStage: PipelineStage = .idle
 
@@ -167,6 +168,7 @@ class TranscriptionService: ObservableObject {
     func transcribeAudioFile(_ audioURL: URL) async {
         await MainActor.run {
             isTranscribing = true
+            transcriptionProgress = 0
             statusMessage = "Transcribing audio..."
             error = nil
             pipelineStage = .transcribing
@@ -178,7 +180,14 @@ class TranscriptionService: ObservableObject {
             let recognizedSegments = try await recognizer.transcribe(
                 audioURL,
                 deleteAudioAfterProcessing: true,
-                vocabulary: SettingsService.shared.settings.vocabulary ?? []
+                vocabulary: SettingsService.shared.settings.vocabulary ?? [],
+                onProgress: { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isTranscribing else { return }
+                        self.transcriptionProgress = progress
+                        self.statusMessage = "Transcribing · ~\(Int(progress * 100))%"
+                    }
+                }
             )
             print("✅ Transcription complete - \(recognizedSegments.count) segments")
 
@@ -186,6 +195,7 @@ class TranscriptionService: ObservableObject {
                 self.segments = recognizedSegments
                 self.statusMessage = "Transcription complete"
                 self.isTranscribing = false
+                self.transcriptionProgress = nil
 
                 // Get full transcribed text
                 let fullText = self.segments.map { $0.text }.joined(separator: " ")
@@ -206,6 +216,7 @@ class TranscriptionService: ObservableObject {
                 self.error = "Transcription failed: \(error.localizedDescription)"
                 self.statusMessage = "Transcription failed"
                 self.isTranscribing = false
+                self.transcriptionProgress = nil
                 self.pipelineStage = .error("Transcription failed")
             }
         }

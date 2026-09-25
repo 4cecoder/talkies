@@ -8,12 +8,14 @@ struct DictationView: View {
     @EnvironmentObject var transcriptionService: TranscriptionService
     @ObservedObject private var settingsService = SettingsService.shared
     @State private var showHistory = false
+    @Binding var isCollapsed: Bool
     let onToggleRecording: () -> Void
     let onResize: (CGSize) -> Void
 
     private var isMini: Bool { settingsService.settings.useMinimalDictationWindow ?? false }
     private var panelSize: CGSize {
-        CGSize(width: isMini ? 360 : 560, height: showHistory ? 420 : (isMini ? 126 : 184))
+        if isCollapsed { return CGSize(width: 124, height: 38) }
+        return CGSize(width: isMini ? 360 : 560, height: showHistory ? 420 : (isMini ? 126 : 184))
     }
 
     var body: some View {
@@ -34,7 +36,20 @@ struct DictationView: View {
             )
 
             VStack(spacing: 0) {
-                if showHistory {
+                if isCollapsed {
+                    Button {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { isCollapsed = false }
+                    } label: {
+                        WaveformView(samples: audioRecorder.waveformSamples, isRecording: audioRecorder.isRecording, stage: transcriptionService.pipelineStage)
+                            .frame(width: 94, height: 24)
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 7)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Talkies dictation")
+                    .accessibilityLabel("Open Talkies dictation. \(transcriptionService.pipelineStage.displayText)")
+                } else if showHistory {
                     TranscriptHistoryView(onClose: { withAnimation(.easeOut(duration: 0.18)) { showHistory = false } })
                 } else if isMini {
                     MiniDictationContent(
@@ -58,6 +73,9 @@ struct DictationView: View {
         }
         .shadow(color: .black.opacity(0.34), radius: 28, x: 0, y: 14)
         .onChange(of: panelSize) { _, size in onResize(size) }
+        .onChange(of: isCollapsed) { _, collapsed in
+            if collapsed { showHistory = false }
+        }
     }
 }
 
@@ -124,6 +142,17 @@ private struct MiniDictationContent: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if canCopy {
+                    if needsAccessibilityApproval {
+                        Button {
+                            TextInserter.shared.requestAccessibilityPermissions()
+                        } label: {
+                            Label("Allow", systemImage: "hand.raised")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open macOS Accessibility permission settings")
+                    }
                     Button {
                         showCopyFeedback(TextInserter.shared.copyToClipboard(transcriptionService.currentText))
                     } label: {
@@ -153,6 +182,8 @@ private struct MiniDictationContent: View {
             return audioRecorder.hasPermission ? "Hold Right Option to dictate" : "Allow microphone access to dictate"
         case .requestingMicrophonePermission, .clipboardFallback, .noSpeech, .error:
             return transcriptionService.statusMessage.isEmpty ? stage.displayText : transcriptionService.statusMessage
+        case .transcribing:
+            return transcriptionService.statusMessage
         case .cleanupFallback:
             return transcriptionService.statusMessage
         case .complete:
@@ -160,6 +191,11 @@ private struct MiniDictationContent: View {
         default:
             return ""
         }
+    }
+
+    private var needsAccessibilityApproval: Bool {
+        guard case .clipboardFallback(let reason) = stage else { return false }
+        return reason.localizedCaseInsensitiveContains("accessibility")
     }
 
     private func showCopyFeedback(_ succeeded: Bool) {
@@ -229,23 +265,18 @@ struct MainDictationContent: View {
                 .accessibilityLabel("Show transcript history")
 
                 Button(action: onToggleRecording) {
-                    HStack(spacing: 7) {
-                        Image(systemName: audioRecorder.isRecording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(audioRecorder.isRecording ? "Stop" : (audioRecorder.hasPermission ? "Dictate" : "Enable mic"))
-                            .font(.system(size: 11, weight: .semibold))
-                    }
+                    Image(systemName: audioRecorder.isRecording ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 11)
-                        .frame(height: 34)
+                        .frame(width: 36, height: 36)
                         .background(
-                            audioRecorder.isRecording ? Color(red: 0.86, green: 0.24, blue: 0.38) : Color(red: 0.40, green: 0.28, blue: 0.85),
-                            in: Capsule()
+                            audioRecorder.isRecording ? Color(red: 0.88, green: 0.26, blue: 0.38) : Color(red: 0.22, green: 0.70, blue: 0.43),
+                            in: Circle()
                         )
                 }
                 .buttonStyle(.plain)
                 .help(audioRecorder.isRecording ? "Stop dictation" : "Start dictation")
-                .accessibilityLabel(audioRecorder.isRecording ? "Stop dictation" : "Start dictation")
+                .accessibilityLabel(audioRecorder.isRecording ? "Stop dictation" : (audioRecorder.hasPermission ? "Start dictation" : "Enable microphone"))
                 .accessibilityHint(audioRecorder.isRecording ? "Finishes this recording" : "Starts recording with the selected microphone")
             }
 
@@ -262,6 +293,17 @@ struct MainDictationContent: View {
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(1)
                     if showsCopyAction {
+                        if needsAccessibilityApproval {
+                            Button {
+                                TextInserter.shared.requestAccessibilityPermissions()
+                            } label: {
+                                Label("Allow access", systemImage: "hand.raised")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white.opacity(0.9))
+                            .help("Open macOS Accessibility permission settings")
+                        }
                         Button {
                             let copied = TextInserter.shared.copyToClipboard(transcriptionService.currentText)
                             withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
@@ -354,6 +396,11 @@ struct MainDictationContent: View {
         }
     }
 
+    private var needsAccessibilityApproval: Bool {
+        guard case .clipboardFallback(let reason) = transcriptionService.pipelineStage else { return false }
+        return reason.localizedCaseInsensitiveContains("accessibility")
+    }
+
     private var statusText: String {
         switch transcriptionService.pipelineStage {
         case .loadingModel:
@@ -363,6 +410,9 @@ struct MainDictationContent: View {
         case .recording:
             return "Recording · \(audioRecorder.formattedDuration)"
         case .transcribing:
+            if let progress = transcriptionService.transcriptionProgress {
+                return "Transcribing · ~\(Int(progress * 100))%"
+            }
             return "Transcribing"
         case .enhancingOllama:
             return "Enhancing with Ollama..."

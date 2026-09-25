@@ -31,7 +31,8 @@ public final class WhisperKitRecognizer {
     public func transcribe(
         _ audioURL: URL,
         deleteAudioAfterProcessing: Bool = false,
-        vocabulary: [String] = []
+        vocabulary: [String] = [],
+        onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> [TranscriptSegment] {
         defer {
             if deleteAudioAfterProcessing {
@@ -63,10 +64,23 @@ public final class WhisperKitRecognizer {
                 .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
             options.promptTokens = Array(tokens.prefix(128))
         }
+        let progressCallback: @Sendable (TranscriptionProgress) -> Bool? = { progress in
+            // WhisperKit reports token/window progress without a final token
+            // count. This is an estimate based on 30-second audio windows and
+            // the decoder token cap; keep it below 100 until decoding returns.
+            let duration = max(progress.timings.inputAudioSeconds, 0.1)
+            let estimatedWindowCount = max(1, ceil(duration / 30))
+            let withinWindow = min(Double(progress.tokens.count) / 224, 0.95)
+            let estimate = (Double(progress.windowId) + withinWindow) / estimatedWindowCount
+            onProgress?(min(0.97, max(0.01, estimate)))
+            return true
+        }
         let results = try await whisperKit.transcribe(
             audioPath: audioURL.path,
-            decodeOptions: options
+            decodeOptions: options,
+            callback: progressCallback
         )
+        onProgress?(0.99)
 
         return results.flatMap { result in
             result.segments.map { segment in
