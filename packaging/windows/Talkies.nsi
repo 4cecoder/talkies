@@ -35,6 +35,8 @@ UninstallIcon "${PUBLISH_DIRECTORY}\Resources\talkies-app-icon.ico"
 !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\Talkies"
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "StartMenuFolder"
 
+InstType "Full"
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${REPOSITORY_ROOT}\LICENSE"
 !insertmacro MUI_PAGE_COMPONENTS
@@ -54,7 +56,7 @@ Function un.onInit
 FunctionEnd
 
 Section "Talkies application" SecApplication
-  SectionIn RO
+  SectionIn 1 RO
   ReadRegStr $0 HKCU "Software\Talkies" "DesktopShortcut"
   ${If} $0 == "1"
     Delete "$DESKTOP\Talkies.lnk"
@@ -77,7 +79,7 @@ Section "Talkies application" SecApplication
   !insertmacro MUI_STARTMENU_WRITE_END
 SectionEnd
 
-Section "Desktop shortcut" SecDesktop
+Section /o "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\Talkies.lnk" "$INSTDIR\Talkies.Windows.exe" "" "$INSTDIR\Resources\talkies-app-icon.ico"
   WriteRegStr HKCU "Software\Talkies" "DesktopShortcut" "1"
 SectionEnd
