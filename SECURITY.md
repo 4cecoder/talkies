@@ -12,4 +12,6 @@ Review platform-specific dependency and model licenses before redistribution. Do
 
 ## Historical material
 
-The former hosted account and billing implementation is retained under `archive/frontend` for historical reference only. It is not part of the deployed site or supported product. The old Stripe provisioning script was removed because it contained credentials; if those credentials were ever active, revoke and rotate them.
+The former hosted account and billing implementation is retained under `archive/frontend` for historical reference only. It is not part of the deployed site or supported product.
+
+The removed Stripe provisioning script contained hard-coded test-mode credentials. The script is absent from the current tree, but deleting it did not remove those values from Git history, and this repository is public. Treat the exposed credentials as compromised: revoke and rotate them in Stripe, then use GitHub's sensitive-data removal process to remove the affected history and cached views. Do not add the old script or credentials back to the repository.
