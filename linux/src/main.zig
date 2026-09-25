@@ -1063,16 +1063,19 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                             const c_questions = allocator.alloc(yap_window.c.YapClarificationQuestion, questions.len) catch continue;
                             defer allocator.free(c_questions);
 
-                            // Convert options to NULL-terminated arrays
-                            var options_arrays = allocator.alloc([*c]const [*c]const u8, questions.len) catch continue;
+                            // Convert options to C-compatible arrays. Track the
+                            // successfully allocated prefix so an allocation
+                            // failure never passes uninitialized structs to GTK.
+                            var options_arrays = allocator.alloc([][*c]const u8, questions.len) catch continue;
                             defer allocator.free(options_arrays);
 
+                            var options_array_count: usize = 0;
                             for (questions, 0..) |q, i| {
-                                const opts = allocator.alloc([*c]const u8, q.options.len) catch continue;
+                                const opts = allocator.alloc([*c]const u8, q.options.len) catch break;
                                 for (q.options, 0..) |opt, j| {
                                     opts[j] = opt.ptr;
                                 }
-                                options_arrays[i] = opts.ptr;
+                                options_arrays[i] = opts;
 
                                 c_questions[i] = .{
                                     .id = q.id.ptr,
@@ -1080,6 +1083,14 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
                                     .options = opts.ptr,
                                     .option_count = @intCast(q.options.len),
                                 };
+                                options_array_count += 1;
+                            }
+
+                            if (options_array_count != questions.len) {
+                                for (options_arrays[0..options_array_count]) |opts| {
+                                    allocator.free(opts);
+                                }
+                                continue;
                             }
 
                             // Show in UI
@@ -1093,7 +1104,7 @@ fn runDaemon(allocator: std.mem.Allocator) !void {
 
                             // Clean up options arrays
                             for (options_arrays) |opts| {
-                                allocator.free(opts[0..questions[0].options.len]);
+                                allocator.free(opts);
                             }
                         },
 
