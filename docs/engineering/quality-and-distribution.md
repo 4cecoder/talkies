@@ -31,7 +31,7 @@ Use changed-path filtering only when it still creates stable required check name
 - **macOS:** `.app` in a `.dmg` or zip, Apple Silicon first; sign/notarize when credentials exist. Include model downloads as optional first-run assets, not in the app binary.
 - **Windows:** portable zip and an installer; sign when a certificate is available. Include runtime dependencies or document them.
 - **Linux:** portable archive plus AppImage or `.deb`; bundle non-system runtime libraries and document the baseline distro.
-- **Website:** static download page deployed from green `master`; its build must work without private billing or Convex secrets.
+- **Website:** static download page deployed from green `master`; its build is a static export with no account backend or billing secrets.
 
 Every release should contain version, commit SHA, platform/architecture, signing status, model and bundled-library licenses, and checksums. A failed platform build must prevent partial releases from being presented as complete.
 

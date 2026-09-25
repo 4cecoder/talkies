@@ -1,26 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "./components/Toast/useToast";
-import { Providers } from "./components/providers";
 
 const publicBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const publicAsset = (path: string) => `${publicBasePath}${path}`;
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://talkies.app";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
 
 export const metadata: Metadata = {
   title: "Talkies — Open-source offline dictation",
@@ -100,13 +84,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="antialiased"
       >
-        <Providers>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
-        </Providers>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

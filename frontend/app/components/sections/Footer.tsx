@@ -11,7 +11,7 @@ export function Footer() {
             <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">
               © {currentYear} Talkies
             </span>
-            {' '}• All rights reserved
+            {' '}• MIT licensed
           </p>
 
           <nav className="flex gap-6" aria-label="Footer navigation">

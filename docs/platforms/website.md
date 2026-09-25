@@ -88,3 +88,5 @@ This app builds to a static export (`output: 'export'`) and deploys to GitHub Pa
 GitHub Pages serves the exported frontend only. Convex mutations, authentication callbacks, account dashboards, and other server-backed features need their configured backend and do not become static API endpoints as part of this deployment.
 
 Check out the [Next.js static export documentation](https://nextjs.org/docs/app/building-your-application/deploying/static-exports) for more details.
+
+The public site is a static community front door: there is no login, billing, support-form backend, analytics, or account dashboard. Legacy account, referral, and billing code has been moved into `archive/frontend`; do not restore it as an active service without changing the project's local-first direction.
