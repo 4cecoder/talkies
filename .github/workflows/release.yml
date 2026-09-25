@@ -105,20 +105,18 @@ jobs:
         working-directory: windows/Talkies.Windows.Tests
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore
 
-      - name: Build Windows release binary
-        working-directory: windows/Talkies.Windows
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:Version=${{ needs.resolve-version.outputs.app_version }} -o dist
-
-      - name: Package Windows binary
-        working-directory: windows/Talkies.Windows
-        run: |
-          Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+      - name: Package and smoke-test Windows release archive
+        env:
+          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+          OUTPUT_DIRECTORY: ${{ github.workspace }}/dist
+        run: ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-release
-          path: windows/Talkies.Windows/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+          path: dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
           retention-days: 1
 
   build-linux:
@@ -214,21 +212,11 @@ jobs:
         run: zig build test
 
       - name: Package Linux binary
-        working-directory: linux
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.release_label }}
+          OUTPUT_DIR: ${{ github.workspace }}/linux/dist
         run: |
-          mkdir -p dist/talkies-linux/lib dist/talkies-linux/licenses
-          cp zig-out/bin/talkies dist/talkies-linux/
-          cp talkies-overlay-gtk dist/talkies-linux/
-          # Bundle whisper.cpp and llama.cpp runtime libraries; common Linux
-          # distributions do not package these exact runtimes for Talkies.
-          # The binary's $ORIGIN/lib rpath (see build.zig) finds them here.
-          # Everything else it links (GTK4, glib, dbus, pulse, sqlite3, X11)
-          # is a standard distro package, so it's left to the system.
-          find /tmp/whisper.cpp/build -name 'lib*.so*' -exec cp -P {} dist/talkies-linux/lib/ \;
-          find /usr/local/lib -maxdepth 1 \( -name 'libllama.so*' -o -name 'libggml*.so*' \) -exec cp -P {} dist/talkies-linux/lib/ \;
-          cp /tmp/whisper.cpp/LICENSE dist/talkies-linux/licenses/whisper.cpp-MIT.txt
-          cp /tmp/llama.cpp/LICENSE dist/talkies-linux/licenses/llama.cpp-MIT.txt
-          (cd dist && tar -czf "Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz" talkies-linux)
+          packaging/linux/package-portable.sh
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7.0.1

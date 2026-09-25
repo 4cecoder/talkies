@@ -7,7 +7,9 @@ on:
       - 'mac/**'
       - 'packaging/macos/**'
       - 'windows/**'
+      - 'packaging/windows/**'
       - 'linux/**'
+      - 'packaging/linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/deploy-pages.yml'
@@ -18,7 +20,9 @@ on:
       - 'mac/**'
       - 'packaging/macos/**'
       - 'windows/**'
+      - 'packaging/windows/**'
       - 'linux/**'
+      - 'packaging/linux/**'
       - 'frontend/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/deploy-pages.yml'
@@ -48,10 +52,12 @@ jobs:
               - '.github/workflows/release.yml'
             windows:
               - 'windows/**'
+              - 'packaging/windows/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
             linux:
               - 'linux/**'
+              - 'packaging/linux/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
             frontend:
@@ -198,6 +204,13 @@ jobs:
           TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "FullyQualifiedName~WhisperAsrOfflineIntegrationTests" --verbosity normal
 
+      - name: Smoke-test self-contained Windows release archive
+        env:
+          APP_VERSION: 0.0.0
+          RELEASE_LABEL: ci-${{ github.run_id }}
+          OUTPUT_DIRECTORY: ${{ runner.temp }}/talkies-windows-package
+        run: ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
+
   frontend:
     name: Website Typecheck & Lint
     runs-on: ubuntu-latest
@@ -343,3 +356,9 @@ jobs:
           TALKIES_TEST_S1_MINI: "1"
           TALKIES_TEST_WHISPER: "1"
         run: zig build test
+
+      - name: Smoke-test portable Linux release archive
+        env:
+          VERSION: ci-${{ github.run_id }}
+          OUTPUT_DIR: ${{ runner.temp }}/talkies-linux-package
+        run: packaging/linux/package-portable.sh
