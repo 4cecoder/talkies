@@ -80,7 +80,22 @@ cp -a "${PACKAGE_DIR}/." "${DEB_ROOT}/usr/lib/talkies/"
 ln -s ../lib/talkies/talkies "${DEB_ROOT}/usr/bin/talkies"
 ln -s ../lib/talkies/talkies-overlay-gtk "${DEB_ROOT}/usr/bin/talkies-overlay-gtk"
 
-SHLIBS_DEPENDS="$(dpkg-shlibdeps -O -l"${DEB_ROOT}/usr/lib/talkies/lib" \
+SHLIBDEPS_DIR="${STAGING_DIR}/shlibdeps"
+install -d "${SHLIBDEPS_DIR}/debian"
+cat > "${SHLIBDEPS_DIR}/debian/control" <<'EOF'
+Source: talkies
+Section: sound
+Priority: optional
+Maintainer: Talkies contributors <opensource@talkies.app>
+Standards-Version: 4.6.2
+
+Package: talkies
+Architecture: any
+Description: Offline voice transcription for Linux
+ Talkies records speech and transcribes it locally.
+EOF
+SHLIBS_DEPENDS="$(cd "${SHLIBDEPS_DIR}" && dpkg-shlibdeps -O \
+    -l"${DEB_ROOT}/usr/lib/talkies/lib" \
     -e"${DEB_ROOT}/usr/lib/talkies/talkies" | sed -n 's/^shlibs:Depends=//p')"
 if [[ -z "${SHLIBS_DEPENDS}" ]]; then
     echo "Could not determine the Linux runtime library dependencies." >&2
