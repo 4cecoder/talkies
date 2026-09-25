@@ -34,6 +34,7 @@ jobs:
       windows: ${{ steps.filter.outputs.windows }}
       linux: ${{ steps.filter.outputs.linux }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -57,6 +58,29 @@ jobs:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/deploy-pages.yml'
+            workflows:
+              - '.github/workflows/**'
+
+  workflow-validation:
+    name: GitHub Actions Workflow Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.workflows == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Lint CI, release, and Pages workflows
+        run: |
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/deploy-pages.yml
 
   macos:
     name: macOS Build & Test

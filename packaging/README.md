@@ -117,23 +117,20 @@ The automated release workflow (`.github/workflows/release.yml`) handles:
 3. **Artifact Creation**: Packages platform-specific installers/bundles
 4. **GitHub Release**: Creates a release with all artifacts attached
 
-**Trigger**: Push a git tag matching `v*` (e.g., `v0.1.0`)
+**Trigger**: Push to `master` for the serialized rolling `latest` prerelease, or push a semantic-version tag such as `v0.1.0` for a versioned release.
 
 **Workflow Steps**:
 ```
-Tag Push (v*) → Read Version → Build macOS + Windows (parallel)
-                                      ↓
-                              Upload Artifacts
-                                      ↓
-                              Create GitHub Release
-                                      ↓
-                              Attach DMG + MSI
+Push to master or version tag
+        ↓
+Resolve one app version and release label
+        ↓
+Run platform tests and build macOS, Windows, and Linux archives
+        ↓
+Verify SHA-256 manifest and attach all assets to a GitHub Release
 ```
 
-**Manual Trigger** (for testing):
-```bash
-gh workflow run release.yml
-```
+Rolling releases use the numeric version in `packaging/shared/version.txt` inside platform metadata and `latest` in public artifact names. Version tags use the numeric version inside app metadata and retain the `v` prefix in artifact names.
 
 ### Release Artifacts
 
@@ -141,8 +138,12 @@ Each GitHub release includes:
 
 | Platform | Artifact | Format | Notes |
 |----------|----------|--------|-------|
-| macOS    | `Talkies-macOS-v{VERSION}.dmg` | DMG | Notarized app bundle for macOS 15+ |
-| Windows  | `Talkies-Windows-v{VERSION}.msi` | MSI | Self-contained installer with .NET runtime |
+| macOS    | `Talkies-macOS-{LABEL}.zip` | `.app` zip | llama.framework included; public CI package unsigned |
+| Windows  | `Talkies-Windows-{LABEL}.zip` | Self-contained zip | Includes .NET runtime |
+| Linux    | `Talkies-Linux-{LABEL}.tar.gz` | Portable archive | CPU build with runtime licenses |
+| All      | `SHA256SUMS`, `BUILD-INFO.txt` | Checksums and metadata | Published with each release |
+
+`{LABEL}` is `vMAJOR.MINOR.PATCH` for a tag or `latest` for the rolling prerelease. Native installers, notarization, and clean-machine install/upgrade smoke tests are still planned.
 
 ### Environment Variables
 
@@ -150,10 +151,10 @@ The following secrets/variables are used in CI:
 
 | Secret | Purpose | Required For |
 |--------|---------|--------------|
-| `GITHUB_TOKEN` | Create releases and upload assets | All workflows |
-| `APPLE_DEVELOPER_ID` | Code signing certificate | macOS notarization (future) |
-| `APPLE_TEAM_ID` | Apple Developer Team ID | macOS notarization (future) |
-| `WINDOWS_CERT_PASSWORD` | Code signing certificate password | Windows signing (future) |
+| `GITHUB_TOKEN` | Create releases and upload assets | GitHub Actions release workflow |
+| `SIGNING_IDENTITY` | Apple Development identity for local signed `.app` packaging | Local macOS package builds |
+| `EXPECTED_TEAM_ID` | Actual Apple Team ID matched by signature verification | Local macOS package builds |
+| `WINDOWS_CERT_PASSWORD` | Windows signing certificate password | Future signed Windows releases |
 
 ## Platform-Specific Details
 

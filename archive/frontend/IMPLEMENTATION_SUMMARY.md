@@ -1,5 +1,9 @@
 # Talkies UI/UX Maximization - Implementation Summary
 
+> Archived notes from an earlier frontend prototype. Commands and recommendations below are
+> historical and are not current Talkies implementation or CI instructions. Use the active
+> [frontend guide](../../frontend/README.md) and [quality plan](../../docs/engineering/quality-and-distribution.md).
+
 ## Completed Improvements
 
 ### 1. Design System Foundation ✅

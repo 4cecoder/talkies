@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: github-pages-branch
   cancel-in-progress: false
 
 jobs:
-  build-and-publish:
+  build:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
@@ -43,11 +43,31 @@ jobs:
       - name: Preserve Next.js asset folders
         run: touch frontend/out/.nojekyll
 
+      - name: Upload static site artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: talkies-pages
+          path: frontend/out/
+          include-hidden-files: true
+
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download static site artifact
+        uses: actions/download-artifact@v7.0.1
+        with:
+          name: talkies-pages
+          path: public
+
       - name: Publish static site to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: frontend/out
+          publish_dir: public
           force_orphan: true
           commit_message: "Deploy Talkies website from ${{ github.sha }}"

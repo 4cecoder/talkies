@@ -24,13 +24,15 @@ macOS applications can be distributed in two primary formats:
 
 For Talkies, we recommend DMG distribution as it provides the best user experience for a menu bar application.
 
-The GitHub versioned release currently publishes an unsigned `.app` zip. Build it locally with the same bundling and runtime-framework checks using:
+GitHub Actions publishes an unsigned `.app` zip so anyone can build releases without maintainer credentials. Local packaging fails closed unless you provide a valid, stable Apple Development identity and the certificate's actual Team ID:
 
 ```bash
-VERSION=v1.2.3 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
+SIGNING_IDENTITY="Apple Development: Your Name (CERTIFICATE_ID)" \
+EXPECTED_TEAM_ID="TEAM_ID" \
+VERSION=1.2.3 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
 ```
 
-The script embeds `llama.framework`, configures the app rpath, adds microphone and Apple Events usage descriptions, validates the bundle metadata, and zips `Talkies.app`. Signing and notarization require maintainer certificates and are not applied by the public CI workflow.
+The certificate name suffix is not necessarily the Team ID, so set both values explicitly. The script signs `llama.framework` before the app, verifies bundle IDs, versions, Team ID, and signatures, then validates and zips `Talkies.app`. The public CI workflow validates an unsigned package; notarization is not currently part of the release pipeline. Model weights stay in persistent user storage and are not copied into the app bundle.
 
 ---
 
@@ -50,17 +52,22 @@ The script embeds `llama.framework`, configures the app rpath, adds microphone a
    - GitHub: https://github.com/create-dmg/create-dmg
    - Alternative: https://github.com/sindresorhus/create-dmg (Node.js-based)
 
-3. **Apple Developer Account** ($99/year)
-   - Required for code signing and notarization
+3. **Apple Developer Account** (optional for unsigned builds)
+   - Needed to obtain signing certificates; public GitHub CI builds remain unsigned
    - Sign up at: https://developer.apple.com
 
 ### Required Certificates
 
-1. **Developer ID Application Certificate**
-   - Used to sign the application bundle
+1. **Apple Development Certificate**
+   - Used by local `package-app.sh` builds to keep the same signing identity across rebuilds
+   - Set `SIGNING_IDENTITY` and the certificate's actual `EXPECTED_TEAM_ID`
    - Obtained from Apple Developer Portal
 
-2. **Developer ID Installer Certificate** (for .pkg only)
+2. **Developer ID Application Certificate** (for future direct distribution)
+   - Used for outside-the-App-Store distribution and notarization workflows
+   - Not currently used by the public release workflow
+
+3. **Developer ID Installer Certificate** (for .pkg only)
    - Used to sign package installers
    - Obtained from Apple Developer Portal
 
@@ -69,7 +76,7 @@ The script embeds `llama.framework`, configures the app rpath, adds microphone a
 1. Visit [Apple Developer Account](https://developer.apple.com/account)
 2. Navigate to **Certificates, Identifiers & Profiles**
 3. Create a new certificate:
-   - Select **Developer ID Application**
+   - Select **Apple Development** for local signed app builds, or **Developer ID Application** for future notarized distribution
    - Follow CSR (Certificate Signing Request) generation steps
    - Download and install in Keychain Access
 
@@ -89,6 +96,8 @@ A DMG (Disk Image) is macOS's preferred format for distributing applications. Wh
 #### 1. Build the application bundle
 
 ```bash
+SIGNING_IDENTITY="Apple Development: Your Name (CERTIFICATE_ID)" \
+EXPECTED_TEAM_ID="TEAM_ID" \
 VERSION=1.2.3 OUTPUT_DIR="$PWD/packaging/macos/build" ./packaging/macos/package-app.sh
 ```
 

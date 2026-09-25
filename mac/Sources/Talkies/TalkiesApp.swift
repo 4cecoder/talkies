@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let fallbackSpeechSynthesizer = AVSpeechSynthesizer()
     var statusItem: NSStatusItem?
     var floatingWindow: NSWindow?
-    var settingsWindow: NSWindow?
+    private var settingsWindowController: NSWindowController?
     var audioRecorder = AudioRecorder()
     var transcriptionService = TranscriptionService()
     var eventMonitor: Any?
@@ -556,23 +556,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showSettings() {
-        if settingsWindow == nil {
+        if settingsWindowController == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
+            // Keep the window alive when the user closes it. AppKit's default
+            // release-on-close behavior can leave a retained Swift reference
+            // pointing at a deallocated window, which crashes on the next open.
+            window.isReleasedWhenClosed = false
             window.title = "Talkies Settings"
             window.center()
 
             let settingsView = SettingsView()
             window.contentView = NSHostingView(rootView: settingsView)
 
-            settingsWindow = window
+            settingsWindowController = NSWindowController(window: window)
         }
 
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 

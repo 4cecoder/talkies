@@ -58,9 +58,6 @@ Talkies project code is released under the MIT License in [`LICENSE`](LICENSE). 
 are submitted under that same license. Third-party dependencies and model weights retain their
 own licenses and notices.
 
-This repository does not currently include a published `LICENSE` file. Check the repository
-directly for the latest licensing status before reusing or redistributing the code.
-
 ---
 
 Questions, ideas, or just want to say hi? Open an issue or start a discussion on GitHub. Thanks

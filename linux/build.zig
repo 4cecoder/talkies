@@ -101,7 +101,7 @@ pub fn build(b: *std.Build) void {
     // without needing them installed system-wide. $ORIGIN is a literal
     // linker token (resolved at runtime, relative to the binary's own
     // location), not a build-time filesystem path.
-    exe_mod.addRPath(.{ .cwd_relative = "$ORIGIN/lib" });
+    exe_mod.addRPathSpecial("$ORIGIN/lib");
 
     // Add include paths for whisper.h and GTK4
     exe_mod.addIncludePath(.{ .cwd_relative = "/usr/include" });

@@ -10,13 +10,46 @@ concurrency:
   group: talkies-release-${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
   cancel-in-progress: false
 
-env:
-  RELEASE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
-
 jobs:
+  resolve-version:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      release_label: ${{ steps.version.outputs.release_label }}
+    steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v6
+
+      - name: Validate and normalize release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_label="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            app_version="${release_label#v}"
+            if [[ ! "${app_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must be vMAJOR.MINOR.PATCH (for example v1.2.3); got ${release_label}" >&2
+              exit 1
+            fi
+          else
+            app_version="$(tr -d '[:space:]' < packaging/shared/version.txt)"
+            if [[ ! "${app_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "packaging/shared/version.txt must contain MAJOR.MINOR.PATCH; got ${app_version}" >&2
+              exit 1
+            fi
+            release_label="latest"
+          fi
+          {
+            echo "app_version=${app_version}"
+            echo "release_label=${release_label}"
+          } >> "${GITHUB_OUTPUT}"
+
   build-macos:
     name: Build macOS Release
     runs-on: macos-latest
+    needs: resolve-version
 
     steps:
       - name: Checkout code
@@ -33,20 +66,27 @@ jobs:
 
       - name: Build macOS app bundle and zip
         env:
-          VERSION: ${{ env.RELEASE_VERSION }}
+          VERSION: ${{ needs.resolve-version.outputs.app_version }}
           OUTPUT_DIR: ${{ github.workspace }}/dist
         run: packaging/macos/package-app.sh
+
+      - name: Apply release artifact label
+        env:
+          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
+          RELEASE_LABEL: ${{ needs.resolve-version.outputs.release_label }}
+        run: mv "dist/Talkies-macOS-${APP_VERSION}.zip" "dist/Talkies-macOS-${RELEASE_LABEL}.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: macos-release
-          path: dist/Talkies-macOS-${{ env.RELEASE_VERSION }}.zip
+          path: dist/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
           retention-days: 1
 
   build-windows:
     name: Build Windows Release
     runs-on: windows-latest
+    needs: resolve-version
 
     steps:
       - name: Checkout code
@@ -67,23 +107,24 @@ jobs:
 
       - name: Build Windows release binary
         working-directory: windows/Talkies.Windows
-        run: dotnet publish -c Release -r win-x64 --self-contained true -o dist
+        run: dotnet publish -c Release -r win-x64 --self-contained true -p:Version=${{ needs.resolve-version.outputs.app_version }} -o dist
 
       - name: Package Windows binary
         working-directory: windows/Talkies.Windows
         run: |
-          Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ env.RELEASE_VERSION }}.zip
+          Compress-Archive -Path dist\* -DestinationPath Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-release
-          path: windows/Talkies.Windows/Talkies-Windows-${{ env.RELEASE_VERSION }}.zip
+          path: windows/Talkies.Windows/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
           retention-days: 1
 
   build-linux:
     name: Build Linux Release
     runs-on: ubuntu-latest
+    needs: resolve-version
 
     steps:
       - name: Checkout code
@@ -187,19 +228,18 @@ jobs:
           find /usr/local/lib -maxdepth 1 \( -name 'libllama.so*' -o -name 'libggml*.so*' \) -exec cp -P {} dist/talkies-linux/lib/ \;
           cp /tmp/whisper.cpp/LICENSE dist/talkies-linux/licenses/whisper.cpp-MIT.txt
           cp /tmp/llama.cpp/LICENSE dist/talkies-linux/licenses/llama.cpp-MIT.txt
-          cd dist/talkies-linux
-          tar -czf ../Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz .
+          (cd dist && tar -czf "Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz" talkies-linux)
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: linux-release
-          path: linux/dist/Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz
+          path: linux/dist/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
           retention-days: 1
 
   create-release:
     name: Create GitHub Release
-    needs: [build-macos, build-windows, build-linux]
+    needs: [resolve-version, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -229,11 +269,13 @@ jobs:
       - name: Generate SHA-256 checksums
         working-directory: artifacts
         run: |
-          sha256sum Talkies-macOS-${{ env.RELEASE_VERSION }}.zip Talkies-Windows-${{ env.RELEASE_VERSION }}.zip Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz > SHA256SUMS
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz > SHA256SUMS
+          sha256sum --check SHA256SUMS
           {
             echo "commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF"
-            echo "release=$RELEASE_VERSION"
+            echo "release=${{ needs.resolve-version.outputs.release_label }}"
+            echo "app_version=${{ needs.resolve-version.outputs.app_version }}"
             echo "platforms=macOS,windows-x64,linux-x86_64"
           } > BUILD-INFO.txt
 
@@ -246,7 +288,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_VERSION }}
+          tag_name: ${{ needs.resolve-version.outputs.release_label }}
           target_commitish: ${{ github.sha }}
           name: ${{ github.ref_type == 'tag' && format('Release {0}', github.ref_name) || format('Talkies Latest ({0})', github.sha) }}
           draft: false
@@ -255,9 +297,9 @@ jobs:
           overwrite_files: true
           fail_on_unmatched_files: true
           files: |
-            artifacts/Talkies-macOS-${{ env.RELEASE_VERSION }}.zip
-            artifacts/Talkies-Windows-${{ env.RELEASE_VERSION }}.zip
-            artifacts/Talkies-Linux-${{ env.RELEASE_VERSION }}.tar.gz
+            artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
             artifacts/SHA256SUMS
             artifacts/BUILD-INFO.txt
         env:
