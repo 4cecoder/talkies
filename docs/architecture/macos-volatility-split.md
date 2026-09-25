@@ -2,7 +2,7 @@
 
 ## Why
 
-The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter, WhisperKit ASR adapter, and their model lifecycles. The executable owns the SwiftUI/AppKit shell, status and transcript presentation, settings, and plugins.
+The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, Accessibility-based `TalkiesAccessibility`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter, WhisperKit ASR adapter, and their model lifecycles. The executable owns the SwiftUI/AppKit shell, status and transcript presentation, settings, and plugins.
 
 ## Products and targets
 
@@ -10,8 +10,9 @@ The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based
 |---|---|---|
 | `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
 | `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
+| `TalkiesAccessibility` library | Medium | Focus capture, verified text-control insertion, permission checks, explicit clipboard copy |
 | `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |
-| `TalkiesApp` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, paste integration |
+| `Talkies` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, and application coordination |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
 Keep inference in-process for now. Make the optional model worker a separate binary only if profiling demonstrates a measurable stability or memory benefit.
@@ -19,13 +20,12 @@ Keep inference in-process for now. Make the optional model worker a separate bin
 ## Dependency direction
 
 ```text
-TalkiesApp ──▶ TalkiesCore
-    │              ▲
-    ├──▶ TalkiesAudio ──▶ AVFoundation/CoreAudio
-    └──▶ TalkiesInference ──▶ TalkiesCore
-              │
+Talkies ─────▶ TalkiesCore
+    ├──▶ TalkiesAudio ───────────────▶ AVFoundation/CoreAudio
+    ├──▶ TalkiesAccessibility ───────▶ ApplicationServices/NSWorkspace
+    └──▶ TalkiesInference ──────────▶ TalkiesCore
               ├── WhisperKit (ASR)
-              └── llama.cpp CPU backend (S1-mini)
+              └── llama.cpp (S1-mini)
 ```
 
 `TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
@@ -38,19 +38,20 @@ mac/
   Sources/
     TalkiesCore/
     TalkiesAudio/
+    TalkiesAccessibility/
     TalkiesInference/
       ASR/
       Cleanup/
       ModelStore/
-    TalkiesApp/
+    Talkies/
   Tests/
     TalkiesCoreTests/
     TalkiesAudioTests/
+    TalkiesAccessibilityTests/
     TalkiesInferenceTests/
-    TalkiesAppTests/
 ```
 
-The manifest uses Swift tools 6.3 and defines separate core, audio, and inference libraries. Keep third-party inference APIs behind the runtime adapters. The model-free `TalkiesCore` test target covers formatters, cleanup prompt construction, and transcript contracts on every macOS CI pass. The model-backed cleanup integration test runs in a separate job that downloads the pinned weights.
+The manifest uses Swift tools 6.3 and defines separate core, audio, Accessibility, and inference libraries. Keep third-party inference APIs behind the runtime adapters. The core and Accessibility tests cover formatting, cleanup prompts, transcript contracts, focused-app validation, permission denial, unsupported controls, and insertion fallbacks. The model-backed cleanup integration test runs after provisioning the pinned weights and denies network requests during inference.
 
 ## Offline and cleanup boundary
 

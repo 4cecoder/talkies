@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import AppKit
 import TalkiesAudio
+import TalkiesAccessibility
 
 struct DictationView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
