@@ -114,6 +114,10 @@ jobs:
         working-directory: windows/Talkies.Windows.Tests
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore
 
+      - name: Set up verified NSIS compiler
+        shell: pwsh
+        run: ./packaging/windows/setup-nsis.ps1
+
       - name: Package and smoke-test Windows release archive
         env:
           APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
@@ -125,7 +129,9 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: windows-release
-          path: dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+          path: |
+            dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
           retention-days: 1
 
   build-linux:
@@ -266,7 +272,7 @@ jobs:
       - name: Generate SHA-256 checksums
         working-directory: artifacts
         run: |
-          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz > SHA256SUMS
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz > SHA256SUMS
           sha256sum --check SHA256SUMS
           {
             echo "commit=$GITHUB_SHA"
@@ -296,6 +302,7 @@ jobs:
           files: |
             artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip
             artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
+            artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
             artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
             artifacts/SHA256SUMS

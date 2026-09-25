@@ -211,6 +211,10 @@ jobs:
           TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "FullyQualifiedName~WhisperAsrOfflineIntegrationTests" --verbosity normal
 
+      - name: Set up verified NSIS compiler
+        shell: pwsh
+        run: ./packaging/windows/setup-nsis.ps1
+
       - name: Smoke-test self-contained Windows release archive
         env:
           APP_VERSION: 0.0.0

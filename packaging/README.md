@@ -17,14 +17,17 @@ numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` 
 | Platform | Release asset | Contents | Current install method |
 |---|---|---|---|
 | macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
-| Windows x64 | `Talkies-Windows-{LABEL}.zip` | Self-contained published app directory | Expand to a folder and run `Talkies.Windows.exe`. |
+| Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe` and `.zip` | Per-user NSIS installer and self-contained published app directory | Run the setup wizard, or expand the ZIP and run `Talkies.Windows.exe`. |
 | Linux x86_64 | `Talkies-Linux-{LABEL}.tar.gz` | `talkies-linux/`, app binary, whisper/llama runtime libraries, and their licenses | Extract the archive and run `talkies-linux/talkies`; GTK4, PulseAudio, D-Bus, SQLite, and X11 system libraries are required. |
 | All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 
-The public macOS DMG and ZIP are unsigned because CI has no maintainer certificate. Local packaging
-can sign with an Apple Development identity; that does not make the public build notarized. Windows
-archives are unsigned. The release workflow does not currently produce `.pkg`, `.msi`, or `.deb`
-installers, and there is no automatic updater.
+The public macOS DMG and ZIP and the Windows setup EXE are unsigned because CI has no maintainer
+signing credentials. Local packaging can sign with an Apple Development identity; that does not make
+the public macOS build notarized. The Windows setup installs per-user under
+`%LOCALAPPDATA%\Programs\Talkies`; it does not need administrator access. Re-running the installer
+updates that install and removes obsolete application files. Uninstalling removes the application
+files and shortcuts while preserving settings and model downloads. The ZIP remains available as a
+portable fallback. There is no automatic updater.
 
 ## Verify and install a release
 
@@ -36,7 +39,8 @@ shasum -a 256 -c SHA256SUMS
 ```
 
 On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG and drag Talkies to
-Applications, or expand the ZIP. For Windows and Linux, expand the platform archive.
+Applications, or expand the ZIP. On Windows, run the setup EXE for the per-user install, or expand
+the ZIP for portable use. On Linux, expand the platform archive.
 Follow the platform guides for supported OS versions, system dependencies, model downloads, and
 offline operation:
 
@@ -58,8 +62,9 @@ folder. Removing the application does not remove model downloads or settings:
   `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/`. Delete either cache only if you
   also want to remove its downloaded models. Talkies preferences are separate in macOS-managed
   preferences.
-- **Windows:** remove the folder where you extracted the zip. Settings and the Whisper cache are
-  under `%USERPROFILE%\.talkies\`; the S1-mini weights are under
+- **Windows:** use **Uninstall Talkies** in the Start menu for setup installs, or remove the folder
+  where you extracted the portable ZIP. Settings and the Whisper cache are under
+  `%USERPROFILE%\.talkies\`; the S1-mini weights are under
   `%LOCALAPPDATA%\Talkies\Models\`. Delete those directories only if you want to remove settings
   and downloaded models too.
 - **Linux:** remove the extracted `talkies-linux/` directory. Settings are under
@@ -92,7 +97,7 @@ are not required for public open-source builds.
 
 ## Release work still outstanding
 
-- Native installable formats and clean-machine install/upgrade/uninstall smoke tests.
+- Native macOS and Linux installable formats and clean-machine install/upgrade/uninstall smoke tests.
 - Documented signing and notarization choices for maintainers, while keeping unsigned builds
   available.
 - A tested release run on clean machines for every OS and architecture.
