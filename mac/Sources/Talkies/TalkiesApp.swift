@@ -28,6 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var eventMonitor: Any?
     var localEventMonitor: Any?
     var activationKeyWasPressed = false
+    private var insertionDestination: TextInsertionDestination?
 
     // Settings service
     var settingsService = SettingsService.shared
@@ -65,112 +66,88 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup transcription completion callback
         transcriptionService.onTranscriptionComplete = { [weak self] text in
-            // Process through LLM if enabled
-            Task {
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 var finalText = text
-                let s1MiniEnabled = self?.settingsService.settings.s1Mini?.isEnabled ?? false
+                var cleanupFailed = false
+                let s1MiniEnabled = self.settingsService.settings.s1Mini?.isEnabled ?? false
 
-                if let cleanupSettings = self?.settingsService.settings.s1Mini, s1MiniEnabled {
-                    await MainActor.run {
-                        self?.transcriptionService.pipelineStage = .cleaningS1Mini
-                    }
+                if let cleanupSettings = self.settingsService.settings.s1Mini, s1MiniEnabled {
+                    self.transcriptionService.pipelineStage = .cleaningS1Mini
+                    self.transcriptionService.statusMessage = "Polishing your transcript locally…"
                     do {
-                        let options = TranscriptCleanupOptions(
-                            style: cleanupSettings.style,
-                            structure: cleanupSettings.structure,
-                            context: cleanupSettings.context
-                        )
-                        let cleanedText = try await self?.s1MiniCleaner.clean(text, options: options)
-                        if let cleanedText, !cleanedText.isEmpty {
+                        let options = TranscriptCleanupOptions(style: cleanupSettings.style, structure: cleanupSettings.structure, context: cleanupSettings.context)
+                        let cleanedText = try await self.s1MiniCleaner.clean(text, options: options)
+                        if !cleanedText.isEmpty {
                             finalText = cleanedText
                         }
                     } catch {
+                        cleanupFailed = true
                         print("⚠️ S1-mini cleanup failed; using raw transcript: \(error.localizedDescription)")
                     }
                 }
 
-                // Check for LLM enhancement (Ollama or LM Studio - only one can be active)
                 let ollamaEnabled = PluginManager.shared.ollamaPlugin?.isEnabled ?? false
                 let lmStudioEnabled = PluginManager.shared.lmStudioPlugin?.isEnabled ?? false
+                if !s1MiniEnabled && ollamaEnabled && !lmStudioEnabled, let plugin = PluginManager.shared.ollamaPlugin {
+                    self.transcriptionService.pipelineStage = .enhancingOllama
+                    self.transcriptionService.statusMessage = "Enhancing locally with Ollama…"
+                    do { finalText = try await plugin.enhanceText(text) }
+                    catch { cleanupFailed = true; print("⚠️ Ollama enhancement failed: \(error.localizedDescription)") }
+                } else if !s1MiniEnabled && lmStudioEnabled && !ollamaEnabled, let plugin = PluginManager.shared.lmStudioPlugin {
+                    self.transcriptionService.pipelineStage = .enhancingLMStudio
+                    self.transcriptionService.statusMessage = "Enhancing locally with LM Studio…"
+                    do { finalText = try await plugin.enhanceText(text) }
+                    catch { cleanupFailed = true; print("⚠️ LM Studio enhancement failed: \(error.localizedDescription)") }
+                }
 
-                if !s1MiniEnabled && ollamaEnabled && !lmStudioEnabled {
-                    await MainActor.run {
-                        self?.transcriptionService.pipelineStage = .enhancingOllama
-                    }
-                    if let ollamaPlugin = PluginManager.shared.ollamaPlugin {
-                        do {
-                            print("🧠 Processing text through Ollama...")
-                            finalText = try await ollamaPlugin.enhanceText(text)
-                            print("✅ Enhanced text: \(finalText)")
-                        } catch {
-                            print("⚠️ Ollama enhancement failed: \(error.localizedDescription)")
-                        }
-                    }
-                } else if !s1MiniEnabled && lmStudioEnabled && !ollamaEnabled {
-                    await MainActor.run {
-                        self?.transcriptionService.pipelineStage = .enhancingLMStudio
-                    }
-                    if let lmStudioPlugin = PluginManager.shared.lmStudioPlugin {
-                        do {
-                            print("🧠 Processing text through LM Studio...")
-                            finalText = try await lmStudioPlugin.enhanceText(text)
-                            print("✅ Enhanced text: \(finalText)")
-                        } catch {
-                            print("⚠️ LM Studio enhancement failed: \(error.localizedDescription)")
-                        }
+                self.transcriptionService.currentText = finalText
+                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.transcriptionService.pipelineStage = .noSpeech
+                    self.transcriptionService.statusMessage = "No usable words were recognized. Try again."
+                    return
+                }
+                if cleanupFailed {
+                    self.transcriptionService.pipelineStage = .cleanupFallback
+                    self.transcriptionService.statusMessage = "Cleanup failed; keeping the recognized words."
+                }
+
+                let voiceMode = self.settingsService.settings.voiceAssistantMode
+                let shouldInsert = !voiceMode || self.settingsService.settings.insertTextInAssistantMode
+                if shouldInsert {
+                    self.transcriptionService.pipelineStage = .insertingText
+                    let target = self.insertionDestination?.applicationName ?? "the previous app"
+                    self.transcriptionService.statusMessage = "Returning to \(target)…"
+                    let result = await TextInserter.shared.insertTextAtCursor(finalText, into: self.insertionDestination)
+                    switch result {
+                    case .inserted(let applicationName):
+                        self.transcriptionService.pipelineStage = cleanupFailed ? .cleanupFallback : .complete
+                        self.transcriptionService.statusMessage = "Paste sent to \(applicationName)."
+                    case .copiedForManualPaste(let reason):
+                        self.transcriptionService.pipelineStage = .clipboardFallback(reason)
+                        self.transcriptionService.statusMessage = reason
+                        return
+                    case .failed(let reason):
+                        self.transcriptionService.pipelineStage = .error(reason)
+                        self.transcriptionService.statusMessage = reason
+                        return
                     }
                 }
 
-                await MainActor.run {
-                    self?.transcriptionService.pipelineStage = .insertingText
+                if voiceMode {
+                    let utterance = AVSpeechUtterance(string: finalText)
+                    self.fallbackSpeechSynthesizer.speak(utterance)
+                    self.transcriptionService.statusMessage = shouldInsert ? "Inserted and speaking your response." : "Speaking your response."
+                    if !cleanupFailed { self.transcriptionService.pipelineStage = .complete }
                 }
 
-                await MainActor.run {
-                    let voiceAssistantMode = self?.settingsService.settings.voiceAssistantMode ?? false
-                    let insertTextInAssistantMode = self?.settingsService.settings.insertTextInAssistantMode ?? false
-
-                    // Voice Assistant Mode: Speak the response
-                    if voiceAssistantMode {
-                        print("🔊 Voice Assistant Mode: Speaking response...")
-
-                        // Speak using TTS
-                        if let ttsPlugin = PluginManager.shared.ttsPlugin, ttsPlugin.isEnabled {
-                            Task {
-                                do {
-                                    let audioURL = try await ttsPlugin.synthesizeSpeech(text: finalText)
-                                    await MainActor.run {
-                                        ttsPlugin.playAudio(url: audioURL)
-                                        print("🔊 Playing audio response")
-                                    }
-                                } catch {
-                                    print("⚠️ TTS failed: \(error.localizedDescription)")
-                                    // Fallback: insert text if TTS fails
-                                    TextInserter.shared.insertTextAtCursor(finalText)
-                                }
-                            }
-                        } else {
-                            // TTS not enabled, use native speech
-                            let utterance = AVSpeechUtterance(string: finalText)
-                            self?.fallbackSpeechSynthesizer.speak(utterance)
-                        }
-
-                        // Optionally also insert text
-                        if insertTextInAssistantMode {
-                            TextInserter.shared.insertTextAtCursor(finalText)
-                        }
-                    } else {
-                        // Normal Mode: Insert text at cursor
-                        TextInserter.shared.insertTextAtCursor(finalText)
-                    }
-
-                    // Mark pipeline as complete
-                    self?.transcriptionService.pipelineStage = .complete
-
-                    // Auto-hide window and reset to idle after short delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        self?.hideWindow()
-                        self?.transcriptionService.pipelineStage = .idle
-                    }
+                // Leave a readable success state briefly. Errors and manual-paste
+                // states stay visible until the user dismisses the panel.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                    guard let self, self.transcriptionService.pipelineStage == .complete || self.transcriptionService.pipelineStage == .cleanupFallback else { return }
+                    self.hideWindow()
+                    self.transcriptionService.pipelineStage = .idle
                 }
             }
         }
@@ -237,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if floatingWindow == nil {
             // Create floating window
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 520, height: 140),
+                contentRect: NSRect(x: 0, y: 0, width: 560, height: 184),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -262,7 +239,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Set content view
-            let contentView = DictationView()
+            let contentView = DictationView(onToggleRecording: { [weak self] in
+                self?.toggleRecordingFromFloatingWindow()
+            })
                 .environmentObject(audioRecorder)
                 .environmentObject(transcriptionService)
 
@@ -288,6 +267,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Show window WITHOUT stealing focus
         floatingWindow?.orderFront(nil)
         // DO NOT call makeKeyAndOrderFront or NSApp.activate - that steals focus!
+    }
+
+    func toggleRecordingFromFloatingWindow() {
+        if audioRecorder.isRecording {
+            audioRecorder.stopRecording()
+            return
+        }
+
+        guard audioRecorder.hasPermission else {
+            transcriptionService.pipelineStage = .requestingMicrophonePermission
+            transcriptionService.statusMessage = "Waiting for microphone permission…"
+            audioRecorder.requestMicrophonePermission()
+            return
+        }
+
+        startRecordingWithCallback()
     }
 
 @MainActor
@@ -411,8 +406,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func startRecordingWithCallback() {
         print("   startRecordingWithCallback - setting up callback")
 
+        guard audioRecorder.hasPermission else {
+            transcriptionService.pipelineStage = .requestingMicrophonePermission
+            transcriptionService.statusMessage = "Allow microphone access, then try again."
+            audioRecorder.requestMicrophonePermission()
+            return
+        }
+
+        guard transcriptionService.canTranscribe else {
+            transcriptionService.pipelineStage = .loadingModel
+            transcriptionService.statusMessage = "Speech model is still loading. Try again shortly."
+            return
+        }
+
         // Set pipeline stage to recording
+        insertionDestination = TextInserter.shared.captureDestination()
+        transcriptionService.currentText = ""
         transcriptionService.pipelineStage = .recording
+        transcriptionService.statusMessage = "Listening… audio stays on this Mac."
 
         audioRecorder.onRecordingComplete = { [weak self] audioURL in
             print("   🎙️ Recording complete callback triggered")
@@ -421,6 +432,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         print("   startRecordingWithCallback - calling audioRecorder.startRecording()")
         audioRecorder.startRecording()
+        guard audioRecorder.isRecording else {
+            let message = audioRecorder.errorMessage ?? "Could not start microphone recording."
+            transcriptionService.pipelineStage = .error(message)
+            transcriptionService.statusMessage = message
+            return
+        }
         print("   startRecordingWithCallback - calling transcriptionService.startTranscription()")
         transcriptionService.startTranscription()
         print("   startRecordingWithCallback - DONE")

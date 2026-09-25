@@ -7,24 +7,34 @@ import TalkiesInference
 /// Pipeline stages for status indication
 enum PipelineStage: Equatable {
     case idle
+    case loadingModel
+    case requestingMicrophonePermission
     case recording
     case transcribing
     case enhancingOllama
     case enhancingLMStudio
     case cleaningS1Mini
+    case cleanupFallback
     case insertingText
+    case clipboardFallback(String)
+    case noSpeech
     case complete
     case error(String)
 
     var displayText: String {
         switch self {
         case .idle: return "Ready"
+        case .loadingModel: return "Loading speech model..."
+        case .requestingMicrophonePermission: return "Microphone access needed"
         case .recording: return "Recording..."
         case .transcribing: return "Transcribing..."
         case .enhancingOllama: return "Enhancing with Ollama..."
         case .enhancingLMStudio: return "Enhancing with LM Studio..."
         case .cleaningS1Mini: return "Cleaning with S1-mini..."
+        case .cleanupFallback: return "Using the raw transcript"
         case .insertingText: return "Inserting text..."
+        case .clipboardFallback: return "Transcript copied for manual paste"
+        case .noSpeech: return "No speech detected"
         case .complete: return "Complete"
         case .error(let msg): return "Error: \(msg)"
         }
@@ -32,12 +42,13 @@ enum PipelineStage: Equatable {
 
     var color: Color {
         switch self {
-        case .idle: return .green
+        case .idle, .complete: return .green
+        case .loadingModel, .requestingMicrophonePermission: return .orange
         case .recording: return .red
         case .transcribing: return .orange
         case .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini: return .purple
+        case .cleanupFallback, .clipboardFallback, .noSpeech: return .orange
         case .insertingText: return .blue
-        case .complete: return .green
         case .error: return .red
         }
     }
@@ -45,10 +56,15 @@ enum PipelineStage: Equatable {
     var icon: String {
         switch self {
         case .idle: return "checkmark.circle.fill"
+        case .loadingModel: return "arrow.down.circle.fill"
+        case .requestingMicrophonePermission: return "mic.badge.ellipsis"
         case .recording: return "mic.fill"
         case .transcribing: return "waveform"
         case .enhancingOllama, .enhancingLMStudio, .cleaningS1Mini: return "sparkles"
+        case .cleanupFallback: return "text.quote"
         case .insertingText: return "text.cursor"
+        case .clipboardFallback: return "doc.on.clipboard"
+        case .noSpeech: return "waveform"
         case .complete: return "checkmark.circle.fill"
         case .error: return "exclamationmark.triangle.fill"
         }
@@ -71,6 +87,10 @@ class TranscriptionService: ObservableObject {
     private var isInitialized = false
 
     var onTranscriptionComplete: ((String) -> Void)?
+
+    var canTranscribe: Bool {
+        isInitialized && recognizer.isReady
+    }
     
     // Statistics
     var totalWords: Int {
@@ -95,6 +115,7 @@ class TranscriptionService: ObservableObject {
     }
 
     private func initializeWhisperKit() async {
+        pipelineStage = .loadingModel
         statusMessage = "Checking for Whisper model..."
 
         do {
@@ -106,6 +127,7 @@ class TranscriptionService: ObservableObject {
             isInitialized = true
             isDownloadingModel = false
             statusMessage = "Ready to transcribe"
+            pipelineStage = .idle
             error = nil
             print("✅ WhisperKit initialized successfully")
 
@@ -113,6 +135,7 @@ class TranscriptionService: ObservableObject {
             isDownloadingModel = false
             self.error = "Failed to initialize: \(error.localizedDescription)"
             statusMessage = "Initialization failed"
+            pipelineStage = .error("Speech model failed to load")
             print("❌ WhisperKit initialization error: \(error)")
         }
     }
@@ -125,6 +148,7 @@ class TranscriptionService: ObservableObject {
         guard isInitialized, recognizer.isReady else {
             print("         ❌ Local speech recognizer not initialized yet")
             error = "Speech recognizer not initialized yet. Please wait..."
+            pipelineStage = .error("Speech model is still loading")
             return
         }
 
@@ -145,6 +169,7 @@ class TranscriptionService: ObservableObject {
             isTranscribing = true
             statusMessage = "Transcribing audio..."
             error = nil
+            pipelineStage = .transcribing
         }
 
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
@@ -166,6 +191,12 @@ class TranscriptionService: ObservableObject {
                 let fullText = self.segments.map { $0.text }.joined(separator: " ")
                 self.currentText = fullText
 
+                guard !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.pipelineStage = .noSpeech
+                    self.statusMessage = "No speech was detected"
+                    return
+                }
+
                 // Trigger callback with transcribed text
                 self.onTranscriptionComplete?(fullText)
             }
@@ -175,6 +206,7 @@ class TranscriptionService: ObservableObject {
                 self.error = "Transcription failed: \(error.localizedDescription)"
                 self.statusMessage = "Transcription failed"
                 self.isTranscribing = false
+                self.pipelineStage = .error("Transcription failed")
             }
         }
     }

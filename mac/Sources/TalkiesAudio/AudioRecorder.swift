@@ -1,4 +1,3 @@
-import Combine
 import AVFoundation
 import Combine
 import os.lock
@@ -7,6 +6,10 @@ import CoreAudio
 // Thread-safe handler for audio tap - completely separate from MainActor
 final class AudioTapHandler: @unchecked Sendable {
     private var _level: Float = 0.0
+    private let historyCapacity = 512
+    private var _waveformHistory = Array(repeating: Float.zero, count: 512)
+    private var nextHistoryIndex = 0
+    private var historyCount = 0
     private let lock = OSAllocatedUnfairLock()
     let audioFile: AVAudioFile?
 
@@ -19,6 +22,41 @@ final class AudioTapHandler: @unchecked Sendable {
         set { lock.withLock { _level = newValue } }
     }
 
+    func waveformHistory(count: Int) -> [Float] {
+        guard count > 0 else { return [] }
+
+        return lock.withLock {
+            let available = min(count, historyCount)
+            let padding = count - available
+            let firstIndex = (nextHistoryIndex - available + historyCapacity) % historyCapacity
+            var result = Array(repeating: Float.zero, count: count)
+
+            for offset in 0..<available {
+                result[padding + offset] = _waveformHistory[(firstIndex + offset) % historyCapacity]
+            }
+
+            return result
+        }
+    }
+
+    func resetWaveformHistory() {
+        lock.withLock {
+            _level = 0
+            _waveformHistory = Array(repeating: .zero, count: historyCapacity)
+            nextHistoryIndex = 0
+            historyCount = 0
+        }
+    }
+
+    private func recordLevel(_ value: Float) {
+        lock.withLock {
+            _level = value
+            _waveformHistory[nextHistoryIndex] = value
+            nextHistoryIndex = (nextHistoryIndex + 1) % historyCapacity
+            historyCount = min(historyCount + 1, historyCapacity)
+        }
+    }
+
     func handleTap(buffer: AVAudioPCMBuffer, time: AVAudioTime) {
         // Write buffer to file
         try? audioFile?.write(from: buffer)
@@ -26,7 +64,7 @@ final class AudioTapHandler: @unchecked Sendable {
         // Calculate audio level
         let frameCount = Int(buffer.frameLength)
         guard frameCount > 0, let channelData = buffer.floatChannelData?[0] else {
-            level = 0
+            recordLevel(0)
             return
         }
 
@@ -38,13 +76,13 @@ final class AudioTapHandler: @unchecked Sendable {
 
         let rms = sqrt(sumOfSquares / Float(frameCount))
         guard rms.isFinite else {
-            level = 0
+            recordLevel(0)
             return
         }
 
         let normalizedLevel = min(max(20 * log10(rms + 0.0001), -60), 0) / 60
 
-        level = normalizedLevel + 1.0
+        recordLevel(normalizedLevel + 1.0)
     }
 
     // Install tap from a nonisolated context to avoid MainActor closure inference
@@ -61,7 +99,9 @@ public class AudioRecorder: NSObject, ObservableObject {
     @Published public var isPaused = false
     @Published public var duration: TimeInterval = 0
     @Published public var audioLevel: Float = 0.0
+    @Published public var waveformSamples = Array(repeating: Float.zero, count: 160)
     @Published public var hasPermission = false
+    @Published public var errorMessage: String?
 
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
@@ -105,8 +145,10 @@ public class AudioRecorder: NSObject, ObservableObject {
     
     public func startRecording(deviceID: String? = nil) {
         print("      AudioRecorder.startRecording() - START")
+        errorMessage = nil
         guard hasPermission else {
             print("      ❌ No microphone permission")
+            errorMessage = "Microphone permission is required to record."
             requestMicrophonePermission()
             return
         }
@@ -131,6 +173,7 @@ public class AudioRecorder: NSObject, ObservableObject {
 
             guard let inputNode = inputNode,
                   let audioEngine = audioEngine else {
+                errorMessage = "No microphone input is available."
                 return
             }
             
@@ -145,6 +188,7 @@ public class AudioRecorder: NSObject, ObservableObject {
             // DO NOT connect to mainMixerNode to avoid feedback loop
             // Use a nonisolated static method to install the tap, avoiding MainActor closure inference
             tapHandler = AudioTapHandler(audioFile: audioFile)
+            tapHandler?.resetWaveformHistory()
             AudioTapHandler.installTap(on: inputNode, format: inputNode.outputFormat(forBus: 0), handler: tapHandler!)
             
             print("      Starting audio engine...")
@@ -164,6 +208,7 @@ public class AudioRecorder: NSObject, ObservableObject {
 
         } catch {
             print("      ❌ Failed to start recording: \(error)")
+            errorMessage = "Could not start recording: \(error.localizedDescription)"
         }
     }
     
@@ -235,11 +280,11 @@ public class AudioRecorder: NSObject, ObservableObject {
     
     private func startAudioLevelTimer() {
         guard let handler = tapHandler else { return }
-        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            // Read from thread-safe handler and update published property on main thread
             Task { @MainActor in
                 self.audioLevel = handler.level
+                self.waveformSamples = handler.waveformHistory(count: 160)
             }
         }
     }

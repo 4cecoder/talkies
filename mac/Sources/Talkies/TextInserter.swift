@@ -2,6 +2,17 @@ import Cocoa
 @preconcurrency import ApplicationServices
 import TalkiesCore
 
+struct TextInsertionDestination {
+    let processIdentifier: pid_t
+    let applicationName: String
+}
+
+enum TextInsertionResult {
+    case inserted(applicationName: String)
+    case copiedForManualPaste(reason: String)
+    case failed(reason: String)
+}
+
 @MainActor
 class TextInserter {
     static let shared = TextInserter()
@@ -16,77 +27,147 @@ class TextInserter {
 
     /// Delay before restoring previous clipboard contents (200ms)
     /// This gives the paste operation time to complete before we modify the clipboard
-    private static let clipboardRestoreDelay: TimeInterval = 0.2
+    private static let clipboardRestoreDelay: Duration = .milliseconds(450)
 
     // MARK: - State for handling rapid successive operations
 
     /// Stores every original clipboard item and representation before a paste sequence.
     private var originalClipboardContent: ClipboardSnapshot?
 
-    /// Queue to serialize paste operations and prevent race conditions
-    private var operationQueue: [(text: String, id: UUID)] = []
+    private struct PendingOperation {
+        let text: String
+        let destination: TextInsertionDestination?
+        let continuation: CheckedContinuation<TextInsertionResult, Never>
+    }
+
+    private var operationQueue: [PendingOperation] = []
+    private var activeOperation: PendingOperation?
 
     /// Whether an operation is currently being executed
     private var isExecutingOperation = false
 
     private init() {}
 
-    /// Insert text at the current cursor position using clipboard + paste
-    /// This is more reliable than character-by-character typing which can cause reordering issues
-    /// Handles rapid successive calls by queueing operations to prevent clipboard race conditions
-    func insertTextAtCursor(_ text: String) {
-        let pasteboard = NSPasteboard.general
-
-        // Capture original clipboard only on first call in a sequence
-        if operationQueue.isEmpty && !isExecutingOperation {
-            originalClipboardContent = Self.snapshot(from: pasteboard)
+    func captureDestination() -> TextInsertionDestination? {
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              application.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            return nil
         }
 
-        // Enqueue the operation
-        let operationId = UUID()
-        operationQueue.append((text: text, id: operationId))
-
-        // Start processing if not already running
-        processNextOperation()
+        return TextInsertionDestination(
+            processIdentifier: application.processIdentifier,
+            applicationName: application.localizedName ?? "the previous app"
+        )
     }
 
-    /// Process the next operation in the queue serially
+    /// Paste into the app focused when dictation began; keep a manual-paste path
+    /// available whenever the destination or system permissions prevent that.
+    func insertTextAtCursor(_ text: String, into destination: TextInsertionDestination?) async -> TextInsertionResult {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failed(reason: "There is no transcript to insert.")
+        }
+
+        return await withCheckedContinuation { continuation in
+            let pasteboard = NSPasteboard.general
+            if operationQueue.isEmpty && !isExecutingOperation {
+                originalClipboardContent = Self.snapshot(from: pasteboard)
+            }
+            operationQueue.append(PendingOperation(text: text, destination: destination, continuation: continuation))
+            processNextOperation()
+        }
+    }
+
     private func processNextOperation() {
-        // Don't start a new operation if one is already running or queue is empty
         guard !isExecutingOperation, !operationQueue.isEmpty else { return }
 
         isExecutingOperation = true
         let operation = operationQueue.removeFirst()
+        activeOperation = operation
         let pasteboard = NSPasteboard.general
 
-        // Copy text to clipboard
         pasteboard.clearContents()
-        let success = pasteboard.setString(operation.text, forType: .string)
-        guard success else {
+        guard pasteboard.setString(operation.text, forType: .string) else {
             print("⚠️ TextInserter: Could not stage text on the clipboard")
-            finishOperation(using: pasteboard)
+            finishOperation(
+                using: pasteboard,
+                result: .failed(reason: "Talkies could not copy the transcript."),
+                preserveTranscriptOnClipboard: false
+            )
             return
         }
 
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(Self.clipboardReadyDelay))
-            let didPaste = await Self.simulatePaste()
-            if !didPaste {
-                print("⚠️ TextInserter: Paste command failed; transcript remains visible in Talkies for manual copying")
+
+            guard let destination = operation.destination,
+                  let application = NSRunningApplication(processIdentifier: destination.processIdentifier),
+                  !application.isTerminated else {
+                finishOperation(
+                    using: pasteboard,
+                    result: .copiedForManualPaste(reason: "The original app is unavailable. Press ⌘V to paste."),
+                    preserveTranscriptOnClipboard: true
+                )
+                return
             }
-            try? await Task.sleep(for: .seconds(Self.clipboardRestoreDelay))
-            self.finishOperation(using: pasteboard)
+
+            guard AXIsProcessTrusted() else {
+                finishOperation(
+                    using: pasteboard,
+                    result: .copiedForManualPaste(reason: "Allow Accessibility access, then press ⌘V to paste."),
+                    preserveTranscriptOnClipboard: true
+                )
+                return
+            }
+
+            if !application.isActive && !application.activate(options: []) {
+                finishOperation(
+                    using: pasteboard,
+                    result: .copiedForManualPaste(reason: "Could not return to \(destination.applicationName). Press ⌘V to paste."),
+                    preserveTranscriptOnClipboard: true
+                )
+                return
+            }
+
+            try? await Task.sleep(for: .milliseconds(100))
+            guard await Self.simulatePaste() else {
+                finishOperation(
+                    using: pasteboard,
+                    result: .copiedForManualPaste(reason: "Paste was blocked. The transcript is on your clipboard; press ⌘V."),
+                    preserveTranscriptOnClipboard: true
+                )
+                return
+            }
+
+            try? await Task.sleep(for: Self.clipboardRestoreDelay)
+            finishOperation(
+                using: pasteboard,
+                result: .inserted(applicationName: destination.applicationName),
+                preserveTranscriptOnClipboard: false
+            )
         }
     }
 
-    private func finishOperation(using pasteboard: NSPasteboard) {
+    private func finishOperation(
+        using pasteboard: NSPasteboard,
+        result: TextInsertionResult,
+        preserveTranscriptOnClipboard: Bool
+    ) {
         isExecutingOperation = false
+        let finishedOperation = activeOperation
+        activeOperation = nil
+
         if !operationQueue.isEmpty {
             processNextOperation()
         } else {
-            Self.restore(originalClipboardContent, to: pasteboard)
-            originalClipboardContent = nil
+            if preserveTranscriptOnClipboard {
+                originalClipboardContent = nil
+            } else {
+                Self.restore(originalClipboardContent, to: pasteboard)
+                originalClipboardContent = nil
+            }
         }
+
+        finishedOperation?.continuation.resume(returning: result)
     }
 
     private static func snapshot(from pasteboard: NSPasteboard) -> ClipboardSnapshot {
@@ -117,25 +198,19 @@ class TextInserter {
         }
     }
 
-    /// Simulate Cmd+V without blocking the main thread.
+    /// Send Cmd+V after returning focus to the original target app.
     private static func simulatePaste() async -> Bool {
-        await withCheckedContinuation { continuation in
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            task.arguments = ["-e", "tell application \"System Events\" to keystroke \"v\" using command down"]
-            task.standardOutput = FileHandle.nullDevice
-            task.standardError = FileHandle.nullDevice
-            task.terminationHandler = { process in
-                continuation.resume(returning: process.terminationStatus == 0)
-            }
-
-            do {
-                try task.run()
-            } catch {
-                print("⚠️ TextInserter: Failed to launch paste command: \(error.localizedDescription)")
-                continuation.resume(returning: false)
-            }
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: Self.vKeyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: Self.vKeyCode, keyDown: false) else {
+            return false
         }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+        return true
     }
 
     /// Legacy character-by-character typing (kept as fallback, may have ordering issues)

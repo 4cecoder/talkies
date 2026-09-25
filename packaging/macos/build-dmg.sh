@@ -188,7 +188,7 @@ cat > "${APP_CONTENTS}/Info.plist" <<EOF
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIconFile</key>
-    <string>Talkies</string>
+    <string>Talkies.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
