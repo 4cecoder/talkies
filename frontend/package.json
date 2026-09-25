@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun --bun next dev",
     "build": "bun --bun next build",
+    "test:pages": "node scripts/verify-pages-export.mjs out",
     "analyze": "ANALYZE=true bun --bun next build",
     "start": "bunx serve@latest out",
     "lint": "eslint app/page.tsx app/layout.tsx app/components/sections/Header.tsx app/components/sections/FAQ.tsx app/components/icons.ts",

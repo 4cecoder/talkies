@@ -199,9 +199,19 @@ jobs:
         working-directory: frontend
         run: bun run lint
 
-      - name: Build static export without backend secrets
+      - name: Build GitHub Pages export without backend secrets
         working-directory: frontend
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_BASE_PATH: /talkies
+          NEXT_PUBLIC_SITE_URL: https://4cecoder.github.io/talkies
         run: bun run build
+
+      - name: Verify published routes and assets
+        working-directory: frontend
+        run: |
+          touch out/.nojekyll
+          bun run test:pages
 
   linux:
     name: Linux Build & Test
