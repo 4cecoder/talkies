@@ -25,6 +25,8 @@ public class GoldenExportTests
 
     private sealed class ExportGoldenFixture
     {
+        public ExportGoldenFixture() { }
+
         public List<TranscriptSegment> Segments { get; init; } = [];
         public string Txt { get; init; } = string.Empty;
         public string Vtt { get; init; } = string.Empty;
