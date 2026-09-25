@@ -11,7 +11,11 @@ $expectedSha256 = '56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2
 $toolRoot = Join-Path ([System.IO.Path]::GetTempPath()) "talkies-nsis-$version"
 $archivePath = Join-Path ([System.IO.Path]::GetTempPath()) $archiveName
 
-Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
+& curl.exe --fail --location --retry 3 --retry-all-errors --output $archivePath $archiveUrl
+if ($LASTEXITCODE -ne 0) {
+    throw "NSIS download failed (curl exit code $LASTEXITCODE)."
+}
+
 $actualSha256 = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualSha256 -ne $expectedSha256) {
     throw "NSIS archive SHA-256 mismatch. Expected $expectedSha256; got $actualSha256."
