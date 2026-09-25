@@ -36,6 +36,7 @@ MIN_MACOS_VERSION="15.0"
 # Paths (relative to script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../mac" && pwd)"
+REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 DMG_OUTPUT_DIR="${SCRIPT_DIR}"
 
@@ -186,6 +187,8 @@ cat > "${APP_CONTENTS}/Info.plist" <<EOF
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
     <string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>Talkies</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -212,17 +215,10 @@ log_success "Created Info.plist"
 # Add Application Icon (if available)
 ################################################################################
 
-ICON_SOURCE="${PROJECT_ROOT}/Resources/AppIcon.icns"
-if [ -f "${ICON_SOURCE}" ]; then
-    log_info "Adding application icon..."
-    cp "${ICON_SOURCE}" "${APP_RESOURCES}/AppIcon.icns"
-
-    # Update Info.plist to reference icon
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon.icns" "${APP_CONTENTS}/Info.plist" 2>/dev/null || true
-    log_success "Added application icon"
-else
-    log_warning "No icon found at ${ICON_SOURCE}, skipping"
-fi
+ICON_SOURCE="${REPOSITORY_ROOT}/branding/icons/talkies-app-icon.icns"
+log_info "Adding application icon..."
+cp "${ICON_SOURCE}" "${APP_RESOURCES}/Talkies.icns"
+log_success "Added application icon"
 
 ################################################################################
 # Create Entitlements (for signing)

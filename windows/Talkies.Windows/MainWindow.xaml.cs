@@ -92,7 +92,7 @@ namespace Talkies.Windows
             {
                 Visible = true,
                 Text = "Talkies",
-                Icon = System.Drawing.SystemIcons.Application
+                Icon = new System.Drawing.Icon(System.IO.Path.Combine(AppContext.BaseDirectory, "Resources", "talkies-app-icon.ico"))
             };
 
             var menu = new Forms.ContextMenuStrip();

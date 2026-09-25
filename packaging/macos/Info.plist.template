@@ -10,6 +10,8 @@
     <string>Talkies</string>
     <key>CFBundleDisplayName</key>
     <string>Talkies</string>
+    <key>CFBundleIconFile</key>
+    <string>Talkies</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

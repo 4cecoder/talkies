@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>Resources\talkies-app-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.4.0" />
@@ -20,5 +21,6 @@
   </ItemGroup>
    <ItemGroup>
      <EmbeddedResource Include="Resources\Prompts\*.txt" />
+     <Content Include="Resources\talkies-app-icon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
    </ItemGroup>
 </Project>

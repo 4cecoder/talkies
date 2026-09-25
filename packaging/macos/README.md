@@ -94,15 +94,7 @@ VERSION=1.2.3 OUTPUT_DIR="$PWD/packaging/macos/build" ./packaging/macos/package-
 
 This creates `Talkies.app` and `Talkies-macOS-1.2.3.zip` in the output directory. The bundle includes the linked `llama.framework`, its loader rpath, and the microphone and Apple Events usage descriptions. Do not package the Swift executable on its own.
 
-#### 2. Add Application Icon (Optional)
-
-```bash
-# If you have an .icns file
-cp path/to/AppIcon.icns "Talkies.app/Contents/Resources/AppIcon.icns"
-
-# Update Info.plist to reference it
-# Add: <key>CFBundleIconFile</key><string>AppIcon.icns</string>
-```
+The bundle includes the Talkies icon from `branding/icons/talkies-app-icon.icns`.
 
 #### 3. Create DMG with create-dmg
 

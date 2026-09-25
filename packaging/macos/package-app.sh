@@ -26,9 +26,10 @@ if [[ ! -d "${LLAMA_FRAMEWORK}" ]]; then
 fi
 
 rm -rf "${APP_BUNDLE}"
-mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Frameworks"
+mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Frameworks" "${APP_BUNDLE}/Contents/Resources"
 ditto "${EXECUTABLE}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 ditto "${LLAMA_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/llama.framework"
+ditto "${REPOSITORY_ROOT}/branding/icons/talkies-app-icon.icns" "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
 ditto "${SCRIPT_DIR}/Info.plist.template" "${APP_BUNDLE}/Contents/Info.plist"
 
 PLIST="${APP_BUNDLE}/Contents/Info.plist"
@@ -44,6 +45,7 @@ plutil -lint "${PLIST}"
 otool -L "${EXECUTABLE_PATH}" | grep -Fq '@rpath/llama.framework/Versions/Current/llama'
 otool -l "${EXECUTABLE_PATH}" | grep -Fq '@loader_path/../Frameworks'
 test -x "${EXECUTABLE_PATH}"
+test -s "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
 test -f "${APP_BUNDLE}/Contents/Frameworks/llama.framework/Versions/Current/llama"
 
 mkdir -p "${OUTPUT_DIR}"

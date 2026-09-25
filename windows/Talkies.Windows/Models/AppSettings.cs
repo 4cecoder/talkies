@@ -35,10 +35,6 @@ namespace Talkies.Windows.Models
         public AdvancedTtsSettings AdvancedTts { get; set; } = new();
         public SentimentSettings Sentiment { get; set; } = new();
 
-        // Crash reporting settings
-        public bool CrashReportingEnabled { get; set; } = false;
-        public string CrashReportingEndpoint { get; set; } = string.Empty;
-        public bool CrashReportingPrivacyAccepted { get; set; } = false;
         public bool LmStudioAvailabilityChecked { get; set; } = false;
         public bool OllamaAvailabilityChecked { get; set; } = false;
 
