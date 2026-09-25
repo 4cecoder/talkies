@@ -38,6 +38,13 @@ namespace Talkies.Windows.ViewModels
         public ObservableCollection<string> EnhancementModes { get; } = new();
         public ObservableCollection<CustomPrompt> CustomPrompts { get; } = new();
         public ObservableCollection<string> ErrorMessages { get; } = new();
+        public ObservableCollection<string> ExportFormats { get; } = new(new[] { "VTT", "SRT", "TXT" });
+        public ObservableCollection<string> RecentExports { get; } = new();
+        public string DefaultExportFormat { get => _settings.Export.DefaultFormat; set { _settings.Export.DefaultFormat = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
+        public string ExportDirectory { get => _settings.Export.ExportDirectory; set { _settings.Export.ExportDirectory = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
+        public string FilenameTemplate { get => _settings.Export.FilenameTemplate; set { _settings.Export.FilenameTemplate = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
+        public bool IncludeExportTimestamps { get => _settings.Export.IncludeTimestamps; set { _settings.Export.IncludeTimestamps = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
+        public bool AutoExport { get => _settings.Export.AutoExport; set { _settings.Export.AutoExport = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
 
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
@@ -232,6 +239,8 @@ namespace Talkies.Windows.ViewModels
         public ICommand ExportTxtCommand { get; }
         public ICommand SavePromptCommand { get; }
         public ICommand ShowPluginsCommand { get; }
+        public ICommand BrowseExportDirectoryCommand { get; }
+        public ICommand ExportDefaultCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -260,6 +269,8 @@ namespace Talkies.Windows.ViewModels
             FetchModelsCommand = new AsyncRelayCommand(_ => FetchLlmModelsAsync());
             ExportSrtCommand = new RelayCommand(_ => ExportSrt(), _ => CanSave);
             ExportTxtCommand = new RelayCommand(_ => ExportTxt(), _ => CanSave);
+            BrowseExportDirectoryCommand = new RelayCommand(_ => BrowseExportDirectory());
+            ExportDefaultCommand = new RelayCommand(_ => ExportConfiguredFormat(), _ => CanSave);
             SavePromptCommand = new RelayCommand(_ => SaveCustomPrompt());
             ShowPluginsCommand = new RelayCommand(_ => ShowPluginsWindow());
 
@@ -751,6 +762,12 @@ namespace Talkies.Windows.ViewModels
                     OnPropertyChanged(nameof(WordsPerMinute));
                 });
 
+                if (AutoExport && finalSegments.Count > 0)
+                {
+                    try { dispatcher.Invoke(() => ExportToConfiguredPath(DefaultExportFormat, finalSegments)); }
+                    catch (Exception ex) { Logger.Error($"Automatic transcript export failed: {ex.Message}"); }
+                }
+
                 // Log with post-processed stats
                 var totalWords = finalSegments.SelectMany(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Count();
                 var durationSeconds = finalSegments.LastOrDefault()?.End ?? 0;
@@ -886,9 +903,8 @@ namespace Talkies.Windows.ViewModels
                 var app = System.Windows.Application.Current;
                 if (app == null || app.MainWindow == null)
                 {
-                    var autoName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt";
-                    var autoPath = Path.Combine(AppContext.BaseDirectory, autoName);
-                    File.WriteAllText(autoPath, _lastVtt);
+                    var autoPath = Path.Combine(GetExportDirectory(), BuildExportFileName("VTT"));
+                    RecordExport(autoPath, _lastVtt);
                     return;
                 }
 
@@ -896,12 +912,13 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "WebVTT (*.vtt)|*.vtt|All Files (*.*)|*.*",
                     DefaultExt = "vtt",
-                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.vtt"
+                    InitialDirectory = GetExportDirectory(),
+                    FileName = BuildExportFileName("VTT")
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
-                    File.WriteAllText(dialog.FileName, _lastVtt);
+                    RecordExport(dialog.FileName, _lastVtt);
                 }
             }
             catch (Exception ex)
@@ -920,13 +937,14 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "SubRip (*.srt)|*.srt|All Files (*.*)|*.*",
                     DefaultExt = "srt",
-                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.srt"
+                    InitialDirectory = GetExportDirectory(),
+                    FileName = BuildExportFileName("SRT")
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
                     var content = TranscriptExporter.ExportToSrt(Segments);
-                    TranscriptExporter.SaveToFile(dialog.FileName, content);
+                    RecordExport(dialog.FileName, content);
                 }
             }
             catch (Exception ex)
@@ -945,19 +963,77 @@ namespace Talkies.Windows.ViewModels
                 {
                     Filter = "Text (*.txt)|*.txt|All Files (*.*)|*.*",
                     DefaultExt = "txt",
-                    FileName = $"talkies_{DateTime.UtcNow:yyyyMMdd_HHmmss}.txt"
+                    InitialDirectory = GetExportDirectory(),
+                    FileName = BuildExportFileName("TXT")
                 };
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
                 {
-                    var content = TranscriptExporter.ExportToTxt(Segments);
-                    TranscriptExporter.SaveToFile(dialog.FileName, content);
+                    var content = TranscriptExporter.ExportToTxt(Segments, IncludeExportTimestamps);
+                    RecordExport(dialog.FileName, content);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error($"Failed to export TXT: {ex.Message}");
             }
+        }
+
+        private void ExportConfiguredFormat()
+        {
+            if (Segments.Count == 0) return;
+            switch (DefaultExportFormat.ToUpperInvariant())
+            {
+                case "SRT": ExportSrt(); break;
+                case "TXT": ExportTxt(); break;
+                default: SaveVtt(); break;
+            }
+        }
+
+        private void BrowseExportDirectory()
+        {
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog { SelectedPath = GetExportDirectory(), ShowNewFolderButton = true };
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) ExportDirectory = dialog.SelectedPath;
+        }
+
+        private string GetExportDirectory()
+        {
+            var directory = string.IsNullOrWhiteSpace(ExportDirectory) ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Talkies") : ExportDirectory;
+            Directory.CreateDirectory(directory);
+            return directory;
+        }
+
+        private string BuildExportFileName(string format)
+        {
+            var duration = Segments.LastOrDefault()?.End ?? 0;
+            return TranscriptExporter.BuildFileName(FilenameTemplate, format.ToLowerInvariant(), DateTime.Now, duration, SelectedModel);
+        }
+
+        private void ExportToConfiguredPath(string format, IEnumerable<TranscriptSegment> segments)
+        {
+            var materialized = segments.ToList();
+            var normalizedFormat = format.ToUpperInvariant();
+            var extension = normalizedFormat is "SRT" or "TXT" ? normalizedFormat.ToLowerInvariant() : "vtt";
+            var content = normalizedFormat switch
+            {
+                "SRT" => TranscriptExporter.ExportToSrt(materialized),
+                "TXT" => TranscriptExporter.ExportToTxt(materialized, IncludeExportTimestamps),
+                _ => TranscriptExporter.ExportToVtt(materialized)
+            };
+            var file = Path.Combine(GetExportDirectory(), TranscriptExporter.BuildFileName(FilenameTemplate, extension, DateTime.Now, materialized.LastOrDefault()?.End ?? 0, SelectedModel));
+            RecordExport(file, content);
+        }
+
+        private void RecordExport(string path, string content)
+        {
+            TranscriptExporter.SaveToFile(path, content);
+            _settings.Export.RecentExports ??= new List<string>();
+            _settings.Export.RecentExports.RemoveAll(existing => string.Equals(existing, path, StringComparison.OrdinalIgnoreCase));
+            _settings.Export.RecentExports.Insert(0, path);
+            if (_settings.Export.RecentExports.Count > 10) _settings.Export.RecentExports.RemoveRange(10, _settings.Export.RecentExports.Count - 10);
+            RecentExports.Clear();
+            foreach (var recent in _settings.Export.RecentExports) RecentExports.Add(recent);
+            SaveSettings();
         }
 
         private void Clear()
@@ -999,6 +1075,13 @@ namespace Talkies.Windows.ViewModels
         {
             _loadingSettings = true;
             _settings = _settingsService.Load();
+            _settings.Export ??= new ExportPreferences();
+            _settings.Export.RecentExports ??= new List<string>();
+            if (!ExportFormats.Contains(_settings.Export.DefaultFormat?.ToUpperInvariant() ?? "")) _settings.Export.DefaultFormat = "VTT";
+            if (string.IsNullOrWhiteSpace(_settings.Export.ExportDirectory)) _settings.Export.ExportDirectory = new ExportPreferences().ExportDirectory;
+            if (string.IsNullOrWhiteSpace(_settings.Export.FilenameTemplate)) _settings.Export.FilenameTemplate = "{date}_{time}";
+            RecentExports.Clear();
+            foreach (var path in _settings.Export.RecentExports.Take(10)) RecentExports.Add(path);
             SelectedModel = _settings.Model;
             SelectedLanguage = _settings.Language;
             _settings.PersonalVocabulary ??= new List<string>();
@@ -1104,6 +1187,11 @@ namespace Talkies.Windows.ViewModels
                 _settings.Sentiment.Model = sentiment.Model;
             }
             _settingsService.Save(_settings);
+        }
+
+        private void SaveSettingsIfReady()
+        {
+            if (!_loadingSettings && _settings != null) SaveSettings();
         }
 
         private void DetectBackend()
