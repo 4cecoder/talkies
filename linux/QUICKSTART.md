@@ -145,7 +145,7 @@ zig-out/bin/talkies daemon 2>&1 | grep -i vulkan
 - [ ] Test end-to-end recording workflow
 - [ ] Customize overlay appearance (colors, size)
 - [ ] Add custom prompts for LLM enhancement
-- [ ] Configure export formats (SRT, VTT, TXT)
+- [ ] Implement transcript file export (TXT, WebVTT, SRT) before exposing format settings
 
 ## Files You Care About
 

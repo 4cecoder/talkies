@@ -17,7 +17,6 @@ pub const Config = struct {
 
     // Output settings
     auto_paste: bool = true,
-    export_format: []const u8 = "txt",
     paste_keybind: []const u8 = "ctrl+v", // Keybind for pasting (xdotool format)
 
     // Platform settings
@@ -41,7 +40,6 @@ pub const Config = struct {
     model_owned: bool = false,
     language_owned: bool = false,
     vocabulary_prompt_owned: bool = false,
-    export_format_owned: bool = false,
     paste_keybind_owned: bool = false,
     platform_owned: bool = false,
     yap_llm_model_owned: bool = false,
@@ -66,9 +64,6 @@ pub const Config = struct {
         }
         if (self.vocabulary_prompt_owned) {
             self.allocator.free(self.vocabulary_prompt);
-        }
-        if (self.export_format_owned) {
-            self.allocator.free(self.export_format);
         }
         if (self.paste_keybind_owned) {
             self.allocator.free(self.paste_keybind);
@@ -132,7 +127,6 @@ pub const Config = struct {
             \\
             \\[output]
             \\auto_paste = true
-            \\export_format = "txt"
             \\# Paste keybind in xdotool format
             \\# Common options:
             \\#   "ctrl+v"        - Standard (Ctrl+V)
@@ -276,14 +270,6 @@ pub const Config = struct {
         } else if (std.mem.eql(u8, section, "output")) {
             if (std.mem.eql(u8, key, "auto_paste")) {
                 self.auto_paste = try parseBoolValue(value_raw);
-            } else if (std.mem.eql(u8, key, "export_format")) {
-                const value = try parseStringValue(self.allocator, value_raw);
-                defer self.allocator.free(value);
-                if (self.export_format_owned) {
-                    self.allocator.free(self.export_format);
-                }
-                self.export_format = try self.allocator.dupe(u8, value);
-                self.export_format_owned = true;
             } else if (std.mem.eql(u8, key, "paste_keybind")) {
                 const value = try parseStringValue(self.allocator, value_raw);
                 defer self.allocator.free(value);
@@ -367,8 +353,6 @@ pub const Config = struct {
         defer self.allocator.free(language);
         const vocabulary_prompt = try escapeTomlString(self.allocator, self.vocabulary_prompt);
         defer self.allocator.free(vocabulary_prompt);
-        const export_format = try escapeTomlString(self.allocator, self.export_format);
-        defer self.allocator.free(export_format);
         const paste_keybind = try escapeTomlString(self.allocator, self.paste_keybind);
         defer self.allocator.free(paste_keybind);
         const platform = try escapeTomlString(self.allocator, self.platform);
@@ -401,7 +385,6 @@ pub const Config = struct {
             \\
             \\[output]
             \\auto_paste = {s}
-            \\export_format = "{s}"
             \\paste_keybind = "{s}"
             \\
             \\[platform]
@@ -426,7 +409,6 @@ pub const Config = struct {
                 vocabulary_prompt,
                 if (self.s1_cleanup_enabled) "true" else "false",
                 if (self.auto_paste) "true" else "false",
-                export_format,
                 paste_keybind,
                 platform,
                 if (self.yap_mode_enabled) "true" else "false",
@@ -463,24 +445,6 @@ pub const Config = struct {
             self.model_owned = false;
         }
 
-        // Validate export format
-        const valid_formats = [_][]const u8{ "txt", "srt", "vtt" };
-        var valid_format = false;
-        for (valid_formats) |vf| {
-            if (std.mem.eql(u8, self.export_format, vf)) {
-                valid_format = true;
-                break;
-            }
-        }
-        if (!valid_format) {
-            utils.log("Warning: Invalid export_format '{s}', using 'txt'", .{self.export_format});
-            if (self.export_format_owned) {
-                self.allocator.free(self.export_format);
-            }
-            self.export_format = "txt";
-            self.export_format_owned = false;
-        }
-
         // Validate threads (1-16)
         if (self.threads < 1 or self.threads > 16) {
             utils.log("Warning: Invalid threads {d}, using 4", .{self.threads});
@@ -498,7 +462,6 @@ pub const Config = struct {
         std.debug.print("  Local recognition hints: {s}\n", .{if (self.vocabulary_prompt.len > 0) self.vocabulary_prompt else "(none)"});
         std.debug.print("  S1-mini cleanup: {}\n", .{self.s1_cleanup_enabled});
         std.debug.print("  Auto-paste: {}\n", .{self.auto_paste});
-        std.debug.print("  Export format: {s}\n", .{self.export_format});
         std.debug.print("  Platform mode: {s}\n", .{self.platform});
     }
 
@@ -696,7 +659,6 @@ test "parse toml content" {
     try std.testing.expectEqualStrings("Talkies, WhisperKit, S1-mini", cfg.vocabulary_prompt);
     try std.testing.expect(!cfg.s1_cleanup_enabled);
     try std.testing.expect(cfg.auto_paste == false);
-    try std.testing.expectEqualStrings("srt", cfg.export_format);
 }
 
 test "validate config" {

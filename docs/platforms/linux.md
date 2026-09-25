@@ -185,8 +185,11 @@ vocabulary_prompt = "Talkies, WhisperKit, S1-mini" # Optional local recognition 
 
 [output]
 auto_paste = true     # true = paste at cursor, false = copy to clipboard
-export_format = "txt" # Options: txt, srt, vtt
 ```
+
+Linux currently inserts the transcript at the cursor or copies it to the clipboard.
+Transcript file export (TXT, WebVTT, and SRT) is not implemented yet.
+The old `export_format` config key is ignored; remove it from existing config files.
 
 The vocabulary prompt is passed to the on-device whisper.cpp recognizer. It supports names
 and uncommon terms and is stored in this local config file.

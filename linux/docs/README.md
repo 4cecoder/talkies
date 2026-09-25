@@ -92,7 +92,6 @@ vocabulary_prompt = ""  # Optional comma-separated names and uncommon terms (max
 
 [output]
 auto_paste = true        # Automatically paste after transcription
-export_format = "txt"    # Export format: txt, srt, vtt
 ```
 
 `vocabulary_prompt` is passed directly to the local whisper.cpp recognizer as an initial
