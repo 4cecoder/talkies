@@ -105,7 +105,7 @@ actor S1MiniModelStore {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func modelDirectory() throws -> URL {
+    static func modelDirectory() throws -> URL {
         guard let supportDirectory = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask

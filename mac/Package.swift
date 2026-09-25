@@ -91,6 +91,7 @@ let package = Package(
             name: "TalkiesInferenceTests",
             dependencies: [
                 "TalkiesInference",
+                "TalkiesAccessibility",
                 .product(name: "WhisperKit", package: "WhisperKit"),
             ],
             path: "Tests/TalkiesInferenceTests"

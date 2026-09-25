@@ -150,6 +150,12 @@ jobs:
           TALKIES_RUN_WHISPERKIT_MODEL_TESTS: '1'
         run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled
 
+      - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion acceptance
+        working-directory: mac
+        env:
+          TALKIES_RUN_OFFLINE_ACCEPTANCE: '1'
+        run: swift test --filter OfflineDictationAcceptanceTests
+
   windows:
     name: Windows Build & Test
     runs-on: windows-latest
