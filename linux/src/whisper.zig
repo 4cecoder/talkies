@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+const vocabulary = @import("vocabulary.zig");
 
 // C FFI bindings for whisper.cpp
 const c = @import("c_whisper");
@@ -111,7 +112,9 @@ pub const WhisperService = struct {
 
         // Setup whisper parameters
         var params = c.whisper_full_default_params(c.WHISPER_SAMPLING_GREEDY);
-        const prompt_z = if (vocabulary_prompt.len > 0) try utils.dupeZ(self.allocator, vocabulary_prompt) else null;
+        const normalized_vocabulary = try vocabulary.normalizePrompt(self.allocator, vocabulary_prompt);
+        defer self.allocator.free(normalized_vocabulary);
+        const prompt_z = if (normalized_vocabulary.len > 0) try utils.dupeZ(self.allocator, normalized_vocabulary) else null;
         defer if (prompt_z) |prompt| self.allocator.free(prompt);
         if (prompt_z) |prompt| {
             params.initial_prompt = prompt.ptr;

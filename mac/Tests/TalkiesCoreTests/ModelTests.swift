@@ -35,6 +35,20 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(vocabulary.recognitionPrompt, "Talkies, Qwen3, S1-mini")
     }
 
+    func testLocalVocabularyMatchesSharedCrossPlatformGoldenFixture() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/local-vocabulary-golden.json")
+        let fixture = try JSONDecoder().decode(VocabularyGoldenFixture.self, from: Data(contentsOf: fixtureURL))
+
+        for testCase in fixture.cases {
+            XCTAssertEqual(LocalVocabulary(terms: testCase.terms).recognitionPrompt, testCase.expectedPrompt)
+        }
+    }
+
     // MARK: - TranscriptSegment Init tests
 
     func testTranscriptSegment_DefaultInit() {
@@ -349,5 +363,14 @@ final class ModelTests: XCTestCase {
         )
 
         XCTAssertEqual(segment.text, specialText)
+    }
+}
+
+private struct VocabularyGoldenFixture: Decodable {
+    let cases: [VocabularyCase]
+
+    struct VocabularyCase: Decodable {
+        let terms: [String]
+        let expectedPrompt: String
     }
 }
