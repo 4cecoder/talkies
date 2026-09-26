@@ -87,9 +87,13 @@ actor S1MiniModelStore {
 
     private func isValid(_ url: URL, artifact: Artifact) throws -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
         if let expectedSize = artifact.size {
-            let values = try url.resourceValues(forKeys: [.fileSizeKey])
             guard values.fileSize == expectedSize else { return false }
+        } else {
+            // License and notice files do not have pinned hashes, but an empty
+            // response is not a usable copy of either required attribution.
+            guard Self.isNonEmptyUnhashedArtifact(fileSize: values.fileSize) else { return false }
         }
         guard let expectedHash = artifact.sha256 else { return true }
         return try sha256(of: url) == expectedHash
@@ -103,6 +107,11 @@ actor S1MiniModelStore {
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func isNonEmptyUnhashedArtifact(fileSize: Int?) -> Bool {
+        guard let fileSize else { return false }
+        return fileSize > 0
     }
 
     static func modelDirectory() throws -> URL {
