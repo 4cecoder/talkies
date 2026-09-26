@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System;
+using System.IO;
 
 namespace Talkies.Windows.Models
 {
@@ -21,6 +23,7 @@ namespace Talkies.Windows.Models
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
         public List<string> PersonalVocabulary { get; set; } = new();
+        public ExportPreferences Export { get; set; } = new();
 
         // LLM Provider Settings
         public string SelectedLlmProvider { get; set; } = "S1-mini (on-device)";
@@ -43,6 +46,16 @@ namespace Talkies.Windows.Models
 
         // Developer team config
         public TalkiesTeamConfig TalkiesTeamConfig { get; set; } = new();
+    }
+
+    public class ExportPreferences
+    {
+        public string DefaultFormat { get; set; } = "VTT";
+        public string ExportDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Talkies");
+        public string FilenameTemplate { get; set; } = "{date}_{time}";
+        public bool IncludeTimestamps { get; set; } = true;
+        public bool AutoExport { get; set; }
+        public List<string> RecentExports { get; set; } = new();
     }
 
     public class AdvancedTtsSettings

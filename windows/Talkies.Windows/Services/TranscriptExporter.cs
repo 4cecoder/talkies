@@ -43,6 +43,28 @@ namespace Talkies.Windows.Services
             return sb.ToString();
         }
 
+        /// <summary>Exports plain text with optional segment timestamps.</summary>
+        public static string ExportToTxt(IEnumerable<TranscriptSegment> segments, bool includeTimestamps)
+        {
+            if (includeTimestamps) return ExportToTxt(segments);
+            return ExportToPlainText(segments);
+        }
+
+        /// <summary>Expands the supported filename tokens and removes characters invalid on Windows.</summary>
+        public static string BuildFileName(string template, string extension, DateTime timestamp, double durationSeconds, string model)
+        {
+            var name = (template ?? string.Empty)
+                .Replace("{date}", timestamp.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                .Replace("{time}", timestamp.ToString("HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                .Replace("{duration}", TimeSpan.FromSeconds(Math.Max(0, durationSeconds)).ToString("hh\\-mm\\-ss"), StringComparison.OrdinalIgnoreCase)
+                .Replace("{model}", model ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            foreach (var invalid in Path.GetInvalidFileNameChars()) name = name.Replace(invalid, '_');
+            name = name.Trim().TrimEnd('.');
+            if (string.IsNullOrWhiteSpace(name)) name = "talkies";
+            var normalizedExtension = (extension ?? string.Empty).TrimStart('.');
+            return $"{name}.{normalizedExtension}";
+        }
+
         /// <summary>
         /// Exports transcript segments to WebVTT format.
         /// </summary>

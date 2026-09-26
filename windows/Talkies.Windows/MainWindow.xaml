@@ -61,6 +61,29 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Export Preferences -->
+                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Export Preferences" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+                        <TextBlock Text="Default format" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding ExportFormats}" SelectedItem="{Binding DefaultExportFormat, UpdateSourceTrigger=PropertyChanged}" Height="30" Margin="0,0,0,8"/>
+                        <TextBlock Text="Export folder" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <DockPanel Margin="0,0,0,8">
+                            <Button Content="Browse…" Command="{Binding BrowseExportDirectoryCommand}" DockPanel.Dock="Right" Margin="6,0,0,0" Padding="8,2"/>
+                            <TextBox Text="{Binding ExportDirectory, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock Text="Filename template: {date}, {time}, {duration}, {model}" FontSize="10" Foreground="#aaaaaa" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding FilenameTemplate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                        <CheckBox Content="Include timestamps in TXT exports" IsChecked="{Binding IncludeExportTimestamps}" Margin="0,0,0,6" FontSize="11"/>
+                        <CheckBox Content="Automatically export when transcription finishes" IsChecked="{Binding AutoExport}" Margin="0,0,0,8" FontSize="11"/>
+                        <Button Content="Export using default format" Command="{Binding ExportDefaultCommand}" IsEnabled="{Binding CanSave}" Height="32" Margin="0,0,0,8"/>
+                        <TextBlock Text="Recent exports" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <ItemsControl ItemsSource="{Binding RecentExports}" MaxHeight="84">
+                            <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" FontSize="10" Foreground="#bbbbbb" Margin="0,2"/></DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
                 <!-- LLM Enhancement Settings -->
                 <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
