@@ -64,6 +64,38 @@ jobs:
         working-directory: mac
         run: swift test
 
+      # Tags can target commits that did not run branch CI. Exercise the
+      # pinned local models and insertion boundary before publishing artifacts.
+      - name: Cache verified S1-mini model
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Application Support/Talkies/Models/S1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: macos-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
+      - name: Download pinned S1-mini and verify CPU cleanup
+        working-directory: mac
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+        run: swift test --filter S1MiniCleanerIntegrationTests
+
+      - name: Cache WhisperKit model files
+        uses: actions/cache@v6
+        with:
+          path: ~/Documents/huggingface
+          key: ${{ runner.os }}-whisperkit-tiny-${{ hashFiles('mac/Package.resolved') }}
+
+      - name: Verify cached WhisperKit transcription with downloads disabled
+        working-directory: mac
+        env:
+          TALKIES_RUN_WHISPERKIT_MODEL_TESTS: '1'
+        run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled
+
+      - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion acceptance
+        working-directory: mac
+        env:
+          TALKIES_RUN_OFFLINE_ACCEPTANCE: '1'
+        run: swift test --filter OfflineDictationAcceptanceTests
+
       - name: Build macOS app bundle and zip
         env:
           VERSION: ${{ needs.resolve-version.outputs.app_version }}
@@ -110,9 +142,43 @@ jobs:
         working-directory: windows/Talkies.Windows.Tests
         run: dotnet restore Talkies.Windows.Tests.csproj
 
+      - name: Cache verified S1-mini model
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: windows-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+
+      - name: Cache verified Whisper tiny model
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+          key: windows-whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+
       - name: Run Windows tests
         working-directory: windows/Talkies.Windows.Tests
-        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore --filter "Category!=ModelIntegration"
+
+      - name: Verify pinned S1-mini cleanup works offline on CPU
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_S1_MINI_MODEL_DIR: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~S1MiniOfflineIntegrationTests" --verbosity normal
+
+      - name: Verify cached Whisper ASR works offline on CPU
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~WhisperAsrOfflineIntegrationTests" --verbosity normal
+
+      - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion boundary
+        working-directory: windows/Talkies.Windows.Tests
+        env:
+          TALKIES_RUN_MODEL_TESTS: '1'
+          TALKIES_TEST_S1_MINI_MODEL_DIR: ${{ runner.temp }}/talkies-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          TALKIES_TEST_WHISPER_MODEL_DIR: ${{ runner.temp }}/talkies-whisper-5359861c739e955e79d9a303bcbc70fb988958b1
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~OfflineDictationAcceptanceTests" --verbosity normal
 
       - name: Set up verified NSIS compiler
         shell: pwsh
@@ -220,10 +286,23 @@ jobs:
           path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
           key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
 
+      - name: Cache pinned Whisper tiny model
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/talkies/models/ggml-tiny.bin
+          key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+
       - name: Run Linux tests
         working-directory: linux
         env:
           TALKIES_TEST_S1_MINI: "1"
+          TALKIES_TEST_WHISPER: "1"
+        run: zig build test
+
+      - name: Verify offline cached-model dictation acceptance
+        working-directory: linux
+        env:
+          TALKIES_OFFLINE_ACCEPTANCE: "1"
         run: zig build test
 
       - name: Package Linux binary
