@@ -51,6 +51,8 @@ public sealed class VerifiedFileDownloader
 
             if (expectedSize.HasValue && written != expectedSize.Value)
                 throw new InvalidDataException($"Downloaded file size mismatch: expected {expectedSize.Value} bytes, received {written}.");
+            if (!expectedSize.HasValue && written == 0)
+                throw new InvalidDataException("Downloaded attribution file is empty.");
 
             if (expectedSha256 is not null && !Convert.ToHexString(hash.GetHashAndReset()).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Downloaded file SHA-256 verification failed.");

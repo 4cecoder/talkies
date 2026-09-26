@@ -39,11 +39,14 @@ public sealed class S1MiniModelStore
         foreach (var file in new[] { "LICENSE", "NOTICE" })
         {
             var path = Path.Combine(_directory, file);
-            if (!File.Exists(path))
+            if (!IsNonEmptyArtifact(path))
                 await DownloadVerifiedFileAsync(file, path, null, null, null, cancellationToken).ConfigureAwait(false);
         }
         return ModelPath;
     }
+
+    internal static bool IsNonEmptyArtifact(string path) =>
+        File.Exists(path) && new FileInfo(path).Length > 0;
 
     private async Task DownloadVerifiedFileAsync(string name, string destination, long? expectedSize, string? expectedHash, IProgress<double>? progress, CancellationToken cancellationToken)
     {

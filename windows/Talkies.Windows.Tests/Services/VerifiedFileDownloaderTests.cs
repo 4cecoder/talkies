@@ -59,6 +59,20 @@ public sealed class VerifiedFileDownloaderTests
         Assert.Empty(Directory.GetFiles(directory.Path));
     }
 
+    [Fact]
+    public async Task DownloadAsync_RejectsEmptyUnhashedAttributionFile()
+    {
+        using var directory = new TemporaryDirectory();
+        var destination = Path.Combine(directory.Path, "LICENSE");
+        var downloader = CreateDownloader(Array.Empty<byte>());
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => downloader.DownloadAsync(
+            new Uri("https://models.example/LICENSE"), destination, null, null));
+
+        Assert.False(File.Exists(destination));
+        Assert.Empty(Directory.GetFiles(directory.Path));
+    }
+
     private static VerifiedFileDownloader CreateDownloader(byte[] payload) =>
         new(new HttpClient(new StaticResponseHandler(payload)));
 
