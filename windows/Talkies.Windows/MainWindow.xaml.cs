@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using Forms = System.Windows.Forms;
 using Talkies.Windows.ViewModels;
 using Talkies.Windows.Services;
+using System.ComponentModel;
 
 namespace Talkies.Windows
 {
@@ -18,6 +19,7 @@ namespace Talkies.Windows
             InitializeComponent();
             _vm = new MainViewModel();
             DataContext = _vm;
+            _vm.PropertyChanged += OnViewModelPropertyChanged;
 
             // Bind audio level to waveform visualizer
             _vm.OnAudioLevelChanged += (level) =>
@@ -57,7 +59,9 @@ namespace Talkies.Windows
 
             _overlay.SetMessage(message);
             PositionOverlay();
+            _overlay.Opacity = 0;
             _overlay.Show();
+            UiMotion.FadeIn(_overlay);
             _overlay.Activate();
         }
 
@@ -74,8 +78,36 @@ namespace Talkies.Windows
         {
             if (_overlay != null)
             {
+                if (SystemParameters.ClientAreaAnimation)
+                {
+                    var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(150));
+                    fade.Completed += (_, _) => _overlay?.Hide();
+                    _overlay.BeginAnimation(UIElement.OpacityProperty, fade);
+                    return;
+                }
+
+                _overlay.Opacity = 1;
                 _overlay.Hide();
             }
+        }
+
+        private void OnTranscriptCardLoaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.IsVisible)
+            {
+                UiMotion.FadeIn(element, lift: 5);
+            }
+        }
+
+        private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(MainViewModel.IsRecording)) return;
+
+            Dispatcher.InvokeAsync(() =>
+            {
+                var newlyEnabledButton = _vm.IsRecording ? StopRecordingButton : StartRecordingButton;
+                UiMotion.Emphasize(newlyEnabledButton);
+            });
         }
 
         private void PositionOverlay()
