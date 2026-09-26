@@ -52,3 +52,12 @@ public enum S1MiniPrompt {
         return "<|im_start|>system\n\(system)<|im_end|>\n<|im_start|>user\n\(options.controlLine)\n\(normalizedTranscript)<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
     }
 }
+
+/// Applies the shared S1-mini output contract: trim ASCII whitespace and
+/// preserve the original ASR transcript when the model returns no text.
+public enum TranscriptCleanupResult {
+    public static func resolve(original: String, modelOutput: String) -> String {
+        let candidate = modelOutput.trimmingCharacters(in: CharacterSet(charactersIn: " \t\r\n"))
+        return candidate.isEmpty ? original : candidate
+    }
+}

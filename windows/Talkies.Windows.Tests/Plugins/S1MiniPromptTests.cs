@@ -48,6 +48,21 @@ public sealed class S1MiniPromptTests
         }
     }
 
+    [Fact]
+    public void CleanupResult_MatchesSharedCrossPlatformGoldenFixture()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "s1-mini-cleanup-result-golden.json");
+        var fixture = JsonSerializer.Deserialize<CleanupResultGoldenFixture>(File.ReadAllText(fixturePath), new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })!;
+
+        foreach (var testCase in fixture.Cases)
+        {
+            Assert.Equal(testCase.Expected, S1MiniOutput.Resolve(testCase.Original, testCase.ModelOutput));
+        }
+    }
+
     private sealed class PromptGoldenFixture
     {
         public PromptGoldenFixture() { }
@@ -61,6 +76,20 @@ public sealed class S1MiniPromptTests
         public string Style { get; init; } = string.Empty;
         public string Structure { get; init; } = string.Empty;
         public string Context { get; init; } = string.Empty;
+        public string Expected { get; init; } = string.Empty;
+    }
+
+    private sealed class CleanupResultGoldenFixture
+    {
+        public CleanupResultGoldenFixture() { }
+        public List<CleanupResultCase> Cases { get; init; } = [];
+    }
+
+    private sealed class CleanupResultCase
+    {
+        public CleanupResultCase() { }
+        public string Original { get; init; } = string.Empty;
+        public string ModelOutput { get; init; } = string.Empty;
         public string Expected { get; init; } = string.Empty;
     }
 }

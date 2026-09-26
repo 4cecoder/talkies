@@ -27,5 +27,6 @@
     <None Include="..\..\linux\src\testdata\transcript-export-golden.json" Link="Fixtures\transcript-export-golden.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\linux\src\testdata\s1-mini-prompt-golden.json" Link="Fixtures\s1-mini-prompt-golden.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\linux\src\testdata\local-vocabulary-golden.json" Link="Fixtures\local-vocabulary-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\testdata\s1-mini-cleanup-result-golden.json" Link="Fixtures\s1-mini-cleanup-result-golden.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

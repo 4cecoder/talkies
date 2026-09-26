@@ -46,6 +46,23 @@ final class TranscriptCleanupTests: XCTestCase {
             XCTAssertEqual(S1MiniPrompt.render(transcript: testCase.transcript, options: options), testCase.expected)
         }
     }
+
+    func testCleanupResultMatchesSharedCrossPlatformGoldenFixture() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/s1-mini-cleanup-result-golden.json")
+        let fixture = try JSONDecoder().decode(CleanupResultGoldenFixture.self, from: Data(contentsOf: fixtureURL))
+
+        for testCase in fixture.cases {
+            XCTAssertEqual(
+                TranscriptCleanupResult.resolve(original: testCase.original, modelOutput: testCase.modelOutput),
+                testCase.expected
+            )
+        }
+    }
 }
 
 private struct PromptGoldenFixture: Decodable {
@@ -56,6 +73,16 @@ private struct PromptGoldenFixture: Decodable {
         let style: String
         let structure: String
         let context: String
+        let expected: String
+    }
+}
+
+private struct CleanupResultGoldenFixture: Decodable {
+    let cases: [Case]
+
+    struct Case: Decodable {
+        let original: String
+        let modelOutput: String
         let expected: String
     }
 }
