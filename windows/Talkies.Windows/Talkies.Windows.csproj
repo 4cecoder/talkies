@@ -14,6 +14,10 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda12.Windows" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
     <PackageReference Include="Microsoft.Windows.Compatibility" Version="10.0.12" />
     <PackageReference Include="System.Management" Version="10.0.12" />
     <PackageReference Include="LLamaSharp" Version="0.27.0" />

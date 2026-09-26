@@ -83,7 +83,12 @@ namespace Talkies.Windows.Services
     /// <summary>
     /// Progress update for transcription operations (download + decode).
     /// </summary>
-    public record TranscriptionProgress(TranscriptionStage Stage, double Percent, string? Message = null, bool IsIndeterminate = false);
+    public record TranscriptionProgress(
+        TranscriptionStage Stage,
+        double Percent,
+        string? Message = null,
+        bool IsIndeterminate = false,
+        string? Backend = null);
 
     public enum TranscriptionStage
     {

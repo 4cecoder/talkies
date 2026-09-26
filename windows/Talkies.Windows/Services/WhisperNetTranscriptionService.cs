@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using NAudio.Wave;
 using Whisper.net;
 using Whisper.net.Ggml;
+using Whisper.net.LibraryLoader;
 using Talkies.Windows.Models;
 
 namespace Talkies.Windows.Services
@@ -17,8 +18,11 @@ namespace Talkies.Windows.Services
     {
         private readonly WhisperModelStore _modelStore;
 
-        public WhisperNetTranscriptionService(WhisperModelStore? modelStore = null) =>
+        public WhisperNetTranscriptionService(WhisperModelStore? modelStore = null)
+        {
             _modelStore = modelStore ?? new WhisperModelStore();
+            WhisperRuntimeSelection.ConfigureAutomaticFallback();
+        }
 
         public async Task<TranscriptionResult> TranscribeAsync(
             string filePath,
@@ -29,18 +33,6 @@ namespace Talkies.Windows.Services
             DecodingOptions? decodingOptions = null,
             IProgress<TranscriptionProgress>? progress = null)
         {
-            var useCuda = CudaDetector.IsNvidiaCudaAvailable(out var cudaReason);
-            if (useCuda)
-            {
-                Environment.SetEnvironmentVariable("GGML_USE_CUBLAS", "1");
-                Environment.SetEnvironmentVariable("GGML_CUDA", "1");
-                Logger.Info($"CUDA detected: enabling GGML CUDA offload for whisper.net ({cudaReason})");
-            }
-            else if (!string.IsNullOrEmpty(cudaReason))
-            {
-                Logger.Warn($"CUDA not available: {cudaReason}");
-            }
-
             // Resolve model path with dynamic download
             var modelPath = await ResolveModelPathAsync(model, progress);
             if (!File.Exists(modelPath))
@@ -70,7 +62,16 @@ namespace Talkies.Windows.Services
                 }
 
                 // whisper.net usage
-                using var factory = WhisperFactory.FromPath(modelPath);
+                using var factory = WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions { UseGpu = true });
+                var selectedBackend = WhisperRuntimeSelection.GetDisplayName(RuntimeOptions.LoadedLibrary);
+                Logger.Info($"whisper.net selected runtime: {selectedBackend}");
+                progress?.Report(new TranscriptionProgress(
+                    TranscriptionStage.Transcribing,
+                    0,
+                    $"Transcribing with {selectedBackend}...",
+                    IsIndeterminate: false,
+                    Backend: selectedBackend));
+
                 var builder = factory.CreateBuilder();
                 if (!string.IsNullOrWhiteSpace(language) && language != "auto")
                 {
