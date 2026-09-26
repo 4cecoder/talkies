@@ -1,6 +1,5 @@
 import XCTest
 import TalkiesInference
-import WhisperKit
 
 final class WhisperKitRecognizerTests: XCTestCase {
     func testRecognizerConstructionDoesNotLoadModel() async {
@@ -49,7 +48,7 @@ final class WhisperKitRecognizerTests: XCTestCase {
             throw XCTSkip("Set TALKIES_RUN_WHISPERKIT_MODEL_TESTS=1 to download and run the WhisperKit tiny model.")
         }
 
-        let modelFolder = try await WhisperKit.download(variant: "openai_whisper-tiny")
+        let modelFolder = try await WhisperKitRecognizer.downloadModel(variant: "openai_whisper-tiny")
         let recognizer = await MainActor.run {
             WhisperKitRecognizer(modelName: "openai_whisper-tiny")
         }

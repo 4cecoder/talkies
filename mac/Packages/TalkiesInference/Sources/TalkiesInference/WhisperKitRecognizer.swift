@@ -14,6 +14,11 @@ public final class WhisperKitRecognizer {
         self.modelName = modelName
     }
 
+    /// Downloads a model through the local recognizer adapter without exposing WhisperKit to app clients.
+    public static func downloadModel(variant: String) async throws -> URL {
+        try await WhisperKit.download(variant: variant)
+    }
+
     /// Loads the configured local model, downloading it on first use when needed.
     public func initialize(download: Bool = true, modelFolder: URL? = nil) async throws {
         guard whisperKit == nil else { return }

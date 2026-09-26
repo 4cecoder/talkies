@@ -24,7 +24,7 @@ macOS applications can be distributed in two primary formats:
 
 For Talkies, we recommend DMG distribution as it provides the best user experience for a menu bar application.
 
-GitHub Actions publishes an unsigned `.app` ZIP and a drag-and-drop DMG so anyone can build releases without maintainer credentials. CI creates the DMG from the app bundle after checking its executable, icon, embedded `llama.framework`, and Applications shortcut. Local app packaging fails closed unless you provide a valid, stable Apple Development identity and the certificate's actual Team ID:
+GitHub Actions publishes an unsigned `.app` ZIP and a drag-and-drop DMG so anyone can build releases without maintainer credentials. CI creates the DMG from the app bundle after checking its executable, icon, `libTalkiesCore.dylib`, `libTalkiesInference.dylib`, embedded `llama.framework`, and Applications shortcut. Local app packaging fails closed unless you provide a valid, stable Apple Development identity and the certificate's actual Team ID:
 
 ```bash
 SIGNING_IDENTITY="Apple Development: Your Name (CERTIFICATE_ID)" \
@@ -32,7 +32,7 @@ EXPECTED_TEAM_ID="TEAM_ID" \
 VERSION=1.2.3 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
 ```
 
-The certificate name suffix is not necessarily the Team ID, so set both values explicitly. The script signs `llama.framework` before the app, verifies bundle IDs, versions, Team ID, and signatures, then validates and zips `Talkies.app`. The public DMG is also unsigned and is not notarized; notarization is not currently part of the release pipeline. Model weights stay in persistent user storage and are not copied into the app bundle.
+The certificate name suffix is not necessarily the Team ID, so set both values explicitly. The script signs `llama.framework`, the Core and Inference dylibs, then the app; it verifies bundle IDs, versions, Team ID, and signatures before validating and zipping `Talkies.app`. The app executable links both dylibs, and the Inference dylib resolves Core and `llama.framework` from the bundle's Frameworks directory. The public DMG is also unsigned and is not notarized; notarization is not currently part of the release pipeline. Model weights stay in persistent user storage and are not copied into the app bundle.
 
 ---
 
@@ -101,7 +101,7 @@ EXPECTED_TEAM_ID="TEAM_ID" \
 VERSION=1.2.3 OUTPUT_DIR="$PWD/packaging/macos/build" ./packaging/macos/package-app.sh
 ```
 
-This creates `Talkies.app` and `Talkies-macOS-1.2.3.zip` in the output directory. The bundle includes the linked `llama.framework`, its loader rpath, and the microphone and Apple Events usage descriptions. Do not package the Swift executable on its own.
+This creates `Talkies.app` and `Talkies-macOS-1.2.3.zip` in the output directory. The bundle includes Core and Inference dylibs, `llama.framework`, the required loader paths, and the microphone and Apple Events usage descriptions. Do not package the Swift executable on its own.
 
 The bundle includes the Talkies icon from `branding/icons/talkies-app-icon.icns`.
 

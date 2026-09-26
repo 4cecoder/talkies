@@ -13,6 +13,8 @@ SIGNING_ENABLED=1
 APP_NAME="Talkies"
 BUNDLE_ID="com.talkies.app"
 FRAMEWORK_ID="org.ggml.llama"
+CORE_LIBRARY_ID="${BUNDLE_ID}.core"
+INFERENCE_LIBRARY_ID="${BUNDLE_ID}.inference"
 APP_BUNDLE="${OUTPUT_DIR}/${APP_NAME}.app"
 
 if [[ -z "${SIGNING_IDENTITY}" ]]; then
@@ -78,6 +80,8 @@ verify_signed_code() {
 BIN_DIR="$(cd "${MAC_PACKAGE}" && swift build -c release --show-bin-path)"
 EXECUTABLE="${BIN_DIR}/${APP_NAME}"
 LLAMA_FRAMEWORK="${BIN_DIR}/llama.framework"
+INFERENCE_LIBRARY="${BIN_DIR}/libTalkiesInference.dylib"
+CORE_LIBRARY="${BIN_DIR}/libTalkiesCore.dylib"
 
 if [[ ! -x "${EXECUTABLE}" ]]; then
     echo "Missing release executable: ${EXECUTABLE}" >&2
@@ -88,10 +92,20 @@ if [[ ! -d "${LLAMA_FRAMEWORK}" ]]; then
     echo "Missing llama runtime framework: ${LLAMA_FRAMEWORK}" >&2
     exit 1
 fi
+if [[ ! -f "${INFERENCE_LIBRARY}" ]]; then
+    echo "Missing release inference library: ${INFERENCE_LIBRARY}" >&2
+    exit 1
+fi
+if [[ ! -f "${CORE_LIBRARY}" ]]; then
+    echo "Missing release core library: ${CORE_LIBRARY}" >&2
+    exit 1
+fi
 
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS" "${APP_BUNDLE}/Contents/Frameworks" "${APP_BUNDLE}/Contents/Resources"
 ditto "${EXECUTABLE}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+ditto "${CORE_LIBRARY}" "${APP_BUNDLE}/Contents/Frameworks/libTalkiesCore.dylib"
+ditto "${INFERENCE_LIBRARY}" "${APP_BUNDLE}/Contents/Frameworks/libTalkiesInference.dylib"
 ditto "${LLAMA_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/llama.framework"
 ditto "${REPOSITORY_ROOT}/branding/icons/talkies-app-icon.icns" "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
 ditto "${SCRIPT_DIR}/Info.plist.template" "${APP_BUNDLE}/Contents/Info.plist"
@@ -104,6 +118,11 @@ EXECUTABLE_PATH="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 if ! otool -l "${EXECUTABLE_PATH}" | grep -Fq '@loader_path/../Frameworks'; then
     install_name_tool -add_rpath '@loader_path/../Frameworks' "${EXECUTABLE_PATH}"
 fi
+CORE_PATH="${APP_BUNDLE}/Contents/Frameworks/libTalkiesCore.dylib"
+INFERENCE_PATH="${APP_BUNDLE}/Contents/Frameworks/libTalkiesInference.dylib"
+if ! otool -l "${INFERENCE_PATH}" | grep -Fq 'path @loader_path '; then
+    install_name_tool -add_rpath '@loader_path' "${INFERENCE_PATH}"
+fi
 
 if [[ "${SIGNING_ENABLED}" == "1" ]]; then
     # Sign nested code before the app so its resource seal covers the final
@@ -111,6 +130,8 @@ if [[ "${SIGNING_ENABLED}" == "1" ]]; then
     echo "Signing Talkies and llama.framework with ${SIGNING_IDENTITY}"
     codesign --force --identifier "${FRAMEWORK_ID}" --sign "${SIGNING_IDENTITY}" --timestamp=none \
         "${APP_BUNDLE}/Contents/Frameworks/llama.framework"
+    codesign --force --identifier "${CORE_LIBRARY_ID}" --sign "${SIGNING_IDENTITY}" --timestamp=none "${CORE_PATH}"
+    codesign --force --identifier "${INFERENCE_LIBRARY_ID}" --sign "${SIGNING_IDENTITY}" --timestamp=none "${INFERENCE_PATH}"
     codesign --force --identifier "${BUNDLE_ID}" --sign "${SIGNING_IDENTITY}" --timestamp=none "${APP_BUNDLE}"
 else
     echo "Skipping signing and TCC-signature validation for the GitHub Actions smoke artifact."
@@ -129,10 +150,20 @@ if [[ "${ACTUAL_SHORT_VERSION}" != "${BUNDLE_VERSION}" || "${ACTUAL_BUNDLE_VERSI
     exit 1
 fi
 
-otool -L "${EXECUTABLE_PATH}" | grep -Fq '@rpath/llama.framework/Versions/Current/llama'
+otool -L "${EXECUTABLE_PATH}" | grep -Fq '@rpath/libTalkiesInference.dylib'
+otool -L "${EXECUTABLE_PATH}" | grep -Fq '@rpath/libTalkiesCore.dylib'
 otool -l "${EXECUTABLE_PATH}" | grep -Fq '@loader_path/../Frameworks'
+otool -L "${INFERENCE_PATH}" | grep -Fq '@rpath/llama.framework/Versions/Current/llama'
+otool -L "${INFERENCE_PATH}" | grep -Fq '@rpath/libTalkiesCore.dylib'
+otool -l "${INFERENCE_PATH}" | grep -Fq 'path @loader_path '
+if nm -gU "${EXECUTABLE_PATH}" | grep -Fq 'TalkiesInference'; then
+    echo "TalkiesInference symbols are still defined in the app executable; expected the separate dylib." >&2
+    exit 1
+fi
 test -x "${EXECUTABLE_PATH}"
 test -s "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
+test -s "${CORE_PATH}"
+test -s "${INFERENCE_PATH}"
 test -f "${APP_BUNDLE}/Contents/Frameworks/llama.framework/Versions/Current/llama"
 FRAMEWORK_PLIST="${APP_BUNDLE}/Contents/Frameworks/llama.framework/Versions/Current/Resources/Info.plist"
 if [[ ! -f "${FRAMEWORK_PLIST}" ]]; then
@@ -147,6 +178,8 @@ fi
 
 if [[ "${SIGNING_ENABLED}" == "1" ]]; then
     verify_signed_code "${APP_BUNDLE}/Contents/Frameworks/llama.framework" "${FRAMEWORK_ID}"
+    verify_signed_code "${CORE_PATH}" "${CORE_LIBRARY_ID}"
+    verify_signed_code "${INFERENCE_PATH}" "${INFERENCE_LIBRARY_ID}"
     verify_signed_code "${APP_BUNDLE}" "${BUNDLE_ID}"
     codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
 fi
