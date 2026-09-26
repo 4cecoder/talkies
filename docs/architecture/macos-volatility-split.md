@@ -2,16 +2,16 @@
 
 ## Why
 
-The SwiftPM manifest separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, Accessibility-based `TalkiesAccessibility`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter, WhisperKit ASR adapter, and their model lifecycles. The executable owns the SwiftUI/AppKit shell, status and transcript presentation, settings, and plugins.
+The package graph separates Foundation-only `TalkiesCore`, AVFoundation-based `TalkiesAudio`, Accessibility-based `TalkiesAccessibility`, and volatile `TalkiesInference`, which owns the llama.cpp S1-mini adapter, WhisperKit ASR adapter, and their model lifecycles. `TalkiesCore` and `TalkiesInference` are separate dynamic products embedded beside `llama.framework` in the app bundle. The executable links both dylibs, and the inference dylib links Core and llama. The executable owns the SwiftUI/AppKit shell, status and transcript presentation, settings, and plugins.
 
 ## Products and targets
 
 | Product/target | Change rate | Owns |
 |---|---|---|
-| `TalkiesCore` library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
+| `TalkiesCore` dynamic library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
 | `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
 | `TalkiesAccessibility` library | Medium | Focus capture, verified text-control insertion, permission checks, explicit clipboard copy |
-| `TalkiesInference` library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |
+| `TalkiesInference` dynamic library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |
 | `Talkies` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, and application coordination |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
@@ -20,12 +20,12 @@ Keep inference in-process for now. Make the optional model worker a separate bin
 ## Dependency direction
 
 ```text
-Talkies ─────▶ TalkiesCore
+Talkies ──▶ libTalkiesCore.dylib
     ├──▶ TalkiesAudio ───────────────▶ AVFoundation/CoreAudio
-    ├──▶ TalkiesAccessibility ───────▶ ApplicationServices/NSWorkspace
-    └──▶ TalkiesInference ──────────▶ TalkiesCore
-              ├── WhisperKit (ASR)
-              └── llama.cpp (S1-mini)
+    ├──▶ TalkiesAccessibility ───────▶ libTalkiesCore.dylib
+    └──▶ libTalkiesInference.dylib ──▶ libTalkiesCore.dylib
+                   ├──▶ WhisperKit (ASR)
+                   └──▶ llama.framework (S1-mini)
 ```
 
 `TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
@@ -35,14 +35,12 @@ Talkies ─────▶ TalkiesCore
 ```text
 mac/
   Package.swift
+  Packages/
+    TalkiesCore/Package.swift
+    TalkiesInference/Package.swift
   Sources/
-    TalkiesCore/
     TalkiesAudio/
     TalkiesAccessibility/
-    TalkiesInference/
-      ASR/
-      Cleanup/
-      ModelStore/
     Talkies/
   Tests/
     TalkiesCoreTests/
@@ -51,7 +49,7 @@ mac/
     TalkiesInferenceTests/
 ```
 
-The manifest uses Swift tools 6.3 and defines separate core, audio, Accessibility, and inference libraries. Keep third-party inference APIs behind the runtime adapters. The core and Accessibility tests cover formatting, cleanup prompts, transcript contracts, focused-app validation, permission denial, unsupported controls, and insertion fallbacks. The model-backed cleanup integration test runs after provisioning the pinned weights and denies network requests during inference.
+The manifests use Swift tools 6.3. The app consumes Core and Inference as package products, so a target-only split cannot leave inference objects statically linked into the executable. `package-app.sh` checks executable and dylib dependency edges, embeds both dylibs and `llama.framework`, and signs nested code before the app. The DMG smoke test checks runtime files after install and replacement-upgrade simulation. Keep third-party inference APIs behind runtime adapters. Core and Accessibility tests cover formatting, cleanup prompts, transcript contracts, focused-app validation, permission denial, unsupported controls, and insertion fallbacks. The model-backed cleanup integration test runs after provisioning the pinned weights and denies network requests during inference.
 
 ## Offline and cleanup boundary
 
