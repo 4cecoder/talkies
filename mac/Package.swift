@@ -29,7 +29,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.1.0"),
         .package(url: "https://github.com/mattt/llama.swift", exact: "2.10549.0"),
         // DISABLED: KokoroSwift has Swift 6.2 compatibility bug in MisakiSwift dependency
         // .package(path: "/tmp/kokoro-ios")

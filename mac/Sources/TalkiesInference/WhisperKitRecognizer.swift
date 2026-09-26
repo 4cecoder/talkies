@@ -53,7 +53,6 @@ public final class WhisperKitRecognizer {
             sampleLength: 224,
             topK: 5,
             usePrefillPrompt: true,
-            usePrefillCache: true,
             skipSpecialTokens: true,
             withoutTimestamps: false,
             clipTimestamps: [0]
