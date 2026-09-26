@@ -249,6 +249,20 @@ test "blank model output falls back to the original transcript" {
     try std.testing.expectEqualStrings(" raw ASR ", result);
 }
 
+test "cleanup result matches the shared cross-platform golden fixture" {
+    const CleanupCase = struct { original: []const u8, modelOutput: []const u8, expected: []const u8 };
+    const CleanupFixture = struct { cases: []const CleanupCase };
+    const fixture_json = @embedFile("testdata/s1-mini-cleanup-result-golden.json");
+    const parsed = try std.json.parseFromSlice(CleanupFixture, std.testing.allocator, fixture_json, .{});
+    defer parsed.deinit();
+
+    for (parsed.value.cases) |test_case| {
+        const actual = try cleanedOrOriginal(std.testing.allocator, test_case.original, test_case.modelOutput);
+        defer std.testing.allocator.free(actual);
+        try std.testing.expectEqualStrings(test_case.expected, actual);
+    }
+}
+
 test "pinned S1-mini model runs a cleanup on CPU" {
     if (utils.getEnv("TALKIES_TEST_S1_MINI") == null) return error.SkipZigTest;
     utils.setIoAllocator(std.testing.allocator);

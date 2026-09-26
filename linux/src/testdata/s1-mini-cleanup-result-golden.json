@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "original": "um, I can send it tomorrow",
+      "modelOutput": "  I can send it tomorrow. \n",
+      "expected": "I can send it tomorrow."
+    },
+    {
+      "original": "  raw ASR must survive  ",
+      "modelOutput": " \t\r\n ",
+      "expected": "  raw ASR must survive  "
+    },
+    {
+      "original": "keep punctuation, please!",
+      "modelOutput": "\tCleaned output\r\n",
+      "expected": "Cleaned output"
+    }
+  ]
+}

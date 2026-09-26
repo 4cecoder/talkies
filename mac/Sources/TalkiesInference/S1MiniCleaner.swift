@@ -60,9 +60,10 @@ public actor S1MiniCleaner: TranscriptCleaner {
             runtime = loadedRuntime
             activeRuntime = loadedRuntime
         }
-        return try activeRuntime.clean(
+        let modelOutput = try activeRuntime.clean(
             prompt: S1MiniPrompt.render(transcript: trimmedTranscript, options: options)
         )
+        return TranscriptCleanupResult.resolve(original: transcript, modelOutput: modelOutput)
     }
 
     fileprivate static var preferredMetalDevice: OpaquePointer? {

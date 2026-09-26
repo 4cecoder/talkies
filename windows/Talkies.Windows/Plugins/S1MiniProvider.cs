@@ -69,8 +69,7 @@ public sealed class S1MiniProvider : ILlmProvider, IDisposable
             };
             var result = new System.Text.StringBuilder();
             await foreach (var token in executor.InferAsync(rendered, inference).ConfigureAwait(false)) result.Append(token);
-            var cleaned = result.ToString().Trim();
-            return string.IsNullOrWhiteSpace(cleaned) ? text : cleaned;
+            return S1MiniOutput.Resolve(text, result.ToString());
         }
         finally { _inferenceLock.Release(); }
     }
