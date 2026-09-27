@@ -2,7 +2,7 @@
 
 User-facing changes are recorded here. Release tags and the rolling `latest` prerelease are published on [GitHub Releases](https://github.com/4cecoder/talkies/releases).
 
-## 0.1.0 — prerelease (2026-09-27)
+## 0.1.5 — prerelease (2026-09-27)
 
 This is the current cross-platform release candidate. It is not the first stable release.
 
