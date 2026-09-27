@@ -1,0 +1,41 @@
+name: Website CI
+
+on:
+  push:
+    branches: [website]
+  pull_request:
+    branches: [website]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint website
+        run: bun run lint
+
+      - name: Build static Pages export
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_BASE_PATH: /talkies
+          NEXT_PUBLIC_SITE_URL: https://4cecoder.github.io/talkies
+        run: bun run build
+
+      - name: Preserve Next.js asset folders
+        run: touch out/.nojekyll
+
+      - name: Verify Pages export
+        run: bun run test:pages
