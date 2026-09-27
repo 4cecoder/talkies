@@ -16,10 +16,22 @@ if ($actual -ne $expected) { throw 'Talkies setup checksum does not match SHA256
 
 - **Setup installer:** Run `Talkies-Windows-latest-Setup.exe`. It installs per-user under `%LOCALAPPDATA%\Programs\Talkies` and adds a Start menu shortcut. The package is self-contained and does not require a separately installed .NET runtime.
 - **Portable ZIP:** Extract `Talkies-Windows-latest.zip` and run `Talkies.Windows.exe`. Delete the extracted folder to remove the portable app.
+- **Optional GPU runtimes:** The standard app includes Whisper CPU runtimes. If you have a compatible accelerator, download only the matching `Talkies-Windows-Whisper-CUDA13-Runtime-latest.zip`, `Talkies-Windows-Whisper-CUDA12-Runtime-latest.zip`, or `Talkies-Windows-Whisper-Vulkan-Runtime-latest.zip`. Verify it with `SHA256SUMS` and extract it into the installed or portable Talkies app directory so its `runtimes` folder merges. Restart Talkies. CUDA requires compatible NVIDIA drivers/toolkit; Vulkan requires a compatible Vulkan driver/runtime. Without a usable GPU runtime, Whisper continues on CPU. S1-mini cleanup remains CPU-only. Reinstall the add-on after updating Talkies with the setup installer.
 - **Update:** Quit Talkies and run the newer setup executable. App files are replaced; settings and downloaded models are kept.
 - **Uninstall:** Select **Uninstall Talkies** from the Start menu. This removes the installed app and shortcuts but keeps settings and model files.
 
 Talkies stores settings at `%USERPROFILE%\.talkies\config.json` and Whisper models in `%USERPROFILE%\.talkies\models`. S1-mini weights and their upstream `LICENSE` and `NOTICE` are stored under `%LOCALAPPDATA%\Talkies\Models`. To remove personal data as well, quit Talkies and delete those folders.
+
+To verify an optional runtime archive, set `$asset` to its exact filename and compare it with the same release's manifest:
+
+```powershell
+$asset = 'Talkies-Windows-Whisper-Vulkan-Runtime-latest.zip'
+$line = Get-Content .\SHA256SUMS | Where-Object { $_ -match ("  " + [regex]::Escape($asset) + '$') } | Select-Object -First 1
+if (-not $line) { throw "No checksum entry found for $asset." }
+$expected = ($line -split '\s+')[0]
+$actual = (Get-FileHash ".\$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "Checksum mismatch for $asset." }
+```
 
 The first use of a Whisper model downloads and verifies that model. S1-mini downloads its approximately 462 MiB English cleanup model the first time cleanup is used. S1-mini is a post-processor; Whisper performs speech recognition. The app includes the S1-mini model's required attribution files after download.
 

@@ -8,15 +8,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ApplicationIcon>Resources\talkies-app-icon.ico</ApplicationIcon>
+    <!-- Keep the standard offline installer CPU-only. Whisper GPU runtimes are
+         large, driver-specific native payloads and are shipped as an opt-in add-on. -->
+    <TalkiesIncludeGpuWhisperRuntimes Condition="'$(TalkiesIncludeGpuWhisperRuntimes)' == ''">false</TalkiesIncludeGpuWhisperRuntimes>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.4.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime.Cuda12.Windows" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.9.1" Condition="'$(TalkiesIncludeGpuWhisperRuntimes)' == 'true'" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda12.Windows" Version="1.9.1" Condition="'$(TalkiesIncludeGpuWhisperRuntimes)' == 'true'" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" Condition="'$(TalkiesIncludeGpuWhisperRuntimes)' == 'true'" />
     <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
     <PackageReference Include="Microsoft.Windows.Compatibility" Version="10.0.12" />
     <PackageReference Include="System.Management" Version="10.0.12" />
