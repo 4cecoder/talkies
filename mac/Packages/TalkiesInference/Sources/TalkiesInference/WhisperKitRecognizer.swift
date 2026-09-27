@@ -22,14 +22,77 @@ public final class WhisperKitRecognizer {
     /// Loads the configured local model, downloading it on first use when needed.
     public func initialize(download: Bool = true, modelFolder: URL? = nil) async throws {
         guard whisperKit == nil else { return }
+
+        let verifiedModelFolder = modelFolder.flatMap {
+            Self.verifiedModelFolder($0, modelName: modelName)
+        } ?? (modelFolder == nil ? Self.cachedModelFolder(modelName: modelName) : nil)
+        let useVerifiedLocalCache = verifiedModelFolder != nil
+        let selectedModelFolder = verifiedModelFolder ?? (download ? nil : modelFolder)
         whisperKit = try await WhisperKit(
             model: modelName,
-            modelFolder: modelFolder?.path,
-            tokenizerFolder: modelFolder,
+            modelFolder: selectedModelFolder?.path,
+            tokenizerFolder: useVerifiedLocalCache
+                ? Self.defaultDownloadBase()
+                : selectedModelFolder,
             verbose: true,
             logLevel: .debug,
-            download: download
+            // WhisperKit's download helper queries Hugging Face for variant
+            // metadata even when the complete model is already cached. Passing
+            // the resolved local folder avoids that network request on every
+            // launch/reinstall while still allowing the first run to download.
+            download: Self.shouldDownload(requested: download, hasVerifiedCache: useVerifiedLocalCache)
         )
+    }
+
+    nonisolated static func shouldDownload(requested: Bool, hasVerifiedCache: Bool) -> Bool {
+        requested && !hasVerifiedCache
+    }
+
+    nonisolated static func cachedModelFolder(modelName: String, downloadBase: URL? = nil) -> URL? {
+        guard let downloadBase = downloadBase ?? defaultDownloadBase() else { return nil }
+        let folder = downloadBase
+            .appending(path: "models/argmaxinc/whisperkit-coreml")
+            .appending(path: modelName, directoryHint: .isDirectory)
+        return verifiedModelFolder(folder, modelName: modelName, downloadBase: downloadBase)
+    }
+
+    nonisolated static func verifiedModelFolder(
+        _ folder: URL,
+        modelName: String,
+        downloadBase: URL? = nil
+    ) -> URL? {
+        let requiredModelPaths = [
+            "config.json",
+            "AudioEncoder.mlmodelc/weights/weight.bin",
+            "MelSpectrogram.mlmodelc/weights/weight.bin",
+            "TextDecoder.mlmodelc/weights/weight.bin",
+        ]
+        guard requiredModelPaths.allSatisfy({ Self.isNonEmptyFile(folder.appending(path: $0)) }) else {
+            return nil
+        }
+
+        // WhisperKit ships the tokenizer alongside downloaded Core ML models.
+        // Older cache layouts may keep it in the separate tokenizer repo.
+        let tokenizerPath = modelName.replacingOccurrences(of: "openai_", with: "")
+        let tokenizerLocations = [
+            folder.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
+            folder.appending(path: "tokenizer.json"),
+            downloadBase?.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
+        ]
+        guard tokenizerLocations.compactMap({ $0 }).contains(where: Self.isNonEmptyFile) else { return nil }
+        return folder
+    }
+
+    nonisolated private static func isNonEmptyFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]) else {
+            return false
+        }
+        return values.isRegularFile == true && (values.fileSize ?? 0) > 0
+    }
+
+    nonisolated private static func defaultDownloadBase() -> URL? {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appending(path: "huggingface", directoryHint: .isDirectory)
     }
 
     /// Transcribes a local audio file and returns framework-independent segments.
