@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class TextInserterTests: XCTestCase {
+    func testSearchFieldsAreSupportedTextInsertionTargets() {
+        XCTAssertTrue(AccessibilityTextRoleSupport.supports("AXSearchField"))
+        XCTAssertFalse(AccessibilityTextRoleSupport.supports("AXButton"))
+    }
+
     func testCapturesFrontmostDestinationButNeverTalkiesItself() {
         let client = MockTextAccessibilityClient()
         client.frontmostApplicationValue = (4242, "Notes")
