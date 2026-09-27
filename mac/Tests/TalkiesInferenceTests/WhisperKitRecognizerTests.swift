@@ -74,6 +74,31 @@ final class WhisperKitRecognizerTests: XCTestCase {
             modelFolder
         )
         XCTAssertFalse(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: true))
+
+        let overrideFolder = root.appending(path: "custom-model-location", directoryHint: .isDirectory)
+        for asset in modelAssets {
+            let assetURL = overrideFolder.appending(path: asset)
+            try FileManager.default.createDirectory(at: assetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data([1]).write(to: assetURL)
+        }
+        XCTAssertNil(WhisperKitRecognizer.verifiedModelFolder(
+            overrideFolder,
+            modelName: "openai_whisper-tiny",
+            downloadBase: root
+        ))
+        XCTAssertTrue(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: false))
+
+        let overrideTokenizer = overrideFolder.appending(path: "tokenizer.json")
+        try Data([1]).write(to: overrideTokenizer)
+        XCTAssertEqual(
+            WhisperKitRecognizer.verifiedModelFolder(
+                overrideFolder,
+                modelName: "openai_whisper-tiny",
+                downloadBase: root
+            ),
+            overrideFolder
+        )
+        XCTAssertFalse(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: true))
     }
 
     func testTranscribesWithCachedModelWithoutResolvingItRemotely() async throws {
@@ -90,12 +115,7 @@ final class WhisperKitRecognizerTests: XCTestCase {
         let recognizer = await MainActor.run {
             WhisperKitRecognizer(modelName: "openai_whisper-tiny")
         }
-        let resolvedModelFolder = try XCTUnwrap(
-            WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny")
-        )
-        XCTAssertEqual(resolvedModelFolder.lastPathComponent, modelFolder.lastPathComponent)
-        XCTAssertEqual(resolvedModelFolder.deletingLastPathComponent().path, modelFolder.deletingLastPathComponent().path)
-        try await recognizer.initialize()
+        try await recognizer.initialize(modelFolder: modelFolder)
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

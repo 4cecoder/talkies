@@ -23,12 +23,17 @@ public final class WhisperKitRecognizer {
     public func initialize(download: Bool = true, modelFolder: URL? = nil) async throws {
         guard whisperKit == nil else { return }
 
-        let cachedModelFolder = modelFolder ?? Self.cachedModelFolder(modelName: modelName)
-        let useVerifiedLocalCache = cachedModelFolder != nil
+        let verifiedModelFolder = modelFolder.flatMap {
+            Self.verifiedModelFolder($0, modelName: modelName)
+        } ?? (modelFolder == nil ? Self.cachedModelFolder(modelName: modelName) : nil)
+        let useVerifiedLocalCache = verifiedModelFolder != nil
+        let selectedModelFolder = verifiedModelFolder ?? (download ? nil : modelFolder)
         whisperKit = try await WhisperKit(
             model: modelName,
-            modelFolder: cachedModelFolder?.path,
-            tokenizerFolder: cachedModelFolder == nil ? modelFolder : Self.defaultDownloadBase(),
+            modelFolder: selectedModelFolder?.path,
+            tokenizerFolder: useVerifiedLocalCache
+                ? Self.defaultDownloadBase()
+                : selectedModelFolder,
             verbose: true,
             logLevel: .debug,
             // WhisperKit's download helper queries Hugging Face for variant
@@ -48,6 +53,14 @@ public final class WhisperKitRecognizer {
         let folder = downloadBase
             .appending(path: "models/argmaxinc/whisperkit-coreml")
             .appending(path: modelName, directoryHint: .isDirectory)
+        return verifiedModelFolder(folder, modelName: modelName, downloadBase: downloadBase)
+    }
+
+    nonisolated static func verifiedModelFolder(
+        _ folder: URL,
+        modelName: String,
+        downloadBase: URL? = nil
+    ) -> URL? {
         let requiredModelPaths = [
             "config.json",
             "AudioEncoder.mlmodelc/weights/weight.bin",
@@ -63,9 +76,10 @@ public final class WhisperKitRecognizer {
         let tokenizerPath = modelName.replacingOccurrences(of: "openai_", with: "")
         let tokenizerLocations = [
             folder.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
-            downloadBase.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
+            folder.appending(path: "tokenizer.json"),
+            downloadBase?.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
         ]
-        guard tokenizerLocations.contains(where: Self.isNonEmptyFile) else { return nil }
+        guard tokenizerLocations.compactMap({ $0 }).contains(where: Self.isNonEmptyFile) else { return nil }
         return folder
     }
 
