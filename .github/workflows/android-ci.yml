@@ -30,6 +30,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install pinned Android native build tools
+        run: |
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [[ -z "$SDKMANAGER" && -n "${ANDROID_HOME:-}" ]]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" 'cmake;3.31.6' 'ndk;27.2.12479018'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK
         working-directory: mobile/android
@@ -46,8 +57,13 @@ jobs:
               unzip -l "$apk" | grep -F "lib/$abi/libtalkies_whisper.so"
             done
             unzip -l "$apk" | grep -F 'assets/licenses/whisper.cpp-LICENSE.txt'
+            unzip -l "$apk" | grep -F 'assets/licenses/llama.cpp-LICENSE.txt'
             if unzip -l "$apk" | grep -F 'ggml-tiny.bin'; then
               echo 'Whisper weights must stay in app-private model storage, outside the APK.' >&2
+              exit 1
+            fi
+            if unzip -l "$apk" | grep -F 's1-mini-q4_k_m.gguf'; then
+              echo 'S1-mini weights must stay in app-private model storage, outside the APK.' >&2
               exit 1
             fi
           done
@@ -79,6 +95,30 @@ jobs:
           fi
           test "$(stat -c '%s' "$MODEL_PATH")" = '77691713'
           echo 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  '"$MODEL_PATH" | sha256sum --check
+      - name: Cache pinned S1-mini model and attribution
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/talkies-android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+          key: android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
+      - name: Download and verify pinned S1-mini cleanup model
+        shell: bash
+        env:
+          MODEL_DIR: ${{ runner.temp }}/talkies-android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
+        run: |
+          set -euo pipefail
+          mkdir -p "$MODEL_DIR"
+          MODEL_URL='https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c'
+          if [[ ! -f "$MODEL_DIR/s1-mini-q4_k_m.gguf" ]]; then
+            curl --fail --location --retry 3 "$MODEL_URL/s1-mini-q4_k_m.gguf?download=true" --output "$MODEL_DIR/s1-mini-q4_k_m.gguf"
+          fi
+          test "$(stat -c '%s' "$MODEL_DIR/s1-mini-q4_k_m.gguf")" = '484219808'
+          echo '3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634  '"$MODEL_DIR/s1-mini-q4_k_m.gguf" | sha256sum --check
+          for attribution in LICENSE NOTICE; do
+            if [[ ! -s "$MODEL_DIR/$attribution" ]]; then
+              curl --fail --location --retry 3 "$MODEL_URL/$attribution?download=true" --output "$MODEL_DIR/$attribution"
+            fi
+            test -s "$MODEL_DIR/$attribution"
+          done
       - name: Enable KVM for Android emulator
         run: |
           if [[ -e /dev/kvm ]]; then
@@ -106,9 +146,15 @@ jobs:
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb push "$RUNNER_TEMP/talkies-android-ggml-tiny.bin" /data/local/tmp/ggml-tiny.bin
+            adb push "$RUNNER_TEMP/talkies-android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf" /data/local/tmp/s1-mini-q4_k_m.gguf
+            adb push "$RUNNER_TEMP/talkies-android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/LICENSE" /data/local/tmp/s1-mini-LICENSE
+            adb push "$RUNNER_TEMP/talkies-android-s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/NOTICE" /data/local/tmp/s1-mini-NOTICE
             adb push ../../tests/fixtures/jfk.wav /data/local/tmp/jfk.wav
-            adb shell run-as com.talkies.android mkdir -p files/models files/fixtures
+            adb shell run-as com.talkies.android mkdir -p files/models files/fixtures files/models/S1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
             adb shell run-as com.talkies.android cp /data/local/tmp/ggml-tiny.bin files/models/ggml-tiny.bin
+            adb shell run-as com.talkies.android cp /data/local/tmp/s1-mini-q4_k_m.gguf files/models/S1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf
+            adb shell run-as com.talkies.android cp /data/local/tmp/s1-mini-LICENSE files/models/S1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/LICENSE
+            adb shell run-as com.talkies.android cp /data/local/tmp/s1-mini-NOTICE files/models/S1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c/NOTICE
             adb shell run-as com.talkies.android cp /data/local/tmp/jfk.wav files/fixtures/jfk.wav
             adb shell svc wifi disable
             adb shell svc data disable

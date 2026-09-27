@@ -6,4 +6,8 @@ internal object LocalWhisper {
     }
 
     external fun transcribe(modelPath: String, audioSamples: FloatArray): String
+
+    external fun clean(modelPath: String, promptUtf8: ByteArray): ByteArray
+
+    external fun unloadCleanupModel()
 }
