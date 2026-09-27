@@ -24,6 +24,20 @@ enum FocusedTextInsertionAttempt: Equatable {
     case writeDenied
 }
 
+enum AccessibilityTextRoleSupport {
+    private static let roles: Set<String> = [
+        kAXTextFieldRole as String,
+        kAXTextAreaRole as String,
+        kAXComboBoxRole as String,
+        // ApplicationServices does not expose a named constant for this role.
+        "AXSearchField"
+    ]
+
+    static func supports(_ role: String) -> Bool {
+        roles.contains(role)
+    }
+}
+
 @MainActor
 protocol TextAccessibilityClient {
     var currentProcessIdentifier: pid_t { get }
@@ -117,12 +131,6 @@ public final class TextInserter {
 
 @MainActor
 private final class SystemTextAccessibilityClient: TextAccessibilityClient {
-    private static let supportedTextRoles: Set<String> = [
-        kAXTextFieldRole as String,
-        kAXTextAreaRole as String,
-        kAXComboBoxRole as String
-    ]
-
     var currentProcessIdentifier: pid_t {
         ProcessInfo.processInfo.processIdentifier
     }
@@ -156,7 +164,7 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
 
         let focusedElement = unsafeDowncast(focusedValue, to: AXUIElement.self)
         guard let role = Self.stringAttribute(kAXRoleAttribute, from: focusedElement),
-              Self.supportedTextRoles.contains(role),
+              AccessibilityTextRoleSupport.supports(role),
               Self.isEnabled(focusedElement) else {
             return .unsupportedControl
         }
