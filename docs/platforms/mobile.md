@@ -14,7 +14,7 @@ cd mobile/android
 ./gradlew testDebugUnitTest
 ```
 
-Requires JDK 17 and Android SDK API 36. Android runtime support starts at API 31. The automated Android workflow builds the APK and runs unit tests for changes under `mobile/android/`.
+Requires JDK 17 and Android SDK API 36. Android runtime support starts at API 31. The automated Android workflow builds the APK, runs unit tests for changes under `mobile/android/`, then uploads the tested debug APK as a seven-day workflow artifact for review and sideload checks.
 
 ## Flutter prototype (legacy)
 
