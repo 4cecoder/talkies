@@ -58,7 +58,6 @@ Section "Talkies application" SecApplication
   CreateDirectory "$INSTDIR"
   SetOutPath "$INSTDIR"
   File /r "${PUBLISH_DIRECTORY}\*"
-  File "${REPOSITORY_ROOT}\packaging\windows\THIRD-PARTY-NOTICES.txt"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\Talkies" "InstallLocation" "$INSTDIR"
 
