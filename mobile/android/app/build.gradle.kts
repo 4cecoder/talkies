@@ -34,9 +34,12 @@ android {
         }
     }
 
-    ndkVersion = "25.2.9519653"
+    ndkVersion = "27.2.12479018"
     externalNativeBuild {
-        cmake { path = file("src/main/cpp/CMakeLists.txt") }
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
     }
 
     buildFeatures { compose = true }

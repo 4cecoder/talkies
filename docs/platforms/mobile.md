@@ -4,7 +4,9 @@
 
 Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the pinned whisper.cpp CPU runtime. It records 16 kHz mono audio in memory for at most five minutes per dictation, runs the downloaded Whisper tiny model through JNI, and presents an editable transcript with explicit copy feedback. At the recording limit, it transcribes the captured audio automatically. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.
 
-On first run, the user explicitly downloads the 77,691,713-byte Whisper tiny model. Talkies verifies the pinned Hugging Face revision, exact byte count, and SHA-256 before installing it. HTTPS access is used solely for this model download; after verification, recording and transcription use the local model and CPU runtime. The user can remove the model from the app. S1-mini cleanup, persistent transcript history, background dictation, and a packaged airplane-mode runtime test are not implemented on Android yet.
+The user explicitly downloads Whisper tiny before dictating. Optional cleanup is a separate, opt-in S1-mini download (484,219,808 bytes, about 462 MiB). Both models are revision-pinned and SHA-256 verified; the S1-mini Apache 2.0 `LICENSE` and `NOTICE` are stored alongside its weights. HTTPS is used only for a model download the user starts. Whisper and S1-mini then run on the device with CPU inference and no service fallback. Cleanup offers casual, semi-casual, balanced, semi-formal, and formal tone choices, plus prose or list formatting and general or email context. Balanced maps to the model's trained semi-formal prompt value. S1-mini stays loaded in the app process after its first use and is unloaded before deletion. The user can remove either model separately.
+
+Persistent transcript history and background dictation are not implemented on Android. Android CI pre-provisions both models, disables Wi-Fi and mobile data, enables airplane mode, then verifies actual Whisper recognition and S1-mini cleanup on an API 35 emulator.
 
 Build and run the available tests:
 
@@ -17,7 +19,7 @@ cd mobile/android
 ./gradlew assembleRelease testReleaseUnitTest
 ```
 
-Requires JDK 17, Android SDK API 36, and NDK 25.2. Android runtime support starts at API 31. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtime/license but omit model weights, and uploads the tested debug APK as a seven-day artifact. JVM tests verify model download integrity behavior. An API 35 emulator test installs the pinned model before enabling airplane mode, then verifies JNI transcription from the shared JFK fixture while no validated external network is available. The APK includes the whisper.cpp MIT license notice.
+Requires JDK 17, Android SDK API 36, CMake 3.31.6, and NDK 27.2. Android runtime support starts at API 31. Android CI builds and tests both debug and release variants, checks that the APKs contain both native runtimes and their license notices but omit model weights, and uploads the tested debug APK as a seven-day artifact. JVM tests cover model integrity and the shared cleanup prompt/output contract. API 35 emulator acceptance verifies real Whisper transcription and S1-mini transcript cleanup with external networking disabled. The app includes the whisper.cpp and llama.cpp MIT license notices and retains S1-mini's upstream Apache 2.0 files beside its separately downloaded weights.
 
 ## Flutter prototype (legacy)
 

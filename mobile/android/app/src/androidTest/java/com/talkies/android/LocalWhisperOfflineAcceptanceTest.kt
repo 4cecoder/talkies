@@ -11,10 +11,12 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.runBlocking
 
 @RunWith(AndroidJUnit4::class)
 class LocalWhisperOfflineAcceptanceTest {
@@ -40,6 +42,34 @@ class LocalWhisperOfflineAcceptanceTest {
         } finally {
             samples.fill(0f)
             fixture.delete()
+            setAirplaneMode(instrumentation.uiAutomation, enabled = false)
+        }
+    }
+
+    @Test
+    fun cachedS1MiniCleansTranscriptWithExternalNetworkingDisabled() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val modelDirectory = File(
+            context.filesDir,
+            "models/S1-mini-${S1MiniModelStore.MODEL_REVISION}"
+        )
+        val modelStore = S1MiniModelStore(modelDirectory)
+        assertTrue("CI must pre-provision the pinned S1-mini model and attribution", modelStore.isInstalled())
+
+        try {
+            setAirplaneMode(instrumentation.uiAutomation, enabled = true)
+            SystemClock.sleep(1_500)
+            assertEquals(1, Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0))
+            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            assertNull("Airplane mode left an active network available", connectivity.activeNetwork)
+
+            val raw = "Um, I think we should meet on Thursday, no, actually Friday."
+            val cleaned = S1MiniCleaner(modelStore).clean(raw)
+            assertTrue("S1-mini returned no cleaned text", cleaned.isNotBlank())
+            assertFalse("S1-mini kept an obvious filler word: $cleaned", Regex("\\bum\\b", RegexOption.IGNORE_CASE).containsMatchIn(cleaned))
+            assertTrue("S1-mini lost the corrected day: $cleaned", cleaned.contains("Friday", ignoreCase = true))
+        } finally {
             setAirplaneMode(instrumentation.uiAutomation, enabled = false)
         }
     }

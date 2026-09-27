@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,20 +41,68 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+@androidx.compose.runtime.Composable
+private fun CleanupOptionSelector(
+    label: String,
+    selected: String,
+    options: List<String>,
+    enabled: Boolean,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        OutlinedButton(enabled = enabled, onClick = { expanded = true }) {
+            Text("$label: $selected")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String?, default: T): T =
+    value?.let { candidate -> enumValues<T>().firstOrNull { it.name == candidate } } ?: default
+
 class MainActivity : ComponentActivity() {
     private lateinit var modelStore: WhisperTinyModelStore
+    private lateinit var cleanupModelStore: S1MiniModelStore
+    private lateinit var cleanupCleaner: S1MiniCleaner
     private val audioCapture = OfflineAudioCapture()
     private var transcript by mutableStateOf("")
     private var status by mutableStateOf("Download the local Whisper model to get started.")
     private var modelReady by mutableStateOf(false)
     private var modelBusy by mutableStateOf(false)
     private var modelProgress by mutableStateOf(0f)
+    private var cleanupModelReady by mutableStateOf(false)
+    private var cleanupBusy by mutableStateOf(false)
+    private var cleanupProgress by mutableStateOf(0f)
+    private var cleanupEnabled by mutableStateOf(false)
+    private var cleanupStyle by mutableStateOf(TranscriptStyle.SEMI_FORMAL)
+    private var cleanupStructure by mutableStateOf(TranscriptStructure.PROSE)
+    private var cleanupContext by mutableStateOf(TranscriptContext.GENERAL)
     private var recording by mutableStateOf(false)
     private var transcribing by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         modelStore = WhisperTinyModelStore(File(filesDir, "models"))
+        cleanupModelStore = S1MiniModelStore(
+            File(File(filesDir, "models"), "S1-mini-${S1MiniModelStore.MODEL_REVISION}")
+        )
+        cleanupCleaner = S1MiniCleaner(cleanupModelStore)
+        val preferences = getSharedPreferences("talkies-settings", MODE_PRIVATE)
+        cleanupEnabled = preferences.getBoolean("s1-mini-enabled", false)
+        cleanupStyle = enumValueOrDefault(preferences.getString("s1-mini-style", null), TranscriptStyle.SEMI_FORMAL)
+        cleanupStructure = enumValueOrDefault(preferences.getString("s1-mini-structure", null), TranscriptStructure.PROSE)
+        cleanupContext = enumValueOrDefault(preferences.getString("s1-mini-context", null), TranscriptContext.GENERAL)
         setContent {
             MaterialTheme {
                 val context = LocalContext.current
@@ -69,7 +121,7 @@ class MainActivity : ComponentActivity() {
                         Text(status, style = MaterialTheme.typography.bodyMedium)
 
                         if (!modelReady) {
-                            Button(enabled = !modelBusy, onClick = { downloadModel() }) {
+                            Button(enabled = !modelBusy && !cleanupBusy, onClick = { downloadModel() }) {
                                 Text(if (modelBusy) "Downloading Whisper…" else "Download Whisper tiny (77 MB)")
                             }
                         } else {
@@ -82,9 +134,78 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        Text("Optional local cleanup", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "S1-mini removes speech disfluencies and formats the transcript on this device. " +
+                                "Its English model is downloaded only when you ask for it (about 462 MiB).",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (!cleanupModelReady) {
+                            Button(
+                                enabled = !modelBusy && !cleanupBusy && !recording && !transcribing,
+                                onClick = { downloadCleanupModel() }
+                            ) {
+                                Text(if (cleanupBusy) "Downloading S1-mini…" else "Download S1-mini cleanup model")
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Checkbox(
+                                    checked = cleanupEnabled,
+                                    enabled = !recording && !transcribing && !cleanupBusy,
+                                    onCheckedChange = { enabled ->
+                                        cleanupEnabled = enabled
+                                        preferences.edit().putBoolean("s1-mini-enabled", enabled).apply()
+                                    }
+                                )
+                                Text("Clean dictation locally with S1-mini")
+                            }
+                            OutlinedButton(
+                                enabled = !modelBusy && !recording && !transcribing && !cleanupBusy,
+                                onClick = { deleteCleanupModel() }
+                            ) { Text("Delete S1-mini model and attribution") }
+                        }
+                        if (cleanupBusy) {
+                            LinearProgressIndicator(
+                                progress = { cleanupProgress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (cleanupModelReady && cleanupEnabled) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CleanupOptionSelector(
+                                    "Tone", cleanupStyle.label,
+                                    TranscriptStyle.entries.map { it.label },
+                                    !recording && !transcribing
+                                ) { selected ->
+                                    cleanupStyle = TranscriptStyle.entries.first { it.label == selected }
+                                    preferences.edit().putString("s1-mini-style", cleanupStyle.name).apply()
+                                }
+                                CleanupOptionSelector(
+                                    "Format", cleanupStructure.wireValue,
+                                    TranscriptStructure.entries.map { it.wireValue },
+                                    !recording && !transcribing
+                                ) { selected ->
+                                    cleanupStructure = TranscriptStructure.entries.first { it.wireValue == selected }
+                                    preferences.edit().putString("s1-mini-structure", cleanupStructure.name).apply()
+                                }
+                                CleanupOptionSelector(
+                                    "Context", cleanupContext.wireValue,
+                                    TranscriptContext.entries.map { it.wireValue },
+                                    !recording && !transcribing
+                                ) { selected ->
+                                    cleanupContext = TranscriptContext.entries.first { it.wireValue == selected }
+                                    preferences.edit().putString("s1-mini-context", cleanupContext.name).apply()
+                                }
+                            }
+                            Text(
+                                "S1-mini by Superwhisper · Apache 2.0. Its LICENSE and NOTICE are kept beside the model.",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
-                                enabled = modelReady && !recording && !transcribing,
+                                enabled = modelReady && !recording && !transcribing && !cleanupBusy,
                                 onClick = {
                                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                         startRecording()
@@ -97,7 +218,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        if (modelReady && !modelBusy && !recording && !transcribing) {
+                        if (modelReady && !modelBusy && !cleanupBusy && !recording && !transcribing) {
                             OutlinedButton(onClick = { deleteModel() }) { Text("Delete local model") }
                         }
 
@@ -122,13 +243,17 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshModelStatus() {
         lifecycleScope.launch {
-            modelReady = withContext(Dispatchers.IO) { modelStore.isInstalled() }
+            val installedModels = withContext(Dispatchers.IO) {
+                modelStore.isInstalled() to cleanupModelStore.isInstalled()
+            }
+            modelReady = installedModels.first
+            cleanupModelReady = installedModels.second
             status = if (modelReady) "Ready for offline dictation." else "Download the local Whisper model to get started."
         }
     }
 
     private fun downloadModel() {
-        if (modelBusy || recording || transcribing) return
+        if (modelBusy || cleanupBusy || recording || transcribing) return
         modelBusy = true
         modelProgress = 0f
         status = "Downloading and verifying the local speech model…"
@@ -152,7 +277,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun deleteModel() {
-        if (recording || transcribing || modelBusy) return
+        if (recording || transcribing || modelBusy || cleanupBusy) return
         lifecycleScope.launch {
             modelReady = false
             val (deleted, stillInstalled) = withContext(Dispatchers.IO) {
@@ -169,8 +294,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun downloadCleanupModel() {
+        if (modelBusy || cleanupBusy || recording || transcribing) return
+        cleanupBusy = true
+        cleanupProgress = 0f
+        status = "Downloading the optional S1-mini cleanup model…"
+        lifecycleScope.launch {
+            try {
+                cleanupModelStore.download { progress ->
+                    runOnUiThread {
+                        cleanupProgress = progress.downloadedBytes.toFloat() / progress.totalBytes.toFloat()
+                        val downloadedMiB = progress.downloadedBytes / (1024 * 1024)
+                        status = "Downloading S1-mini… $downloadedMiB / 462 MiB"
+                    }
+                }
+                cleanupModelReady = true
+                cleanupEnabled = true
+                getSharedPreferences("talkies-settings", MODE_PRIVATE).edit()
+                    .putBoolean("s1-mini-enabled", true)
+                    .apply()
+                status = "S1-mini is verified. Local transcript cleanup is on."
+            } catch (error: Exception) {
+                status = error.message ?: "S1-mini could not be downloaded or verified."
+            } finally {
+                cleanupBusy = false
+            }
+        }
+    }
+
+    private fun deleteCleanupModel() {
+        if (modelBusy || recording || transcribing || cleanupBusy) return
+        cleanupBusy = true
+        lifecycleScope.launch {
+            val deleted = withContext(Dispatchers.IO) {
+                runCatching { cleanupModelStore.delete() }.getOrDefault(false)
+            }
+            cleanupModelReady = withContext(Dispatchers.IO) { cleanupModelStore.isInstalled() }
+            if (!cleanupModelReady) {
+                cleanupEnabled = false
+                getSharedPreferences("talkies-settings", MODE_PRIVATE).edit()
+                    .putBoolean("s1-mini-enabled", false)
+                    .apply()
+            }
+            status = if (deleted && !cleanupModelReady) {
+                "S1-mini model and attribution files deleted."
+            } else {
+                "Could not fully delete S1-mini. Check local model storage before cleanup."
+            }
+            cleanupBusy = false
+        }
+    }
+
     private fun startRecording() {
-        if (!modelReady || recording || transcribing) return
+        if (!modelReady || modelBusy || cleanupBusy || recording || transcribing) return
         try {
             audioCapture.start {
                 runOnUiThread { stopRecording(maximumDurationReached = true) }
@@ -206,8 +382,27 @@ class MainActivity : ComponentActivity() {
                 if (recognized.isBlank()) {
                     status = "No speech was recognized. Try again when ready."
                 } else {
-                    transcript = appendTranscript(transcript, recognized)
-                    status = "Transcription complete. Whisper ran locally."
+                    var cleanupFailed = false
+                    val cleaned = if (cleanupEnabled && cleanupModelReady) {
+                        status = "Cleaning transcript locally with S1-mini…"
+                        try {
+                            cleanupCleaner.clean(
+                                recognized,
+                                TranscriptCleanupOptions(cleanupStyle, cleanupStructure, cleanupContext)
+                            )
+                        } catch (_: Exception) {
+                            cleanupFailed = true
+                            recognized
+                        }
+                    } else {
+                        recognized
+                    }
+                    transcript = appendTranscript(transcript, cleaned)
+                    status = when {
+                        cleanupFailed -> "Cleanup failed; kept the raw local Whisper transcript."
+                        cleanupEnabled && cleanupModelReady -> "Transcription and S1-mini cleanup complete offline."
+                        else -> "Transcription complete. Whisper ran locally."
+                    }
                 }
             } catch (error: Exception) {
                 status = error.message ?: "Local transcription failed. Try again."
