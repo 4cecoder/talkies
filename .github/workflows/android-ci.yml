@@ -131,10 +131,10 @@ jobs:
           else
             echo 'KVM is unavailable on this runner; the emulator action will use its automatic fallback.'
           fi
-      - name: Run real Whisper transcription in airplane mode on Android emulator
+      - name: Run real Whisper transcription in airplane mode on API 28 emulator (Fire tablet baseline)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: 35
+          api-level: 28
           target: google_apis
           arch: x86_64
           profile: pixel_5

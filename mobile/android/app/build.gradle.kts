@@ -10,7 +10,8 @@ android {
 
     defaultConfig {
         applicationId = "com.talkies.android"
-        minSdk = 31
+        // Fire OS 7 tablets are based on Android 9 (API 28); Fire OS 8 is API 30.
+        minSdk = 28
         targetSdk = 35
         versionCode = 2
         versionName = "0.1.5"
