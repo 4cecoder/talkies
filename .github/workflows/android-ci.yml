@@ -81,10 +81,16 @@ jobs:
           echo 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  '"$MODEL_PATH" | sha256sum --check
       - name: Enable KVM for Android emulator
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          if [[ -e /dev/kvm ]]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            sudo chmod 0666 /dev/kvm
+            test -r /dev/kvm && test -w /dev/kvm
+            echo 'KVM is available for the Android emulator.'
+          else
+            echo 'KVM is unavailable on this runner; the emulator action will use its automatic fallback.'
+          fi
       - name: Run real Whisper transcription in airplane mode on Android emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
