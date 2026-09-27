@@ -72,6 +72,18 @@ final class WhisperKitRecognizerTests: XCTestCase {
                      "A nonempty but structurally invalid tokenizer must not qualify as an offline cache.")
         XCTAssertTrue(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: false))
 
+        try Data(#"{"model":{"type":"BPE","vocab":{"token":"not-an-id"},"merges":[]}}"#.utf8).write(to: tokenizerURL)
+        XCTAssertNil(WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+                     "Tokenizer vocabulary values must decode as token IDs.")
+
+        try Data(#"{"model":{"type":"BPE","vocab":{"token":0},"merges":[["one"]]}}"#.utf8).write(to: tokenizerURL)
+        XCTAssertNil(WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+                     "Malformed merge tuples must not reach WhisperKit's unchecked BPE parser.")
+
+        try Data(#"{"model":{"type":"BPE","vocab":{"token":0},"merges":["onlyone"]}}"#.utf8).write(to: tokenizerURL)
+        XCTAssertNil(WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+                     "Legacy merge strings must contain exactly two tokens.")
+
         try Data(#"{"model":{"type":"BPE","vocab":{"token":0},"merges":[]}}"#.utf8).write(to: tokenizerURL)
 
         XCTAssertEqual(
@@ -79,6 +91,18 @@ final class WhisperKitRecognizerTests: XCTestCase {
             modelFolder
         )
         XCTAssertFalse(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: true))
+
+        for validMergeJSON in [
+            #"{"model":{"type":"BPE","vocab":{"one":0,"two":1},"merges":["one two"]}}"#,
+            #"{"model":{"type":"BPE","vocab":{"one":0,"two":1},"merges":[["one","two"]]}}"#,
+        ] {
+            try Data(validMergeJSON.utf8).write(to: tokenizerURL)
+            XCTAssertEqual(
+                WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+                modelFolder,
+                "Both WhisperKit-supported BPE merge encodings should qualify as valid cache data."
+            )
+        }
 
         let overrideFolder = root.appending(path: "custom-model-location", directoryHint: .isDirectory)
         for asset in modelAssets {
