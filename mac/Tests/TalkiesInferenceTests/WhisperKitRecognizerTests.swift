@@ -67,7 +67,12 @@ final class WhisperKitRecognizerTests: XCTestCase {
 
         let tokenizerURL = modelFolder.appending(path: "models/openai/whisper-tiny/tokenizer.json")
         try FileManager.default.createDirectory(at: tokenizerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data([1]).write(to: tokenizerURL)
+        try Data([0x7B, 0x7D]).write(to: tokenizerURL)
+        XCTAssertNil(WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+                     "A nonempty but structurally invalid tokenizer must not qualify as an offline cache.")
+        XCTAssertTrue(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: false))
+
+        try Data(#"{"model":{"type":"BPE","vocab":{"token":0},"merges":[]}}"#.utf8).write(to: tokenizerURL)
 
         XCTAssertEqual(
             WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
@@ -89,7 +94,7 @@ final class WhisperKitRecognizerTests: XCTestCase {
         XCTAssertTrue(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: false))
 
         let overrideTokenizer = overrideFolder.appending(path: "tokenizer.json")
-        try Data([1]).write(to: overrideTokenizer)
+        try Data(#"{"model":{"type":"BPE","vocab":{"token":0},"merges":[]}}"#.utf8).write(to: overrideTokenizer)
         XCTAssertEqual(
             WhisperKitRecognizer.verifiedModelFolder(
                 overrideFolder,
