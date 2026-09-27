@@ -4,13 +4,8 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Build
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -24,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -35,22 +31,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : ComponentActivity() {
-    private var recognizer: SpeechRecognizer? = null
+    private lateinit var modelStore: WhisperTinyModelStore
+    private val audioCapture = OfflineAudioCapture()
     private var transcript by mutableStateOf("")
-    private var status by mutableStateOf("Ready. Speech stays on this device when Android offers offline recognition.")
-    private var listening by mutableStateOf(false)
+    private var status by mutableStateOf("Download the local Whisper model to get started.")
+    private var modelReady by mutableStateOf(false)
+    private var modelBusy by mutableStateOf(false)
+    private var modelProgress by mutableStateOf(0f)
+    private var recording by mutableStateOf(false)
+    private var transcribing by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        modelStore = WhisperTinyModelStore(File(filesDir, "models"))
         setContent {
             MaterialTheme {
                 val context = LocalContext.current
                 val requestPermission = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { granted ->
-                    if (granted) startOnDeviceRecognition() else status = "Microphone permission is needed to dictate."
+                    if (granted) startRecording() else status = "Microphone permission is needed to dictate."
                 }
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(
@@ -60,18 +67,40 @@ class MainActivity : ComponentActivity() {
                         Text("Talkies", style = MaterialTheme.typography.headlineLarge)
                         Text("Private, on-device dictation", style = MaterialTheme.typography.titleMedium)
                         Text(status, style = MaterialTheme.typography.bodyMedium)
+
+                        if (!modelReady) {
+                            Button(enabled = !modelBusy, onClick = { downloadModel() }) {
+                                Text(if (modelBusy) "Downloading Whisper…" else "Download Whisper tiny (77 MB)")
+                            }
+                        } else {
+                            Text("Local Whisper model ready", style = MaterialTheme.typography.labelLarge)
+                        }
+                        if (modelBusy) {
+                            LinearProgressIndicator(
+                                progress = { modelProgress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
-                                enabled = !listening,
+                                enabled = modelReady && !recording && !transcribing,
                                 onClick = {
                                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                        startOnDeviceRecognition()
+                                        startRecording()
                                     } else requestPermission.launch(Manifest.permission.RECORD_AUDIO)
                                 }
                             ) { Text("Record") }
-                            OutlinedButton(enabled = listening, onClick = { stopRecognition() }) { Text("Stop") }
-                            OutlinedButton(enabled = transcript.isNotBlank(), onClick = { copyTranscript(context) }) { Text("Copy") }
+                            OutlinedButton(enabled = recording, onClick = { stopRecording() }) { Text("Stop") }
+                            OutlinedButton(enabled = transcript.isNotBlank(), onClick = { copyTranscript(context) }) {
+                                Text("Copy")
+                            }
                         }
+
+                        if (modelReady && !modelBusy && !recording && !transcribing) {
+                            OutlinedButton(onClick = { deleteModel() }) { Text("Delete local model") }
+                        }
+
                         TextField(
                             value = transcript,
                             onValueChange = { transcript = it },
@@ -81,69 +110,97 @@ class MainActivity : ComponentActivity() {
                             placeholder = { Text("Your recognized words will appear here.") }
                         )
                         Text(
-                            "Uses Android's on-device speech service only. Talkies does not include a speech model yet. If offline recognition is unavailable, recording is disabled instead of using a network service.",
+                            "Whisper runs on this device. Internet access is used only when you choose to download the model; recording and transcription do not use a network service.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
         }
+        refreshModelStatus()
     }
 
-    private fun startOnDeviceRecognition() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
-            status = "On-device speech recognition is unavailable on this device. No network recognizer will be used."
-            listening = false
-            return
+    private fun refreshModelStatus() {
+        lifecycleScope.launch {
+            modelReady = withContext(Dispatchers.IO) { modelStore.isInstalled() }
+            status = if (modelReady) "Ready for offline dictation." else "Download the local Whisper model to get started."
         }
-        try {
-            recognizer?.destroy()
-            recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this).also { service ->
-                service.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) { status = "Listening on device…" }
-                    override fun onBeginningOfSpeech() { status = "Hearing speech…" }
-                    override fun onRmsChanged(rmsdB: Float) = Unit
-                    override fun onBufferReceived(buffer: ByteArray?) = Unit
-                    override fun onEndOfSpeech() { status = "Finishing transcription…" }
-                    override fun onError(error: Int) {
-                        listening = false
-                        status = when (error) {
-                            SpeechRecognizer.ERROR_NO_MATCH -> "No speech was recognized. Try again when ready."
-                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is needed to dictate."
-                            SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Offline recognition for this language is unavailable on this device."
-                            else -> "On-device recognition stopped (code $error). Try again."
-                        }
+    }
+
+    private fun downloadModel() {
+        if (modelBusy || recording || transcribing) return
+        modelBusy = true
+        modelProgress = 0f
+        status = "Downloading and verifying the local speech model…"
+        lifecycleScope.launch {
+            try {
+                modelStore.download { progress ->
+                    runOnUiThread {
+                        modelProgress = progress.downloadedBytes.toFloat() / progress.totalBytes.toFloat()
+                        val downloadedMb = progress.downloadedBytes / (1024 * 1024)
+                        status = "Downloading Whisper tiny… $downloadedMb / 74 MB"
                     }
-                    override fun onResults(results: Bundle?) {
-                        listening = false
-                        val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                        if (text.isNotBlank()) transcript = appendTranscript(transcript, text)
-                        status = if (text.isBlank()) "No speech was recognized. Try again when ready." else "Transcription complete."
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                        if (!partial.isNullOrBlank()) status = "Listening on device… $partial"
-                    }
-                    override fun onEvent(eventType: Int, params: Bundle?) = Unit
-                })
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 }
-                service.startListening(intent)
-                listening = true
+                modelReady = true
+                status = "Whisper model verified. Dictation is ready offline."
+            } catch (error: Exception) {
+                status = error.message ?: "The Whisper model could not be downloaded or verified."
+            } finally {
+                modelBusy = false
             }
-        } catch (_: RuntimeException) {
-            listening = false
-            status = "Could not start Android's on-device speech recognizer. No network fallback was attempted."
         }
     }
 
-    private fun stopRecognition() {
-        recognizer?.stopListening()
-        status = "Finishing transcription…"
+    private fun deleteModel() {
+        if (recording || transcribing || modelBusy) return
+        lifecycleScope.launch {
+            modelReady = false
+            val deleted = withContext(Dispatchers.IO) { modelStore.delete() }
+            status = if (deleted) "Local speech model deleted." else "Could not delete the local speech model."
+        }
+    }
+
+    private fun startRecording() {
+        if (!modelReady || recording || transcribing) return
+        try {
+            audioCapture.start()
+            recording = true
+            status = "Recording. Audio remains in memory on this device."
+        } catch (error: Exception) {
+            audioCapture.cancel()
+            status = error.message ?: "Could not start microphone capture."
+        }
+    }
+
+    private fun stopRecording() {
+        if (!recording) return
+        recording = false
+        transcribing = true
+        status = "Transcribing locally…"
+        lifecycleScope.launch {
+            var samples: FloatArray? = null
+            try {
+                samples = withContext(Dispatchers.IO) { audioCapture.stop() }
+                val modelFile = withContext(Dispatchers.IO) {
+                    check(modelStore.isInstalled()) { "The local Whisper model is missing or invalid. Download it again." }
+                    modelStore.modelFile
+                }
+                val recognized = withContext(Dispatchers.Default) {
+                    LocalWhisper.transcribe(modelFile.absolutePath, requireNotNull(samples))
+                }.trim()
+                if (recognized.isBlank()) {
+                    status = "No speech was recognized. Try again when ready."
+                } else {
+                    transcript = appendTranscript(transcript, recognized)
+                    status = "Transcription complete. Whisper ran locally."
+                }
+            } catch (error: Exception) {
+                status = error.message ?: "Local transcription failed. Try again."
+            } finally {
+                samples?.fill(0f)
+                transcribing = false
+            }
+        }
     }
 
     private fun copyTranscript(context: Context) {
@@ -153,8 +210,16 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        recognizer?.destroy()
-        recognizer = null
+        if (recording) audioCapture.cancel()
         super.onDestroy()
+    }
+
+    override fun onStop() {
+        if (recording) {
+            audioCapture.cancel()
+            recording = false
+            status = "Recording stopped because Talkies left the foreground."
+        }
+        super.onStop()
     }
 }

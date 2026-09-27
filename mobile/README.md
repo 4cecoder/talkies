@@ -1,8 +1,8 @@
 # Talkies Android (Kotlin)
 
-The native Android app in [`android/`](android/) is Talkies' primary Android implementation. It is a small offline-first MVP with an editable transcript, explicit record/stop controls, and copy. It uses Android's **on-device** `SpeechRecognizer` only when the device reports an on-device service; it does not silently fall back to network recognition.
+The native Android app in [`android/`](android/) is Talkies' primary Android implementation. It uses Kotlin/Compose and the pinned whisper.cpp CPU runtime to transcribe audio with a locally downloaded Whisper tiny model. It has an editable transcript, explicit record/stop controls, and copy.
 
-This is not bundled Whisper and does not guarantee offline speech support: availability and language packs depend on the Android device/vendor. Talkies does not request `INTERNET` permission in this app. If no on-device recognizer is available, the UI explains that and does not start recognition. Full local Whisper, cleanup, persistence, background dictation, and feature parity are future work.
+The model is downloaded only after the user chooses **Download Whisper tiny** and is checked against a pinned revision, size, and SHA-256. `INTERNET` permission is used only for that HTTPS download; inference is local. Model-backed device acceptance testing, S1-mini cleanup, persistent history, background dictation, and broader feature parity remain future work.
 
 ## Build and test
 
@@ -14,7 +14,7 @@ cd mobile/android
 ./gradlew testDebugUnitTest
 ```
 
-Install the debug APK at `app/build/outputs/apk/debug/app-debug.apk` on a device with an available offline speech recognition service. Grant microphone permission when prompted. The Android workflow builds and runs the unit tests on pull requests that touch `mobile/android/`.
+Install the debug APK at `app/build/outputs/apk/debug/app-debug.apk`. On first launch, choose **Download Whisper tiny**, then dictate. Grant microphone permission when prompted. Android CI builds, tests, and uploads the APK for changes that touch `mobile/android/`.
 
 ## Legacy Flutter reference
 

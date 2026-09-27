@@ -1,20 +1,23 @@
 # Mobile
 
-## Android (primary): native Kotlin MVP
+## Android (primary): native Kotlin and local Whisper
 
-Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the Android on-device speech recognition API. The MVP provides microphone permission handling, record/stop controls, an editable transcript, and explicit copy feedback.
+Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the pinned whisper.cpp CPU runtime. It records 16 kHz mono audio in memory, runs the downloaded Whisper tiny model through JNI, and presents an editable transcript with explicit copy feedback. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.
 
-The app only creates Android's on-device recognizer when `SpeechRecognizer.isOnDeviceRecognitionAvailable` reports support. It does not declare `INTERNET`, has no cloud fallback, and shows an unavailable message when no on-device recognizer is installed. Recognition and language availability depend on Android/vendor services: the Android MVP does not bundle Whisper weights and must not be described as a bundled or guaranteed offline ASR engine.
+On first run, the user explicitly downloads the 77,691,713-byte Whisper tiny model. Talkies verifies the pinned Hugging Face revision, exact byte count, and SHA-256 before installing it. HTTPS access is used solely for this model download; after verification, recording and transcription use the local model and CPU runtime. The user can remove the model from the app. S1-mini cleanup, persistent transcript history, background dictation, and a packaged airplane-mode runtime test are not implemented on Android yet.
 
 Build and run the available tests:
 
 ```sh
+# From the repository root, fetch the pinned native inference dependency.
+git submodule update --init --recursive
 cd mobile/android
 ./gradlew assembleDebug
 ./gradlew testDebugUnitTest
+./gradlew assembleRelease testReleaseUnitTest
 ```
 
-Requires JDK 17 and Android SDK API 36. Android runtime support starts at API 31. The automated Android workflow builds the APK, runs unit tests for changes under `mobile/android/`, then uploads the tested debug APK as a seven-day workflow artifact for review and sideload checks.
+Requires JDK 17, Android SDK API 36, and NDK 25.2. Android runtime support starts at API 31. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtime/license but omit model weights, then uploads the tested debug APK as a seven-day artifact. JVM tests verify model download integrity behavior; device-level offline transcription acceptance remains needed. The APK includes the whisper.cpp MIT license notice.
 
 ## Flutter prototype (legacy)
 
