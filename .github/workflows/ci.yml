@@ -364,9 +364,8 @@ jobs:
       - name: Smoke-test portable Linux release archive
         env:
           VERSION: ci-${{ github.run_id }}
-          APP_VERSION: 0.1.0
           OUTPUT_DIR: ${{ runner.temp }}/talkies-linux-package
-        run: packaging/linux/package-portable.sh
+        run: APP_VERSION="$(tr -d '[:space:]' < packaging/shared/version.txt)" packaging/linux/package-portable.sh
 
       - name: Install, upgrade, and uninstall Debian package
         env:
@@ -383,11 +382,14 @@ jobs:
           upgrade_root="${RUNNER_TEMP}/talkies-upgrade-root"
           dpkg-deb --extract "$DEB_PACKAGE" "$upgrade_root"
           dpkg-deb --control "$DEB_PACKAGE" "$upgrade_root/DEBIAN"
-          sed -i 's/^Version: .*/Version: 0.1.1/' "$upgrade_root/DEBIAN/control"
+          app_version="$(tr -d '[:space:]' < packaging/shared/version.txt)"
+          IFS='.' read -r version_major version_minor version_patch <<< "$app_version"
+          upgrade_version="${version_major}.${version_minor}.$((version_patch + 1))"
+          sed -i "s/^Version: .*/Version: ${upgrade_version}/" "$upgrade_root/DEBIAN/control"
           upgrade_package="${RUNNER_TEMP}/talkies-upgrade.deb"
           dpkg-deb --build --root-owner-group "$upgrade_root" "$upgrade_package"
           sudo apt-get install -y "$upgrade_package"
-          test "$(dpkg-query -W -f='${Version}' talkies)" = 0.1.1
+          test "$(dpkg-query -W -f='${Version}' talkies)" = "$upgrade_version"
           talkies --help >/dev/null
           sudo apt-get remove -y talkies
           test ! -e /usr/lib/talkies
