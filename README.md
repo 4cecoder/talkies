@@ -26,7 +26,6 @@ talkies/
 ├── windows/    # Windows native app (.NET WPF + WhisperNet)
 ├── mobile/     # Native Kotlin Android MVP (Flutter prototype retained as legacy reference)
 ├── linux/      # Linux native app (Zig + whisper.cpp)
-├── frontend/   # Web app (Next.js) — project site, live browser demo, and docs
 └── archive/    # Experimental Python CLI (deprecated)
 ```
 
@@ -50,7 +49,7 @@ Native Linux application built with Zig and whisper.cpp, with global hotkey supp
 
 See [the Linux guide](docs/platforms/linux.md) for detailed documentation.
 
-### Web (`frontend/`)
-Next.js site with the project homepage, a live in-browser transcription demo, and onboarding docs to help you pick a platform.
+### Website
+The Next.js website source is maintained on the [`website` branch](https://github.com/4cecoder/talkies/tree/website), outside the application source tree. GitHub Pages serves its static export from the [`gh-pages` branch](https://github.com/4cecoder/talkies/tree/gh-pages).
 
 See [the website guide](docs/platforms/website.md) for detailed documentation.

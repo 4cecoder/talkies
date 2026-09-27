@@ -9,13 +9,13 @@ Talkies is a privacy-first, voice-powered writing assistant that helps users wri
 ## Logo
 
 ### Primary Logo
-- **File**: `frontend/public/talkies-logo.svg`
+- **File**: [`website/public/talkies-logo.svg`](https://github.com/4cecoder/talkies/blob/website/public/talkies-logo.svg)
 - **Usage**: Website headers, app icons, marketing materials
 - **Minimum size**: 32px × 32px
 - **Clear space**: Maintain 20% of logo width as clear space on all sides
 
 ### Favicon
-- **File**: `frontend/public/favicon.svg`
+- **File**: [`website/public/favicon.svg`](https://github.com/4cecoder/talkies/blob/website/public/favicon.svg)
 - **Usage**: Browser tabs, bookmarks, PWA icons
 - **Size**: 32px × 32px optimized
 
@@ -304,8 +304,8 @@ talkies/
 │   │   ├── palette.swift              # Swift extensions (macOS)
 │   │   └── palette.xaml               # XAML resources (Windows)
 │   └── guidelines/                     # Reserved for additional guidelines
-├── frontend/
-│   └── public/                         # Frontend copies of assets
+├── website branch
+│   └── public/                         # Website copies of assets
 │       ├── talkies-logo.svg
 │       ├── favicon.svg
 │       └── og-image.svg
@@ -313,7 +313,7 @@ talkies/
 └── windows/                            # Windows app (use branding/ assets)
 ```
 
-**Note:** The `/branding` directory is the **single source of truth** for all brand assets. Platform-specific directories (frontend/public/, mac/Resources/, windows/Resources/) should copy or reference assets from `/branding`.
+**Note:** The `/branding` directory is the **single source of truth** for all brand assets. The `website` branch and platform-specific directories (`mac/Resources/`, `windows/Resources/`) should copy or reference assets from `/branding`.
 
 ## Updates & Maintenance
 

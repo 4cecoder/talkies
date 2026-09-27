@@ -22,4 +22,4 @@ Platform build guides live here. Small README pointers beside the source link ba
 - [Windows](platforms/windows.md)
 - [Linux](platforms/linux.md)
 - [Mobile / Android (Kotlin MVP)](platforms/mobile.md)
-- [Website](platforms/website.md)
+- [Website source branch and GitHub Pages](platforms/website.md)
