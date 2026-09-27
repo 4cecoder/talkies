@@ -17,7 +17,7 @@ numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` 
 | Platform | Release asset | Contents | Current install method |
 |---|---|---|---|
 | macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
-| Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe` and `.zip` | Per-user NSIS installer and self-contained published app directory | Run the setup wizard, or expand the ZIP and run `Talkies.Windows.exe`. |
+| Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe`, `.zip`, and optional `Talkies-Windows-Whisper-{CUDA13\|CUDA12\|Vulkan}-Runtime-{LABEL}.zip` | CPU-only per-user installer and portable app by default; separate optional Whisper runtime archives | Run the setup wizard or portable app. Download only the CUDA 13, CUDA 12, or Vulkan runtime that matches your GPU and driver, then extract it into the Talkies app directory. |
 | Linux x86_64 | `Talkies-Linux-{LABEL}.deb` and `.tar.gz` | Debian package or portable `talkies-linux/` directory, with app binary, whisper/llama runtime libraries, and their licenses | Debian/Ubuntu: `sudo apt install ./Talkies-Linux-{LABEL}.deb`. Other distributions: extract the archive and run `talkies-linux/talkies`. |
 | All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 

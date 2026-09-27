@@ -19,10 +19,12 @@ $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $projectPath = Join-Path $repositoryRoot 'windows/Talkies.Windows/Talkies.Windows.csproj'
 $scratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) "talkies-windows-package-$ReleaseLabel-$([Guid]::NewGuid().ToString('N'))"
 $publishDirectory = Join-Path $scratchRoot 'publish'
+$gpuPublishDirectory = Join-Path $scratchRoot 'gpu-publish'
 $extractDirectory = Join-Path $scratchRoot 'extracted'
 $smokeInstallDirectory = Join-Path $scratchRoot 'smoke-install'
 $archivePath = Join-Path $OutputDirectory "Talkies-Windows-$ReleaseLabel.zip"
 $installerPath = Join-Path $OutputDirectory "Talkies-Windows-$ReleaseLabel-Setup.exe"
+$gpuRuntimeArchives = [System.Collections.Generic.List[string]]::new()
 $installerScript = Join-Path $PSScriptRoot 'Talkies.nsi'
 
 New-Item $publishDirectory -ItemType Directory -Force | Out-Null
@@ -34,6 +36,14 @@ dotnet publish $projectPath `
     --self-contained true `
     "-p:Version=$AppVersion" `
     --output $publishDirectory
+
+# Keep CUDA and Vulkan binaries out of the normal install, while producing an
+# opt-in runtime archive for users who have a compatible GPU and driver stack.
+foreach ($runtimeDirectory in @('cuda', 'cuda12', 'vulkan')) {
+    if (Test-Path (Join-Path $publishDirectory "runtimes/$runtimeDirectory")) {
+        throw "The default CPU-only publish unexpectedly contains the $runtimeDirectory Whisper runtime."
+    }
+}
 
 foreach ($requiredFile in @(
     'Talkies.Windows.exe',
@@ -201,8 +211,127 @@ foreach ($requiredNotice in $expectedLegalFiles) {
     }
 }
 
+dotnet publish $projectPath `
+    --configuration Release `
+    --runtime win-x64 `
+    --self-contained true `
+    '-p:TalkiesIncludeGpuWhisperRuntimes=true' `
+    "-p:Version=$AppVersion" `
+    --output $gpuPublishDirectory
+
+$gpuAssets = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
+$gpuPackageIds = @(
+    'Whisper.net.Runtime.Cuda.Windows',
+    'Whisper.net.Runtime.Cuda12.Windows',
+    'Whisper.net.Runtime.Vulkan'
+)
+$gpuAttributions = [System.Collections.Generic.List[string]]::new()
+foreach ($packageId in $gpuPackageIds) {
+    $package = $gpuAssets.libraries.PSObject.Properties |
+        Where-Object { $_.Name.StartsWith("$packageId/", [System.StringComparison]::OrdinalIgnoreCase) } |
+        Select-Object -First 1
+    if ($null -eq $package) {
+        throw "GPU runtime package is missing from the restored dependency graph: $packageId"
+    }
+    $packageVersion = $package.Name.Substring($package.Name.IndexOf('/') + 1)
+    $packageRoot = Join-Path $nugetRoot "$($packageId.ToLowerInvariant())/$($packageVersion.ToLowerInvariant())"
+    $nuspec = Get-ChildItem -LiteralPath $packageRoot -Filter '*.nuspec' -File | Select-Object -First 1
+    if ($null -eq $nuspec) {
+        throw "GPU runtime package has no .nuspec metadata: $packageId $packageVersion"
+    }
+    [xml]$packageMetadata = Get-Content -LiteralPath $nuspec.FullName -Raw
+    $metadata = $packageMetadata.SelectSingleNode("//*[local-name()='metadata']")
+    $packageLicense = $metadata.SelectSingleNode("./*[local-name()='license']")
+    $licenseType = if ($null -ne $packageLicense) { $packageLicense.GetAttribute('type') } else { '' }
+    $licenseValue = if ($null -ne $packageLicense) { $packageLicense.InnerText.Trim() } else { '' }
+    if ($licenseType -ne 'expression' -or $licenseValue -ne 'MIT') {
+        throw "GPU runtime package $packageId $packageVersion has unsupported license metadata: $licenseType $licenseValue"
+    }
+    $licenseUrlNode = $metadata.SelectSingleNode("./*[local-name()='licenseUrl']")
+    $copyrightNode = $metadata.SelectSingleNode("./*[local-name()='copyright']")
+    $authorsNode = $metadata.SelectSingleNode("./*[local-name()='authors']")
+    $licenseUrl = if ($null -ne $licenseUrlNode) { $licenseUrlNode.InnerText.Trim() } else { '' }
+    $copyright = if ($null -ne $copyrightNode) { $copyrightNode.InnerText.Trim() } else { '' }
+    $authors = if ($null -ne $authorsNode) { $authorsNode.InnerText.Trim() } else { '' }
+    $gpuAttributions.Add("$packageId $packageVersion | MIT | $copyright | $authors | $licenseUrl")
+}
+
+$backendLabels = @{
+    cuda = 'CUDA13'
+    cuda12 = 'CUDA12'
+    vulkan = 'Vulkan'
+}
+foreach ($runtimeDirectory in @('cuda', 'cuda12', 'vulkan')) {
+    $sourceRuntimeDirectory = Join-Path $gpuPublishDirectory "runtimes/$runtimeDirectory"
+    if (-not (Test-Path $sourceRuntimeDirectory -PathType Container)) {
+        throw "GPU runtime publish did not contain the expected Whisper runtime: $runtimeDirectory"
+    }
+    $runtimeFiles = @(Get-ChildItem -LiteralPath $sourceRuntimeDirectory -File -Recurse)
+    if ($runtimeFiles.Count -eq 0) {
+        throw "GPU runtime publish produced an empty Whisper runtime: $runtimeDirectory"
+    }
+    $backendLabel = $backendLabels[$runtimeDirectory]
+    $backendStagingDirectory = Join-Path $scratchRoot "gpu-$runtimeDirectory"
+    $backendRuntimeRoot = Join-Path $backendStagingDirectory "runtimes/$runtimeDirectory"
+    $backendArchivePath = Join-Path $OutputDirectory "Talkies-Windows-Whisper-$backendLabel-Runtime-$ReleaseLabel.zip"
+    New-Item $backendRuntimeRoot -ItemType Directory -Force | Out-Null
+    Copy-Item (Join-Path $sourceRuntimeDirectory '*') $backendRuntimeRoot -Recurse
+    Copy-Item (Join-Path $repositoryRoot 'LICENSE') (Join-Path $backendStagingDirectory 'LICENSE')
+    @"
+This archive contains the optional Whisper.net $backendLabel native runtime and
+its whisper.cpp backend. Both are distributed under the MIT License. Their
+license texts and package attribution are in the adjacent licenses directory.
+Talkies itself is distributed under the MIT License in LICENSE.
+"@ | Set-Content -LiteralPath (Join-Path $backendStagingDirectory 'THIRD-PARTY-NOTICES.txt') -Encoding utf8
+    $backendLicenseDirectory = Join-Path $backendStagingDirectory 'licenses'
+    New-Item $backendLicenseDirectory -ItemType Directory -Force | Out-Null
+    foreach ($licenseFile in @('Whisper.net-MIT.txt', 'whisper.cpp-MIT.txt', 'NuGet-MIT-LICENSE.txt')) {
+        Copy-Item (Join-Path $licenseDirectory $licenseFile) (Join-Path $backendLicenseDirectory $licenseFile)
+    }
+    $backendPackageId = switch ($runtimeDirectory) {
+        'cuda' { 'Whisper.net.Runtime.Cuda.Windows' }
+        'cuda12' { 'Whisper.net.Runtime.Cuda12.Windows' }
+        'vulkan' { 'Whisper.net.Runtime.Vulkan' }
+    }
+    $backendAttributions = @($gpuAttributions | Where-Object { $_.StartsWith("$backendPackageId ", [System.StringComparison]::OrdinalIgnoreCase) })
+    if ($backendAttributions.Count -ne 1) {
+        throw "GPU runtime archive could not resolve one package attribution for $runtimeDirectory."
+    }
+    $backendAttributions | Set-Content -LiteralPath (Join-Path $backendLicenseDirectory 'NuGet-ATTRIBUTIONS.txt') -Encoding utf8
+    @"
+Talkies optional Whisper $backendLabel runtime
+
+This add-on is optional. The standard Talkies Windows installer and portable
+ZIP include CPU Whisper inference. Extract this archive into the Talkies app
+directory so runtimes/$runtimeDirectory merges with the existing runtimes folder,
+then restart Talkies. Whisper.net checks runtime compatibility and falls back
+to CPU if this backend cannot load.
+
+The CUDA backend requires a compatible NVIDIA GPU and CUDA driver/toolkit. The
+Vulkan backend requires a compatible Vulkan driver/runtime. Model weights are
+not included; download models explicitly in Talkies before offline use.
+"@ | Set-Content -LiteralPath (Join-Path $backendStagingDirectory 'README.txt') -Encoding utf8
+    Compress-Archive -Path (Join-Path $backendStagingDirectory '*') `
+        -DestinationPath $backendArchivePath -CompressionLevel Optimal
+    $backendExtractDirectory = Join-Path $scratchRoot "gpu-$runtimeDirectory-extracted"
+    Expand-Archive -Path $backendArchivePath -DestinationPath $backendExtractDirectory -Force
+    if (-not (Test-Path (Join-Path $backendExtractDirectory "runtimes/$runtimeDirectory") -PathType Container)) {
+        throw "GPU runtime archive is missing its $runtimeDirectory Whisper runtime."
+    }
+    foreach ($notice in @('LICENSE', 'THIRD-PARTY-NOTICES.txt', 'licenses/NuGet-ATTRIBUTIONS.txt')) {
+        $noticePath = Join-Path $backendExtractDirectory $notice
+        if (-not (Test-Path $noticePath -PathType Leaf) -or (Get-Item $noticePath).Length -le 0) {
+            throw "GPU runtime archive is missing its non-empty legal notice: $notice"
+        }
+    }
+    $gpuRuntimeArchives.Add($backendArchivePath)
+}
+
 Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $archivePath -CompressionLevel Optimal
 Expand-Archive -Path $archivePath -DestinationPath $extractDirectory -Force
+if ((Get-Item $archivePath).Length -ge 300MB) {
+    throw 'The default Windows portable package must stay below 300 MiB; keep optional GPU runtimes in the separate add-on.'
+}
 
 foreach ($requiredFile in @(
     'Talkies.Windows.exe',
@@ -258,6 +387,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 if (-not (Test-Path $installerPath -PathType Leaf) -or (Get-Item $installerPath).Length -le 0) {
     throw 'NSIS did not produce a non-empty setup installer.'
+}
+if ((Get-Item $installerPath).Length -ge 300MB) {
+    throw 'The default Windows setup installer must stay below 300 MiB; keep optional GPU runtimes in the separate add-on.'
 }
 
 function Assert-InstalledApplication([string]$Directory) {
@@ -321,4 +453,4 @@ if (Test-Path (Join-Path $smokeInstallDirectory 'Talkies.Windows.exe')) {
 }
 
 Remove-Item $scratchRoot -Recurse -Force
-Write-Host "Created and smoke-tested $archivePath and $installerPath"
+Write-Host "Created and smoke-tested $archivePath, $installerPath, and optional GPU archives: $($gpuRuntimeArchives -join ', ')"

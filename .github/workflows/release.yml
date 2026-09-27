@@ -198,6 +198,9 @@ jobs:
           path: |
             dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
             dist/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
+            dist/Talkies-Windows-Whisper-CUDA13-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-Windows-Whisper-CUDA12-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
+            dist/Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
           retention-days: 1
 
   build-linux:
@@ -354,7 +357,7 @@ jobs:
       - name: Generate SHA-256 checksums
         working-directory: artifacts
         run: |
-          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb > SHA256SUMS
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA13-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA12-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb > SHA256SUMS
           sha256sum --check SHA256SUMS
           {
             echo "commit=$GITHUB_SHA"
@@ -386,6 +389,9 @@ jobs:
             artifacts/Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg
             artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe
             artifacts/Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Windows-Whisper-CUDA13-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Windows-Whisper-CUDA12-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
+            artifacts/Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb
             artifacts/SHA256SUMS
