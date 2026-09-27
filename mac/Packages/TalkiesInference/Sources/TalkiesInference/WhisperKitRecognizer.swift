@@ -88,16 +88,45 @@ public final class WhisperKitRecognizer {
     nonisolated private static func isValidTokenizerFile(_ url: URL) -> Bool {
         guard isNonEmptyFile(url),
               let data = try? Data(contentsOf: url),
-              let document = try? JSONSerialization.jsonObject(with: data),
-              let root = document as? [String: Any],
-              let model = root["model"] as? [String: Any],
-              model["type"] as? String == "BPE",
-              let vocabulary = model["vocab"] as? [String: Any],
-              !vocabulary.isEmpty,
-              model["merges"] is [Any] else {
+              let document = try? JSONDecoder().decode(WhisperTokenizerCacheDocument.self, from: data),
+              document.model.type == "BPE",
+              !document.model.vocab.isEmpty,
+              document.model.vocab.values.allSatisfy({ $0 >= 0 }),
+              Set(document.model.vocab.values).count == document.model.vocab.count else {
             return false
         }
         return true
+    }
+
+    private struct WhisperTokenizerCacheDocument: Decodable {
+        let model: Model
+
+        struct Model: Decodable {
+            let type: String
+            let vocab: [String: Int]
+            let merges: [Merge]
+        }
+
+        /// swift-transformers accepts legacy "left right" strings and newer
+        /// two-element arrays. Its BPE model indexes both elements directly,
+        /// so validate their shape before allowing the cache to bypass Hub.
+        struct Merge: Decodable {
+            init(from decoder: Decoder) throws {
+                let value = try decoder.singleValueContainer()
+                if let legacy = try? value.decode(String.self) {
+                    let tokens = legacy.split(separator: " ", omittingEmptySubsequences: false)
+                    guard tokens.count == 2, tokens.allSatisfy({ !$0.isEmpty }) else {
+                        throw DecodingError.dataCorruptedError(in: value, debugDescription: "BPE merge strings must contain two tokens")
+                    }
+                    return
+                }
+
+                let tokens = try value.decode([String].self)
+                guard tokens.count == 2, tokens.allSatisfy({ !$0.isEmpty }) else {
+                    throw DecodingError.dataCorruptedError(in: value, debugDescription: "BPE merge arrays must contain two tokens")
+                }
+            }
+        }
     }
 
     nonisolated private static func isNonEmptyFile(_ url: URL) -> Bool {
