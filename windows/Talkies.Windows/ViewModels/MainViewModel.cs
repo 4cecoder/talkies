@@ -64,6 +64,26 @@ namespace Talkies.Windows.ViewModels
                 OnPropertyChanged();
             }
         }
+        public string VocabularyFeedback { get; private set; } = string.Empty;
+
+        public bool AddVocabularyTerm(string? term)
+        {
+            var vocabulary = LocalVocabulary.Normalize(_settings.PersonalVocabulary);
+            if (!LocalVocabulary.TryAdd(vocabulary, term))
+            {
+                VocabularyFeedback = string.IsNullOrWhiteSpace(term)
+                    ? "Select a word or phrase in the transcript first."
+                    : "That term is already saved or the vocabulary is full.";
+                OnPropertyChanged(nameof(VocabularyFeedback));
+                return false;
+            }
+            _settings.PersonalVocabulary = vocabulary;
+            OnPropertyChanged(nameof(VocabularyText));
+            SaveSettingsIfReady();
+            VocabularyFeedback = "Added to local vocabulary.";
+            OnPropertyChanged(nameof(VocabularyFeedback));
+            return true;
+        }
         public bool VadEnabled { get => _vadEnabled; set { _vadEnabled = value; OnPropertyChanged(); } }
         private bool _vadEnabled = true;
         public bool FilterEnabled { get => _filterEnabled; set { _filterEnabled = value; OnPropertyChanged(); } }

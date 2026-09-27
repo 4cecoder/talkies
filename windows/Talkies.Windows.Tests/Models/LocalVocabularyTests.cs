@@ -10,6 +10,37 @@ namespace Talkies.Windows.Tests.Models;
 public class LocalVocabularyTests
 {
     [Fact]
+    public void TryAdd_TrimsTermAndRejectsDuplicatesCaseInsensitively()
+    {
+        var terms = new List<string> { "Talkies" };
+
+        Assert.True(LocalVocabulary.TryAdd(terms, "  WhisperKit "));
+        Assert.False(LocalVocabulary.TryAdd(terms, "WHISPERKIT"));
+        Assert.Equal(new[] { "Talkies", "WhisperKit" }, terms);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    [InlineData("two\nlines")]
+    public void TryAdd_RejectsBlankOrMultilineTerm(string candidate)
+    {
+        var terms = new List<string> { "Talkies" };
+
+        Assert.False(LocalVocabulary.TryAdd(terms, candidate));
+        Assert.Equal(new[] { "Talkies" }, terms);
+    }
+
+    [Fact]
+    public void TryAdd_RejectsTermThatExceedsPromptLimit()
+    {
+        var terms = new List<string>();
+
+        Assert.False(LocalVocabulary.TryAdd(terms, new string('x', 401)));
+        Assert.Empty(terms);
+    }
+
+    [Fact]
     public void Normalize_TrimsAndDeduplicatesCaseInsensitively()
     {
         var normalized = LocalVocabulary.Normalize(new[] { " Talkies ", "talkies", "Qwen3", "", "  ", "S1-mini" });

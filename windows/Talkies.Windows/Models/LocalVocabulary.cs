@@ -7,6 +7,25 @@ namespace Talkies.Windows.Models;
 /// <summary>Normalizes user vocabulary for local Whisper prompt conditioning.</summary>
 public static class LocalVocabulary
 {
+    public static bool TryAdd(ICollection<string> terms, string? candidate)
+    {
+        ArgumentNullException.ThrowIfNull(terms);
+        var normalized = candidate?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized.Contains('\n') || normalized.Contains('\r'))
+        {
+            return false;
+        }
+
+        var existing = Normalize(terms);
+        if (existing.Contains(normalized, StringComparer.OrdinalIgnoreCase)) return false;
+        if (string.Join(", ", existing.Append(normalized)).Length > 400) return false;
+
+        terms.Clear();
+        foreach (var term in existing) terms.Add(term);
+        terms.Add(normalized);
+        return true;
+    }
+
     public static List<string> Normalize(IEnumerable<string>? terms)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
