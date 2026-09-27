@@ -37,7 +37,7 @@ included in the adjacent licenses directory:
   LICENSE.txt and ThirdPartyNotices.txt from the .NET installation used to
   publish the Windows build, copied under licenses/dotnet/.
 - Resolved NuGet dependency licenses and attributions are collected from the
-  restored project.assets.json graph into licenses/NuGet-MIT-ATTRIBUTIONS.txt.
+  restored project.assets.json graph into licenses/NuGet-ATTRIBUTIONS.txt.
   Full MIT terms are in licenses/NuGet-MIT-LICENSE.txt; packages that ship a
   license or notice file retain that exact source file under licenses/nuget/.
 - NAudio 2.4.0's MIT license is included at licenses/NAudio-MIT.txt from the

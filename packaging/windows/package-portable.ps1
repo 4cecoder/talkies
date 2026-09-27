@@ -168,7 +168,7 @@ if ($nugetAttributions.Count -eq 0) {
     throw 'The restored NuGet graph contained no package license metadata.'
 }
 $nugetAttributions.Sort([System.StringComparer]::OrdinalIgnoreCase)
-$nugetAttributions | Set-Content -LiteralPath (Join-Path $licenseDirectory 'NuGet-MIT-ATTRIBUTIONS.txt') -Encoding utf8
+$nugetAttributions | Set-Content -LiteralPath (Join-Path $licenseDirectory 'NuGet-ATTRIBUTIONS.txt') -Encoding utf8
 Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\MIT-LICENSE-TEXT.txt') `
     (Join-Path $licenseDirectory 'NuGet-MIT-LICENSE.txt')
 
