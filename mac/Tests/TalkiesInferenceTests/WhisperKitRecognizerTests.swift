@@ -1,5 +1,5 @@
 import XCTest
-import TalkiesInference
+@testable import TalkiesInference
 
 final class WhisperKitRecognizerTests: XCTestCase {
     func testRecognizerConstructionDoesNotLoadModel() async {
@@ -43,16 +43,59 @@ final class WhisperKitRecognizerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
     }
 
-    func testTranscribesWithCachedModelWhenDownloadsAreDisabled() async throws {
+    func testCachedModelResolverRequiresModelAndTokenizerAssets() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "talkies-whisper-cache-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let modelFolder = root
+            .appending(path: "models/argmaxinc/whisperkit-coreml/openai_whisper-tiny", directoryHint: .isDirectory)
+        let modelAssets = [
+            "config.json",
+            "AudioEncoder.mlmodelc/weights/weight.bin",
+            "MelSpectrogram.mlmodelc/weights/weight.bin",
+            "TextDecoder.mlmodelc/weights/weight.bin",
+        ]
+        for asset in modelAssets {
+            let assetURL = modelFolder.appending(path: asset)
+            try FileManager.default.createDirectory(at: assetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data([1]).write(to: assetURL)
+        }
+
+        XCTAssertNil(WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root))
+        XCTAssertTrue(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: false))
+
+        let tokenizerURL = modelFolder.appending(path: "models/openai/whisper-tiny/tokenizer.json")
+        try FileManager.default.createDirectory(at: tokenizerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([1]).write(to: tokenizerURL)
+
+        XCTAssertEqual(
+            WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny", downloadBase: root),
+            modelFolder
+        )
+        XCTAssertFalse(WhisperKitRecognizer.shouldDownload(requested: true, hasVerifiedCache: true))
+    }
+
+    func testTranscribesWithCachedModelWithoutResolvingItRemotely() async throws {
         guard ProcessInfo.processInfo.environment["TALKIES_RUN_WHISPERKIT_MODEL_TESTS"] == "1" else {
             throw XCTSkip("Set TALKIES_RUN_WHISPERKIT_MODEL_TESTS=1 to download and run the WhisperKit tiny model.")
         }
 
-        let modelFolder = try await WhisperKitRecognizer.downloadModel(variant: "openai_whisper-tiny")
+        let modelFolder: URL
+        if let cachedFolder = WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny") {
+            modelFolder = cachedFolder
+        } else {
+            modelFolder = try await WhisperKitRecognizer.downloadModel(variant: "openai_whisper-tiny")
+        }
         let recognizer = await MainActor.run {
             WhisperKitRecognizer(modelName: "openai_whisper-tiny")
         }
-        try await recognizer.initialize(download: false, modelFolder: modelFolder)
+        let resolvedModelFolder = try XCTUnwrap(
+            WhisperKitRecognizer.cachedModelFolder(modelName: "openai_whisper-tiny")
+        )
+        XCTAssertEqual(resolvedModelFolder.lastPathComponent, modelFolder.lastPathComponent)
+        XCTAssertEqual(resolvedModelFolder.deletingLastPathComponent().path, modelFolder.deletingLastPathComponent().path)
+        try await recognizer.initialize()
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
