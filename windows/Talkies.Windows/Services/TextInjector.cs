@@ -40,10 +40,13 @@ namespace Talkies.Windows.Services
                 Logger.Info($"TextInjector: Injecting {text.Length} characters into active window '{windowTitle}'");
 
                 var sendFailed = false;
+                uint acceptedInputEvents = 0;
 
                 foreach (var ch in text)
                 {
-                    if (!SendChar(ch))
+                    var sent = SendChar(ch, out var acceptedEvents);
+                    acceptedInputEvents += acceptedEvents;
+                    if (!sent)
                     {
                         Logger.Error($"TextInjector: Failed to send character '{ch}' (U+{(int)ch:X4})");
                         sendFailed = true;
@@ -58,8 +61,16 @@ namespace Talkies.Windows.Services
 
                 if (sendFailed)
                 {
-                    Logger.Warn("TextInjector: SendInput failed, falling back to clipboard paste");
-                    return TryClipboardPaste(text);
+                    if (CanFallbackToClipboard(acceptedInputEvents))
+                    {
+                        Logger.Warn("TextInjector: SendInput accepted no events; falling back to clipboard paste");
+                        return TryClipboardPaste(text);
+                    }
+
+                    // The target may already contain a prefix of the transcript. Pasting
+                    // the full string here would duplicate that prefix.
+                    Logger.Error("TextInjector: SendInput failed after accepting input; refusing a full-text paste fallback");
+                    return false;
                 }
 
                 Logger.Info("TextInjector: Text injection completed successfully");
@@ -167,8 +178,14 @@ namespace Talkies.Windows.Services
             }
         }
 
-        private static bool SendChar(char ch)
+        internal static bool CanFallbackToClipboard(uint acceptedInputEvents)
         {
+            return acceptedInputEvents == 0;
+        }
+
+        private static bool SendChar(char ch, out uint acceptedEvents)
+        {
+            acceptedEvents = 0;
             try
             {
                 var inputs = new INPUT[2];
@@ -191,10 +208,11 @@ namespace Talkies.Windows.Services
 
                 var result = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
 
-                if (result == 0)
+                acceptedEvents = result;
+                if (result != inputs.Length)
                 {
                     var error = Marshal.GetLastWin32Error();
-                    Logger.Warn($"TextInjector: SendInput returned 0 for '{ch}' (Error: {error})");
+                    Logger.Warn($"TextInjector: SendInput inserted {result} of {inputs.Length} events for '{ch}' (Error: {error})");
                     return false;
                 }
 

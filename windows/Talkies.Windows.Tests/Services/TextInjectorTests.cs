@@ -8,6 +8,21 @@ namespace Talkies.Windows.Tests.Services
     public class TextInjectorTests
     {
         [Fact]
+        public void ClipboardFallback_IsAllowed_WhenSendInputAcceptedNoEvents()
+        {
+            Assert.True(TextInjector.CanFallbackToClipboard(0));
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(20)]
+        public void ClipboardFallback_IsRejected_WhenSendInputMayHaveInsertedText(uint acceptedEvents)
+        {
+            Assert.False(TextInjector.CanFallbackToClipboard(acceptedEvents));
+        }
+
+        [Fact]
         public void TrySetClipboardText_ReturnsTrue_WhenClipboardIsAvailable()
         {
             // Arrange
