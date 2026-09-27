@@ -52,7 +52,9 @@ since no Linux distro packages them — see [`DEPENDENCIES.md`](../../linux/docs
 `lib/` folder next to the `talkies` binary, so you don't need to build whisper.cpp yourself. You
 do still need PulseAudio, GTK4, D-Bus, sqlite3, and (on X11) libX11 installed — these are standard
 packages on any desktop Linux distro; see [`DEPENDENCIES.md`](../../linux/docs/DEPENDENCIES.md) for exact package names per
-distro if any are missing.
+distro if any are missing. The GTK overlay also requires Python's GTK bindings and WebSocket client
+(`python3-gi`, `gir1.2-gtk-4.0`, and `python3-websocket` on Debian/Ubuntu); these dependencies are
+included automatically with the `.deb` package.
 
 ```bash
 tar -xzf Talkies-Linux-*.tar.gz

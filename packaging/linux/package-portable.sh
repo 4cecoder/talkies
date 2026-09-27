@@ -110,7 +110,7 @@ Version: ${APP_VERSION}
 Section: sound
 Priority: optional
 Architecture: amd64
-Depends: ${SHLIBS_DEPENDS}, python3, python3-gi, gir1.2-gtk-4.0
+Depends: ${SHLIBS_DEPENDS}, python3, python3-gi, python3-websocket, gir1.2-gtk-4.0
 Maintainer: Talkies contributors <opensource@talkies.app>
 Description: Offline voice transcription for Linux
  Talkies records speech and transcribes it locally. Model files are stored in
