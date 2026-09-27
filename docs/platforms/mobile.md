@@ -17,7 +17,7 @@ cd mobile/android
 ./gradlew assembleRelease testReleaseUnitTest
 ```
 
-Requires JDK 17, Android SDK API 36, and NDK 25.2. Android runtime support starts at API 31. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtime/license but omit model weights, then uploads the tested debug APK as a seven-day artifact. JVM tests verify model download integrity behavior; device-level offline transcription acceptance remains needed. The APK includes the whisper.cpp MIT license notice.
+Requires JDK 17, Android SDK API 36, and NDK 25.2. Android runtime support starts at API 31. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtime/license but omit model weights, and uploads the tested debug APK as a seven-day artifact. JVM tests verify model download integrity behavior. An API 35 emulator test installs the pinned model before enabling airplane mode, then verifies JNI transcription from the shared JFK fixture while no validated external network is available. The APK includes the whisper.cpp MIT license notice.
 
 ## Flutter prototype (legacy)
 

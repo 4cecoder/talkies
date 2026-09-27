@@ -92,18 +92,22 @@ internal class OfflineAudioCapture {
 
     private fun captureLoop(record: AudioRecord) {
         val samples = ShortArray(4096)
-        while (capturing) {
-            val count = record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
-            if (count > 0) {
-                for (index in 0 until count) {
-                    val sample = samples[index].toInt()
-                    pcmBytes.write(sample and 0xff)
-                    pcmBytes.write((sample shr 8) and 0xff)
+        try {
+            while (capturing) {
+                val count = record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
+                if (count > 0) {
+                    for (index in 0 until count) {
+                        val sample = samples[index].toInt()
+                        pcmBytes.write(sample and 0xff)
+                        pcmBytes.write((sample shr 8) and 0xff)
+                    }
+                } else if (capturing) {
+                    captureError = "Microphone capture stopped unexpectedly ($count)."
+                    capturing = false
                 }
-            } else if (capturing) {
-                captureError = "Microphone capture stopped unexpectedly ($count)."
-                capturing = false
             }
+        } finally {
+            samples.fill(0)
         }
     }
 
