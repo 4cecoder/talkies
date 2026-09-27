@@ -2,7 +2,7 @@
 
 ## Android (primary): native Kotlin and local Whisper
 
-Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the pinned whisper.cpp CPU runtime. It records 16 kHz mono audio in memory, runs the downloaded Whisper tiny model through JNI, and presents an editable transcript with explicit copy feedback. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.
+Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the pinned whisper.cpp CPU runtime. It records 16 kHz mono audio in memory for at most five minutes per dictation, runs the downloaded Whisper tiny model through JNI, and presents an editable transcript with explicit copy feedback. At the recording limit, it transcribes the captured audio automatically. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.
 
 On first run, the user explicitly downloads the 77,691,713-byte Whisper tiny model. Talkies verifies the pinned Hugging Face revision, exact byte count, and SHA-256 before installing it. HTTPS access is used solely for this model download; after verification, recording and transcription use the local model and CPU runtime. The user can remove the model from the app. S1-mini cleanup, persistent transcript history, background dictation, and a packaged airplane-mode runtime test are not implemented on Android yet.
 

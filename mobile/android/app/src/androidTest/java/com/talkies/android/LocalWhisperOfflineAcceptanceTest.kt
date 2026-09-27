@@ -11,7 +11,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,12 +33,7 @@ class LocalWhisperOfflineAcceptanceTest {
             SystemClock.sleep(1_500)
             assertEquals(1, Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0))
             val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = connectivity.activeNetwork
-            val capabilities = activeNetwork?.let(connectivity::getNetworkCapabilities)
-            assertFalse(
-                "The emulator still has validated external network access",
-                capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-            )
+            assertNull("Airplane mode left an active network available", connectivity.activeNetwork)
 
             val transcript = LocalWhisper.transcribe(model.absolutePath, samples)
             assertTrue("Whisper output did not recognize the shared JFK speech fixture: $transcript", transcript.contains("country", ignoreCase = true))

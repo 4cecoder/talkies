@@ -155,15 +155,26 @@ class MainActivity : ComponentActivity() {
         if (recording || transcribing || modelBusy) return
         lifecycleScope.launch {
             modelReady = false
-            val deleted = withContext(Dispatchers.IO) { modelStore.delete() }
-            status = if (deleted) "Local speech model deleted." else "Could not delete the local speech model."
+            val (deleted, stillInstalled) = withContext(Dispatchers.IO) {
+                val deleteSucceeded = runCatching { modelStore.delete() }.getOrDefault(false)
+                val modelIsReady = runCatching { modelStore.isInstalled() }.getOrDefault(false)
+                deleteSucceeded to modelIsReady
+            }
+            modelReady = stillInstalled
+            status = when {
+                deleted && !stillInstalled -> "Local speech model deleted."
+                stillInstalled -> "Could not delete the local speech model. It remains ready for dictation."
+                else -> "The local speech model is unavailable. Download it again before dictating."
+            }
         }
     }
 
     private fun startRecording() {
         if (!modelReady || recording || transcribing) return
         try {
-            audioCapture.start()
+            audioCapture.start {
+                runOnUiThread { stopRecording(maximumDurationReached = true) }
+            }
             recording = true
             status = "Recording. Audio remains in memory on this device."
         } catch (error: Exception) {
@@ -172,11 +183,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopRecording() {
+    private fun stopRecording(maximumDurationReached: Boolean = false) {
         if (!recording) return
         recording = false
         transcribing = true
-        status = "Transcribing locally…"
+        status = if (maximumDurationReached) {
+            "${OfflineAudioCapture.MAX_RECORDING_SECONDS / 60}-minute limit reached. Transcribing locally…"
+        } else {
+            "Transcribing locally…"
+        }
         lifecycleScope.launch {
             var samples: FloatArray? = null
             try {

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import java.io.ByteArrayOutputStream
 import kotlin.math.max
 
 /** Captures ephemeral 16 kHz mono PCM in memory for local Whisper inference. */
@@ -13,11 +12,11 @@ internal class OfflineAudioCapture {
     @Volatile private var captureError: String? = null
     private var audioRecord: AudioRecord? = null
     private var captureThread: Thread? = null
-    private var pcmBytes = WipingByteArrayOutputStream()
+    private val pcmBuffer = BoundedPcmBuffer(MAX_PCM_BYTES)
 
     @SuppressLint("MissingPermission")
     @Synchronized
-    fun start() {
+    fun start(onMaximumDurationReached: () -> Unit = {}) {
         check(!capturing) { "Recording is already active." }
         val minBufferBytes = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
@@ -26,7 +25,7 @@ internal class OfflineAudioCapture {
         )
         check(minBufferBytes > 0) { "This device could not configure microphone capture." }
 
-        pcmBytes = WipingByteArrayOutputStream()
+        pcmBuffer.wipe()
         captureError = null
         val record = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
@@ -43,7 +42,10 @@ internal class OfflineAudioCapture {
         audioRecord = record
         record.startRecording()
         capturing = true
-        captureThread = Thread({ captureLoop(record) }, "TalkiesAudioCapture").apply { start() }
+        captureThread = Thread(
+            { captureLoop(record, onMaximumDurationReached) },
+            "TalkiesAudioCapture"
+        ).apply { start() }
     }
 
     @Synchronized
@@ -54,23 +56,15 @@ internal class OfflineAudioCapture {
         try {
             captureThread?.join()
             captureError?.let { error(it) }
-            val bytes = pcmBytes.toByteArray()
-            try {
-                check(bytes.size >= MINIMUM_AUDIO_BYTES) { "Not enough audio was recorded. Try speaking for longer." }
-                return FloatArray(bytes.size / 2) { index ->
-                    val low = bytes[index * 2].toInt() and 0xff
-                    val high = bytes[index * 2 + 1].toInt()
-                    val sample = (high shl 8) or low
-                    sample.toShort() / 32768.0f
-                }
-            } finally {
-                bytes.fill(0)
+            check(pcmBuffer.sizeBytes >= MINIMUM_AUDIO_BYTES) {
+                "Not enough audio was recorded. Try speaking for longer."
             }
+            return pcmBuffer.toFloatArray()
         } finally {
             record.release()
             audioRecord = null
             captureThread = null
-            pcmBytes.wipe()
+            pcmBuffer.wipe()
         }
     }
 
@@ -86,20 +80,21 @@ internal class OfflineAudioCapture {
         } finally {
             audioRecord = null
             captureThread = null
-            pcmBytes.wipe()
+            pcmBuffer.wipe()
         }
     }
 
-    private fun captureLoop(record: AudioRecord) {
+    private fun captureLoop(record: AudioRecord, onMaximumDurationReached: () -> Unit) {
         val samples = ShortArray(4096)
         try {
             while (capturing) {
                 val count = record.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                 if (count > 0) {
-                    for (index in 0 until count) {
-                        val sample = samples[index].toInt()
-                        pcmBytes.write(sample and 0xff)
-                        pcmBytes.write((sample shr 8) and 0xff)
+                    val acceptedSamples = pcmBuffer.append(samples, count)
+                    if (acceptedSamples < count || pcmBuffer.isFull) {
+                        capturing = false
+                        runCatching { record.stop() }
+                        onMaximumDurationReached()
                     }
                 } else if (capturing) {
                     captureError = "Microphone capture stopped unexpectedly ($count)."
@@ -111,15 +106,10 @@ internal class OfflineAudioCapture {
         }
     }
 
-    private companion object {
-        const val SAMPLE_RATE = 16_000
-        const val MINIMUM_AUDIO_BYTES = SAMPLE_RATE / 2 * 2
-    }
-
-    private class WipingByteArrayOutputStream : ByteArrayOutputStream() {
-        fun wipe() {
-            buf.fill(0)
-            reset()
-        }
+    companion object {
+        const val MAX_RECORDING_SECONDS = 5 * 60
+        private const val SAMPLE_RATE = 16_000
+        private const val MINIMUM_AUDIO_BYTES = SAMPLE_RATE / 2 * 2
+        private const val MAX_PCM_BYTES = SAMPLE_RATE * MAX_RECORDING_SECONDS * 2
     }
 }

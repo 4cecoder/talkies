@@ -86,7 +86,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           test -r /dev/kvm && test -w /dev/kvm
       - name: Run real Whisper transcription in airplane mode on Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 35
           target: google_apis
@@ -104,4 +104,6 @@ jobs:
             adb shell run-as com.talkies.android mkdir -p files/models files/fixtures
             adb shell run-as com.talkies.android cp /data/local/tmp/ggml-tiny.bin files/models/ggml-tiny.bin
             adb shell run-as com.talkies.android cp /data/local/tmp/jfk.wav files/fixtures/jfk.wav
+            adb shell svc wifi disable
+            adb shell svc data disable
             ./gradlew --no-daemon connectedDebugAndroidTest
