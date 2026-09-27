@@ -42,7 +42,7 @@ Native Windows application built with .NET WPF and WhisperNet. Features real-tim
 See [the Windows guide](docs/platforms/windows.md) for detailed documentation.
 
 ### Android (`mobile/android/`) — Kotlin MVP
-Android now has a native Kotlin app with a pinned local Whisper runtime, an explicitly downloaded and SHA-verified model, in-memory recording, editable transcript, and copy. Network permission is used only for the selected model download; recognition is local. S1-mini cleanup and packaged airplane-mode acceptance remain open. The old Flutter prototype remains as legacy reference. See [the mobile guide](docs/platforms/mobile.md).
+Android has a native Kotlin app with pinned local Whisper recognition and optional S1-mini cleanup, both using explicitly downloaded and SHA-256-verified models. Recording is in memory; transcripts are editable and copied explicitly. Model downloads require HTTPS, while inference runs locally. Android CI verifies cached ASR followed by S1-mini cleanup with external networking disabled on an API 35 emulator. Full UI-driven recording and clipboard acceptance, persistent history, and signed release distribution remain open. The old Flutter prototype is retained as legacy reference. See [the mobile guide](docs/platforms/mobile.md).
 
 ### Linux (`linux/`)
 Native Linux application built with Zig and whisper.cpp, with global hotkey support on both X11 and Wayland. Newer and less polished than the macOS/Windows apps.
