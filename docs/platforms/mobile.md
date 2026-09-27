@@ -1,5 +1,7 @@
 # Mobile
 
+For model setup and offline first-run checks, see the [first-run and troubleshooting guide](first-run-and-troubleshooting.md).
+
 ## Android (primary): native Kotlin and local Whisper
 
 Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin, Jetpack Compose, and the pinned whisper.cpp CPU runtime. It records 16 kHz mono audio in memory for at most five minutes per dictation, runs the downloaded Whisper tiny model through JNI, and presents an editable transcript with explicit copy feedback. At the recording limit, it transcribes the captured audio automatically. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.

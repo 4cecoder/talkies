@@ -127,6 +127,8 @@ Speech recognition and transcript cleanup run on-device. S1-mini cleanup uses th
 
 ## Troubleshooting
 
+See the shared [first-run and troubleshooting guide](first-run-and-troubleshooting.md) for model setup, Accessibility approval, offline checks, and cache recovery.
+
 ### Microphone Permission
 If microphone access is denied:
 1. Open System Settings > Privacy & Security > Microphone
