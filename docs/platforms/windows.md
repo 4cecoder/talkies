@@ -1,400 +1,69 @@
-# Talkies Windows - Professional Transcription Application
+# Talkies for Windows
 
-![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)
-![Platform](https://img.shields.io/badge/Platform-Windows%2010%2B-blue)
-![Framework](https://img.shields.io/badge/Framework-.NET%20WPF-blue)
-![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
+Talkies is a free, MIT-licensed Windows dictation app. It records audio locally, transcribes with Whisper, and can optionally polish the transcript with S1-mini running on the CPU. Transcripts can be inserted into the focused app or exported. Model downloads need a network connection; recording, transcription, cleanup, and insertion run offline after the selected models are installed.
 
-A professional-grade audio transcription application for Windows with real-time transcription, multi-provider LLM enhancement, and flexible export options.
+## Install, update, and uninstall
 
-## ✨ Key Features
+Download the current packages from [Talkies releases](https://github.com/4cecoder/talkies/releases). The rolling `latest` release is a prerelease, and public Windows packages are currently unsigned. Check the release notes before installing.
 
-### 🎙️ Real-Time Transcription
-- **Audio Recording**: High-quality recording from any microphone
-- **Multiple Models**: tiny, base, small, medium, large (accuracy vs speed tradeoff)
-- **Language Support**: Auto-detect or manual language selection
-- **Advanced Filtering**: Voice Activity Detection (VAD) and hallucination filtering
-- **Live Display**: Real-time transcript with timestamps and statistics
+To verify the setup executable, download `SHA256SUMS` from the same release and compare the Windows setup entry:
 
-Whisper models are downloaded from the [pinned Whisper.cpp model repository
-revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1),
-checked against their expected size and SHA-256, and installed atomically in
-`%USERPROFILE%\.talkies\models`. Once the selected model is present, recognition reads it
-from disk and works offline.
-
-### 🧠 LLM Enhancement (Optional)
-- **Multi-Provider Support**:
-  - **S1-mini**: Embedded local CPU inference; no inference server or GPU required
-  - 🦙 **Ollama**: Local LLM inference (http://localhost:11434)
-  - 🤖 **LM Studio**: OpenAI-compatible endpoints (http://127.0.0.1:1234)
-- **Enhancement Modes**:
-  - Grammar - Fix spelling and punctuation
-  - Concise - Shorten and clarify
-  - Detailed - Expand with more information
-  - Creative - Rephrase creatively
-- **Model Discovery**: Automatic detection of available models
-- **Error Handling**: User-friendly dialogs with troubleshooting guidance
-
-Inference endpoints must resolve to `localhost` or a loopback IP address. Talkies rejects
-remote hosts and does not follow HTTP redirects, so transcript text stays with a local model
-server. First-time model downloads still require network access.
-
-S1-mini is the default provider for new installations. On first use, Talkies downloads the
-quantized English cleanup model (about 462 MiB), verifies its pinned SHA-256, and keeps the
-weights plus upstream `LICENSE` and `NOTICE` files in the current user's local application
-data. Later cleanup runs locally without network access. S1-mini is a post-processor: Whisper
-still performs speech recognition. The Talkies application is MIT-licensed; the S1-mini model
-weights have their own Apache-2.0 license with a required model naming clause. See the
-[upstream model repository](https://huggingface.co/superwhisper/s1-mini-GGUF) and retain its
-included notices when redistributing model weights.
-
-### 📤 Professional Export
-Export your transcripts in multiple formats:
-- **SRT** (SubRip) - For video subtitles with proper timestamp formatting
-- **TXT** (Timestamped Text) - For documents and archives
-- **VTT** (WebVTT) - For web and video players
-- All formats maintain accurate timing and encoding
-
-### 💾 Smart Settings
-- **Persistent Configuration**: All settings automatically saved
-- **Provider Memory**: Last used provider and endpoint remembered
-- **Model Selection**: Previously selected model restored on startup
-- **Location**: `%USERPROFILE%\.talkies\config.json` (settings) and `%USERPROFILE%\.talkies\models\` (models)
-
-### 🎨 Professional UI
-- **Dark Theme**: Modern dark interface reducing eye strain
-- **Responsive Layout**: Adapts to different window sizes
-- **Real-time Visualization**: Waveform display showing audio input levels
-- **Live Statistics**: Word count, segment count, words-per-minute
-- **Loading Indicators**: Visual feedback during async operations
-
-### ⌨️ Hotkey Control
-- **Right Alt Tap**: Toggle recording start/stop
-- **Right Alt Hold**: Push-to-talk (record while holding, stop on release)
-- **Global Hotkey**: Works even when app is in background
-
-### 🔊 Additional Features
-- **Text-to-Speech**: Hear your transcription read aloud
-- **Text Injection**: Automatically type transcript into active window
-- **Microphone Selection**: Choose from available audio devices
-- **Hotkey Status**: Visual feedback on hotkey state
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Windows 10 or later
-- .NET 6+ runtime
-- 4GB RAM (8GB recommended)
-- Any microphone
-
-### Basic Usage
-
-1. **Select Your Microphone**
-   - Choose from the "Microphone" dropdown
-
-2. **Choose Transcription Model**
-   - Select based on your preference:
-     - `tiny` - Fastest, lowest accuracy
-     - `base` - Balanced (recommended)
-     - `small` - Better accuracy, slower
-     - `medium` - High accuracy
-     - `large` - Best accuracy, slowest
-
-3. **Record**
-   - Click "Start Recording" or press Right Alt
-   - Speak clearly
-   - Click "Stop Recording" or press Right Alt again
-
-4. **Review & Export**
-   - View transcript in real-time
-   - Click "Export SRT/TXT/VTT" to save in your preferred format
-
-### With LLM Enhancement
-
-1. **Enable Enhancement**
-   - Check "Enable LLM Enhancement"
-
-2. **Select Provider**
-   - Choose S1-mini for on-device cleanup, or Ollama / LM Studio for another local model
-   - Verify endpoint (auto-filled with defaults)
-
-3. **Fetch Models**
-   - Click "Fetch Models" button
-   - Wait for model discovery
-   - Select desired model from dropdown
-
-4. **Choose Enhancement Mode**
-   - Grammar, Concise, Detailed, or Creative
-
-5. **Record & Enhance**
-   - Transcription automatically enhanced after recording
-   - Enhanced text appears in transcript display
-
-## 📋 Configuration
-
-### Ollama Setup
-```
-1. Install: https://ollama.ai
-2. Download model: ollama pull llama2
-3. Start: ollama serve
-4. In Talkies: Select Ollama provider, endpoint: http://localhost:11434
+```powershell
+$expected = ((Get-Content .\SHA256SUMS | Where-Object { $_ -match '  Talkies-Windows-latest-Setup\.exe$' }) -split '\s+')[0]
+$actual = (Get-FileHash .\Talkies-Windows-latest-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw 'Talkies setup checksum does not match SHA256SUMS.' }
 ```
 
-### LM Studio Setup
-```
-1. Install: https://lmstudio.ai
-2. Download and load a model
-3. Start Local Server (listens on 127.0.0.1:1234)
-4. In Talkies: Select LM Studio provider, default endpoint auto-filled
-```
+- **Setup installer:** Run `Talkies-Windows-latest-Setup.exe`. It installs per-user under `%LOCALAPPDATA%\Programs\Talkies` and adds a Start menu shortcut. The package is self-contained and does not require a separately installed .NET runtime.
+- **Portable ZIP:** Extract `Talkies-Windows-latest.zip` and run `Talkies.Windows.exe`. Delete the extracted folder to remove the portable app.
+- **Update:** Quit Talkies and run the newer setup executable. App files are replaced; settings and downloaded models are kept.
+- **Uninstall:** Select **Uninstall Talkies** from the Start menu. This removes the installed app and shortcuts but keeps settings and model files.
 
-## 📁 Project Structure
+Talkies stores settings at `%USERPROFILE%\.talkies\config.json` and Whisper models in `%USERPROFILE%\.talkies\models`. S1-mini weights and their upstream `LICENSE` and `NOTICE` are stored under `%LOCALAPPDATA%\Talkies\Models`. To remove personal data as well, quit Talkies and delete those folders.
 
-```
-talkies_windows/talkies.windows/
-??? App.xaml / App.xaml.cs              # Application shell
-??? MainWindow.xaml / MainWindow.xaml.cs# Main UI
-??? converters/
-?   ??? BooleanInverterConverter.cs     # Value converter
-??? services/
-?   ??? AudioRecorder.cs                # NAudio recording wrapper
-?   ??? WhisperNetTranscriptionService.cs # Transcription engine
-?   ??? TranscriptExporter.cs           # Export to SRT/TXT/VTT
-?   ??? DialogHelper.cs                 # User dialogs
-?   ??? SettingsService.cs              # JSON persistence
-?   ??? [more services]
-??? plugins/
-?   ??? ILlmProvider.cs                 # Provider interface
-?   ??? OllamaEnhancer.cs               # Ollama implementation
-?   ??? LmStudioProvider.cs             # LM Studio implementation
-?   ??? [more plugins]
-??? models/
-?   ??? TranscriptSegment.cs            # Transcript entry
-?   ??? AppSettings.cs                  # User preferences
-??? viewmodels/
-    ??? MainViewModel.cs                # Application logic
-```
+The first use of a Whisper model downloads and verifies that model. S1-mini downloads its approximately 462 MiB English cleanup model the first time cleanup is used. S1-mini is a post-processor; Whisper performs speech recognition. The app includes the S1-mini model's required attribution files after download.
 
+## Use Talkies
 
-## 🔧 Technology Stack
+1. Select a microphone and a Whisper model in the app.
+2. Press the **Right Alt** key or use the recording control to start and stop recording.
+3. Review the transcript. Enable S1-mini cleanup in the app if you want it to remove disfluencies and format the recognized text.
+4. Insert the transcript into the focused app or export it as SRT, TXT, or VTT.
 
-| Component | Technology |
-|-----------|-----------|
-| Framework | .NET WPF |
-| Language | C# |
-| Audio | NAudio |
-| Transcription | WhisperNet |
-| LLM APIs | REST (HTTP) |
-| Settings | JSON (Newtonsoft.Json) |
-| Build | UV + dotnet CLI |
-| Package Manager | NuGet |
+Larger Whisper models can improve recognition quality but need more memory and take longer to run. S1-mini cleanup currently supports English.
 
-## 📊 Specifications
+## Privacy and network use
 
-### Export Formats
-| Format | Timestamp | Use Case |
-|--------|-----------|----------|
-| SRT | HH:MM:SS,mmm | Video subtitles |
-| TXT | [HH:MM:SS.mmm] | Documents |
-| VTT | HH:MM:SS.mmm | Web/streaming |
+Audio and transcript text are processed on the device. The app does not send them to a cloud inference service. Network access is used to download missing models over HTTPS. Optional Ollama and LM Studio providers are supported only at loopback addresses, with HTTP redirects disabled.
 
-### Supported Languages
-Auto-detect plus: en, es, fr, de, it, pt, ja, zh, and more
+## Troubleshooting
 
-### Model Sizes
-- **tiny** - ~39M (fast)
-- **base** - ~140M (balanced)
-- **small** - ~440M (good accuracy)
-- **medium** - ~769M (high accuracy)
-- **large** - ~2.9GB (best accuracy)
+### A model is missing or won't download
 
-## 📚 Documentation
+Check that the device has an internet connection for the first download and enough free disk space. Talkies verifies downloaded model size and SHA-256 before installing it; an interrupted or invalid download is not accepted. Retry the download from the app. After download, the model can be used offline.
 
-- **[QUICK_REFERENCE.md](../../windows/QUICK_REFERENCE.md)** - User guide and troubleshooting
-- **[DEVELOPER_GUIDE.md](../../windows/DEVELOPER_GUIDE.md)** - Architecture and development
-- **[IMPLEMENTATION_SUMMARY.md](../../windows/IMPLEMENTATION_SUMMARY.md)** - Technical overview
-- **[FINAL_CHECKLIST.md](../../windows/FINAL_CHECKLIST.md)** - Feature checklist
+### Local provider is unavailable
 
-## 🐛 Troubleshooting
+For Ollama or LM Studio, start the local server and confirm its endpoint uses `localhost` or a loopback IP address. Remote inference endpoints are rejected.
 
-### Provider Not Available
-**Problem**: "Provider is not available at [endpoint]"
-- Verify provider is running (Ollama/LM Studio)
-- Check endpoint URL is correct
-- Ensure firewall isn't blocking connection
+### Transcription quality is poor
 
-### Poor Transcription Quality
-- Use larger model (base → small → medium)
-- Ensure quiet environment
-- Verify microphone quality
-- Select correct language if known
+Try a larger Whisper model, select the spoken language when known, and check microphone input and recording levels.
 
-### Models Not Found
-- Ensure you've downloaded models in Ollama/LM Studio
-- Verify provider is fully started
-- Check endpoint configuration
+For more help, see the [Windows quick reference](../../windows/QUICK_REFERENCE.md) and [Windows developer guide](../../windows/DEVELOPER_GUIDE.md).
 
-See [QUICK_REFERENCE.md](../../windows/QUICK_REFERENCE.md) for more help.
+## Build and test from source
 
-## 🧪 Testing
+Development requires the .NET 8 SDK and Windows for running the WPF application. From the repository root:
 
-The application has been thoroughly tested for:
-- ✅ Audio recording and transcription
-- ✅ Multi-format export
-- ✅ Settings persistence
-- ✅ Error handling
-- ✅ UI responsiveness
-- ✅ LLM provider integration
-
-Manual testing with real providers is recommended before production use.
-
-## 📦 Building & Running
-
-### Prerequisites
-```bash
-# Ensure UV is installed and .NET is available
-uv --version
-dotnet --version
-```
-
-### Build
-```bash
-cd talkies_windows/talkies.windows
+```powershell
+cd windows/Talkies.Windows
 uv run dotnet build
+uv run dotnet test ../Talkies.Windows.Tests
 ```
 
-### Run
-```bash
-uv run dotnet run
-```
+Windows CI builds and tests the application, exercises cached local-model inference with network access denied, and smoke-tests the release packages. The local-model integration test requires pre-provisioned model files; see the [CI workflow](../../.github/workflows/ci.yml) for its model setup and test configuration.
 
-### Tests
-```bash
-uv run dotnet test
-```
+## License
 
-## 🚀 Deployment
-
-### System Requirements
-- **OS**: Windows 10 or later
-- **Memory**: 4GB minimum (8GB recommended)
-- **Disk**: 2GB free (for Whisper models)
-- **Audio**: Any USB or built-in microphone
-- **.NET Runtime**: 6.0 or later
-
-### Installation
-1. Download release package
-2. Extract to desired location
-3. Run `Talkies.Windows.exe`
-4. Settings saved automatically
-
-## 🎯 Use Cases
-
-### Content Creation
-- Transcribe video content for captions
-- Create documentation from voice notes
-- Generate subtitles for streaming
-
-### Accessibility
-- Real-time transcription for meetings
-- Meeting notes automation
-- Content accessibility compliance
-
-### Productivity
-- Hands-free document creation
-- Meeting transcription
-- Voice-based note taking
-
-### Development
-- API testing and validation
-- Code documentation voice-to-text
-- Meeting minute creation
-
-## 🔒 Privacy & Security
-
-- All processing happens locally on your machine
-- Ollama and LM Studio inference are restricted to loopback endpoints; redirects are disabled
-- Audio files are processed and discarded
-- Settings stored locally in AppData
-- No cloud transmission without explicit action
-- No telemetry or tracking
-
-## 📈 Performance
-
-### Typical Performance
-- **Startup**: 1-2 seconds
-- **Transcription Speed**: Model dependent
-  - tiny: 2x realtime (30 min audio in 15 min)
-  - base: realtime (30 min audio in 30 min)
-  - large: 0.5x realtime (30 min audio in 60 min)
-- **Enhancement**: 5-30 seconds typical
-- **Export**: <100ms for typical transcripts
-- **Memory**: 500MB-2GB depending on model
-
-## 🎓 Learning Resources
-
-- **Whisper Documentation**: https://github.com/openai/whisper
-- **Ollama**: https://ollama.ai
-- **LM Studio**: https://lmstudio.ai
-- **WebVTT Format**: https://www.w3.org/TR/webvtt1/
-- **SRT Format**: https://en.wikipedia.org/wiki/SubRip
-
-## 🤝 Contributing
-
-To report issues or suggest improvements:
-1. Check existing documentation
-2. Review [DEVELOPER_GUIDE.md](../../windows/DEVELOPER_GUIDE.md)
-3. Report with detailed description and steps to reproduce
-
-## 📄 License
-
-[Add your license information here]
-
-## 🙏 Acknowledgments
-
-Built with:
-- NAudio for audio processing
-- WhisperNet for transcription
-- Ollama and LM Studio communities
-
-## 📞 Support
-
-- **Documentation**: See included .md files
-- **Troubleshooting**: [QUICK_REFERENCE.md](../../windows/QUICK_REFERENCE.md)
-- **Development**: [DEVELOPER_GUIDE.md](../../windows/DEVELOPER_GUIDE.md)
-
-## 🗺️ Roadmap
-
-### Current Version (1.0)
-✅ Audio recording and transcription
-✅ Multi-format export (SRT, TXT, VTT)
-✅ LLM enhancement with multiple providers
-✅ Persistent settings
-✅ Professional UI
-
-### Future Enhancements
-- Real-time transcription (streaming)
-- Batch processing
-- Custom provider plugins
-- Cloud storage integration
-- Web-based UI option
-- Mobile clients
-
-## 📊 Status
-
-| Component | Status |
-|-----------|--------|
-| Build | ✅ Passing (0 errors, 0 warnings) |
-| Features | ✅ Complete |
-| Documentation | ✅ Comprehensive |
-| Testing | ✅ Recommended |
-| Production | ✅ Ready |
-
----
-
-**Last Updated**: 2024  
-**Version**: 1.0  
-**Status**: Production Ready  
-**Build**: ✅ Clean  
-
-For the latest updates and detailed information, please refer to the documentation files included in this directory.
+Talkies is licensed under the [MIT License](../../LICENSE). S1-mini model weights are separately licensed; see the model's included `LICENSE` and `NOTICE` files and the [upstream model repository](https://huggingface.co/superwhisper/s1-mini-GGUF).
