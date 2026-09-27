@@ -71,10 +71,16 @@ namespace Talkies.Windows.Services
             _capture.DataAvailable += OnData;
             _capture.RecordingStopped += OnStopped;
 
-            // Configure audio format based on quality settings
-            var waveFormat = qualitySettings != null
-                ? new WaveFormat(qualitySettings.SampleRateHz, qualitySettings.BitsPerSample, qualitySettings.ChannelCount)
-                : _capture.WaveFormat;
+            // Shared-mode WASAPI capture delivers the device mix format. The bytes in
+            // DataAvailable are in that format; labeling them with the requested
+            // quality format corrupts the WAV whenever the formats differ. Keep the
+            // source format here. WhisperNetTranscriptionService resamples the saved
+            // WAV to its required 16 kHz mono format before inference.
+            var waveFormat = GetWaveFormatForCapturedData(_capture.WaveFormat);
+            if (qualitySettings != null && !HasSameFormat(qualitySettings, waveFormat))
+            {
+                Logger.Info($"WASAPI shared-mode capture cannot apply requested recording format {qualitySettings.SampleRateHz}Hz/{qualitySettings.ChannelCount}ch/{qualitySettings.BitsPerSample}bit without conversion; recording source format {waveFormat.SampleRate}Hz/{waveFormat.Channels}ch/{waveFormat.BitsPerSample}bit instead");
+            }
 
             _writer = new WaveFileWriter(_currentFile, waveFormat);
             Logger.Info($"Audio source: {(useLoopback ? "Loopback" : "Microphone")} | Format: {waveFormat.SampleRate}Hz, {waveFormat.Channels}ch, {waveFormat.BitsPerSample}bit");
@@ -92,14 +98,7 @@ namespace Talkies.Windows.Services
             _writer.Write(e.Buffer, 0, e.BytesRecorded);
             _writer.Flush();
 
-            // Level calc (RMS)
-            float max = 0;
-            for (int index = 0; index < e.BytesRecorded - 1; index += 2)
-            {
-                short sample = (short)((e.Buffer[index + 1] << 8) | e.Buffer[index]);
-                var sample32 = sample / 32768f;
-                if (Math.Abs(sample32) > max) max = Math.Abs(sample32);
-            }
+            var max = CalculatePeakLevel(e.Buffer.AsSpan(0, e.BytesRecorded), _capture?.WaveFormat);
             try
             {
                 LevelChanged?.Invoke(this, max);
@@ -109,6 +108,72 @@ namespace Talkies.Windows.Services
                 // Prevent UI callback failures from killing the capture loop
                 Logger.Error($"Audio level callback error: {ex.Message}");
             }
+        }
+
+        internal static WaveFormat GetWaveFormatForCapturedData(WaveFormat captureFormat) => captureFormat;
+
+        private static bool HasSameFormat(AudioQualitySettings requested, WaveFormat captured) =>
+            requested.SampleRateHz == captured.SampleRate &&
+            requested.ChannelCount == captured.Channels &&
+            requested.BitsPerSample == captured.BitsPerSample;
+
+        internal static float CalculatePeakLevel(ReadOnlySpan<byte> data, WaveFormat? format)
+        {
+            if (format is WaveFormatExtensible extensibleFormat)
+            {
+                format = extensibleFormat.ToStandardWaveFormat();
+            }
+
+            if (format == null || format.BlockAlign <= 0 || format.BitsPerSample <= 0)
+            {
+                return 0;
+            }
+
+            var bytesPerSample = format.BitsPerSample / 8;
+            if (bytesPerSample <= 0)
+            {
+                return 0;
+            }
+
+            var sampleCount = data.Length / bytesPerSample;
+            var peak = 0f;
+            for (var sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+            {
+                var offset = sampleIndex * bytesPerSample;
+                float value;
+                if (format.Encoding == WaveFormatEncoding.IeeeFloat && format.BitsPerSample == 32)
+                {
+                    value = BitConverter.ToSingle(data.Slice(offset, sizeof(float)));
+                }
+                else if (format.Encoding == WaveFormatEncoding.Pcm)
+                {
+                    value = format.BitsPerSample switch
+                    {
+                        8 => (data[offset] - 128) / 128f,
+                        16 => BitConverter.ToInt16(data.Slice(offset, sizeof(short))) / 32768f,
+                        24 => ReadInt24(data.Slice(offset, 3)) / 8388608f,
+                        32 => BitConverter.ToInt32(data.Slice(offset, sizeof(int))) / 2147483648f,
+                        _ => 0f
+                    };
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (float.IsFinite(value))
+                {
+                    peak = Math.Max(peak, Math.Clamp(Math.Abs(value), 0f, 1f));
+                }
+            }
+
+            return peak;
+        }
+
+        private static int ReadInt24(ReadOnlySpan<byte> bytes)
+        {
+            var value = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16);
+            return (value & 0x800000) == 0 ? value : value | unchecked((int)0xFF000000);
         }
 
         public void Stop()
