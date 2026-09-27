@@ -33,3 +33,10 @@ jobs:
       - name: Run unit tests
         working-directory: mobile/android
         run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Upload tested debug APK
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: Talkies-Android-debug-${{ github.sha }}
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
