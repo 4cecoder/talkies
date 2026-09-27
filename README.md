@@ -42,7 +42,7 @@ Native Windows application built with .NET WPF and WhisperNet. Features real-tim
 See [the Windows guide](docs/platforms/windows.md) for detailed documentation.
 
 ### Android (`mobile/android/`) — Kotlin MVP
-Android now has a native Kotlin app with on-device system speech recognition when available, no network permission or cloud fallback, an editable transcript, and copy. It does not yet bundle Whisper or provide full platform parity. The old Flutter prototype remains as legacy reference. See [the mobile guide](docs/platforms/mobile.md).
+Android now has a native Kotlin app with a pinned local Whisper runtime, an explicitly downloaded and SHA-verified model, in-memory recording, editable transcript, and copy. Network permission is used only for the selected model download; recognition is local. S1-mini cleanup and packaged airplane-mode acceptance remain open. The old Flutter prototype remains as legacy reference. See [the mobile guide](docs/platforms/mobile.md).
 
 ### Linux (`linux/`)
 Native Linux application built with Zig and whisper.cpp, with global hotkey support on both X11 and Wayland. Newer and less polished than the macOS/Windows apps.

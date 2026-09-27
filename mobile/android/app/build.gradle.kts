@@ -15,6 +15,28 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+                arguments += listOf(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DWHISPER_BUILD_TESTS=OFF",
+                    "-DWHISPER_BUILD_EXAMPLES=OFF",
+                    "-DWHISPER_BUILD_SERVER=OFF",
+                    "-DWHISPER_CURL=OFF",
+                    "-DGGML_OPENMP=OFF",
+                    "-DGGML_VULKAN=OFF",
+                    "-DGGML_NATIVE=OFF",
+                    "-DBUILD_SHARED_LIBS=OFF"
+                )
+            }
+        }
+    }
+
+    ndkVersion = "25.2.9519653"
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt") }
     }
 
     buildFeatures { compose = true }
@@ -26,6 +48,7 @@ android {
 }
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     val composeBom = platform("androidx.compose:compose-bom:2025.10.00")
     implementation(composeBom)
     implementation("androidx.activity:activity-compose:1.11.0")
@@ -35,4 +58,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
