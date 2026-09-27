@@ -10,9 +10,7 @@ on:
       - 'packaging/windows/**'
       - 'linux/**'
       - 'packaging/linux/**'
-      - 'frontend/**'
       - '.github/workflows/ci.yml'
-      - '.github/workflows/deploy-pages.yml'
       - '.github/workflows/release.yml'
   pull_request:
     branches: [ master ]
@@ -23,9 +21,7 @@ on:
       - 'packaging/windows/**'
       - 'linux/**'
       - 'packaging/linux/**'
-      - 'frontend/**'
       - '.github/workflows/ci.yml'
-      - '.github/workflows/deploy-pages.yml'
       - '.github/workflows/release.yml'
 
 jobs:
@@ -37,7 +33,6 @@ jobs:
       macos: ${{ steps.filter.outputs.macos }}
       windows: ${{ steps.filter.outputs.windows }}
       linux: ${{ steps.filter.outputs.linux }}
-      frontend: ${{ steps.filter.outputs.frontend }}
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - uses: actions/checkout@v7
@@ -60,10 +55,6 @@ jobs:
               - 'packaging/linux/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
-            frontend:
-              - 'frontend/**'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/deploy-pages.yml'
             workflows:
               - '.github/workflows/**'
 
@@ -84,9 +75,9 @@ jobs:
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
-      - name: Lint CI, release, and Pages workflows
+      - name: Lint CI, release, and Android workflows
         run: |
-          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/deploy-pages.yml
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/android-ci.yml
 
   macos:
     name: macOS Build & Test
@@ -255,45 +246,6 @@ jobs:
           if ((Get-Content -Raw $settingsMarker).Trim() -ne 'preserve-settings') { throw 'Uninstall did not preserve user settings.' }
           if ((Get-Content -Raw $modelMarker).Trim() -ne 'preserve-model') { throw 'Uninstall did not preserve downloaded models.' }
           Remove-Item $settingsMarker, $modelMarker -Force
-
-  frontend:
-    name: Website Typecheck & Lint
-    runs-on: ubuntu-latest
-    needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        working-directory: frontend
-        run: bunx tsc --noEmit
-
-      - name: Lint
-        working-directory: frontend
-        run: bun run lint
-
-      - name: Build GitHub Pages export without backend secrets
-        working-directory: frontend
-        env:
-          GITHUB_PAGES: "true"
-          NEXT_PUBLIC_BASE_PATH: /talkies
-          NEXT_PUBLIC_SITE_URL: https://4cecoder.github.io/talkies
-        run: bun run build
-
-      - name: Verify published routes and assets
-        working-directory: frontend
-        run: |
-          touch out/.nojekyll
-          bun run test:pages
 
   linux:
     name: Linux Build & Test

@@ -36,7 +36,7 @@ Use changed-path filtering only when it still creates stable required check name
 Every release should contain version, commit SHA, platform/architecture, signing status, model and bundled-library licenses, and checksums. A failed platform build must prevent partial releases from being presented as complete.
 
 GitHub Pages is the sole website deployment target. It serves the static website at
-`https://4cecoder.github.io/talkies/` from the dedicated `gh-pages` branch. The deployment workflow
-rebuilds only the frontend export from `master` and replaces the published branch contents. Current
-pull request checks and review requirements are shown on GitHub rather than copied into this
-long-lived guide.
+`https://4cecoder.github.io/talkies/` from the dedicated `gh-pages` branch. The website source and
+its build/deploy workflows live on the separate `website` branch; `master` keeps the application
+source and platform documentation. Current pull request checks and review requirements are shown
+on GitHub rather than copied into this long-lived guide.
