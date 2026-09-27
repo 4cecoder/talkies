@@ -32,6 +32,8 @@ migrate_working_dir/
 *.freezed.dart
 
 # Android related
+/android/app/build/
+/android/.kotlin/
 **/android/**/gradle-wrapper.jar
 **/android/.gradle
 **/android/captures/
@@ -39,6 +41,10 @@ migrate_working_dir/
 **/android/gradlew.bat
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
+!android/gradlew
+!android/gradlew.bat
+!android/gradle/wrapper/gradle-wrapper.jar
+!android/gradle/wrapper/gradle-wrapper.properties
 
 # iOS/XCode related
 **/ios/**/*.mode1v3

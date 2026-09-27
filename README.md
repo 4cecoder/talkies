@@ -24,7 +24,7 @@ third-party components keep their own licenses; see their notices before redistr
 talkies/
 ├── mac/        # macOS native app (Swift/SwiftUI + WhisperKit)
 ├── windows/    # Windows native app (.NET WPF + WhisperNet)
-├── mobile/     # Mobile app (Flutter, deprecated — see docs/platforms/mobile.md)
+├── mobile/     # Native Kotlin Android MVP (Flutter prototype retained as legacy reference)
 ├── linux/      # Linux native app (Zig + whisper.cpp)
 ├── frontend/   # Web app (Next.js) — project site, live browser demo, and docs
 └── archive/    # Experimental Python CLI (deprecated)
@@ -42,8 +42,8 @@ Native Windows application built with .NET WPF and WhisperNet. Features real-tim
 
 See [the Windows guide](docs/platforms/windows.md) for detailed documentation.
 
-### Mobile (`mobile/`) — Deprecated
-The Flutter mobile app is no longer actively developed and isn't built or shipped in CI/releases. See [the mobile guide](docs/platforms/mobile.md) for details.
+### Android (`mobile/android/`) — Kotlin MVP
+Android now has a native Kotlin app with on-device system speech recognition when available, no network permission or cloud fallback, an editable transcript, and copy. It does not yet bundle Whisper or provide full platform parity. The old Flutter prototype remains as legacy reference. See [the mobile guide](docs/platforms/mobile.md).
 
 ### Linux (`linux/`)
 Native Linux application built with Zig and whisper.cpp, with global hotkey support on both X11 and Wayland. Newer and less polished than the macOS/Windows apps.
