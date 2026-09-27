@@ -79,8 +79,25 @@ public final class WhisperKitRecognizer {
             folder.appending(path: "tokenizer.json"),
             downloadBase?.appending(path: "models/openai/\(tokenizerPath)/tokenizer.json"),
         ]
-        guard tokenizerLocations.compactMap({ $0 }).contains(where: Self.isNonEmptyFile) else { return nil }
+        guard tokenizerLocations.compactMap({ $0 }).contains(where: Self.isValidTokenizerFile) else { return nil }
         return folder
+    }
+
+    // WhisperKit retries a failed local tokenizer load through the Hub. Reject
+    // obviously malformed cache files before treating a model as offline-ready.
+    nonisolated private static func isValidTokenizerFile(_ url: URL) -> Bool {
+        guard isNonEmptyFile(url),
+              let data = try? Data(contentsOf: url),
+              let document = try? JSONSerialization.jsonObject(with: data),
+              let root = document as? [String: Any],
+              let model = root["model"] as? [String: Any],
+              model["type"] as? String == "BPE",
+              let vocabulary = model["vocab"] as? [String: Any],
+              !vocabulary.isEmpty,
+              model["merges"] is [Any] else {
+            return false
+        }
+        return true
     }
 
     nonisolated private static func isNonEmptyFile(_ url: URL) -> Bool {
