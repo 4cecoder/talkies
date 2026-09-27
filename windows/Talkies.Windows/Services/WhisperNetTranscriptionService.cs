@@ -43,17 +43,23 @@ namespace Talkies.Windows.Services
 
             // Ensure audio is 16kHz mono PCM
             var compatibleWav = ConvertTo16kMono(filePath);
-
-            Logger.Info($"whisper.net: model={modelPath}, audio={compatibleWav}, lang={language}");
-
-            var segments = new List<TranscriptSegment>();
-            string text = "";
-            progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 0, "Transcribing...", IsIndeterminate: false));
+            var transcriptionWav = compatibleWav;
 
             try
             {
+                if (vadEnabled)
+                {
+                    transcriptionWav = AudioSilenceTrimmer.TrimLeadingAndTrailingSilence(compatibleWav);
+                }
+
+                Logger.Info($"whisper.net: model={modelPath}, audio={transcriptionWav}, lang={language}");
+
+                var segments = new List<TranscriptSegment>();
+                string text = "";
+                progress?.Report(new TranscriptionProgress(TranscriptionStage.Transcribing, 0, "Transcribing...", IsIndeterminate: false));
+
                 // Check audio file size
-                var audioFileInfo = new System.IO.FileInfo(compatibleWav);
+                var audioFileInfo = new System.IO.FileInfo(transcriptionWav);
                 Logger.Info($"Audio file size: {audioFileInfo.Length} bytes");
 
                 if (audioFileInfo.Length < 1000)
@@ -92,14 +98,14 @@ namespace Talkies.Windows.Services
 
                 var processor = builder.Build();
 
-                await using var audio = File.OpenRead(compatibleWav);
+                await using var audio = File.OpenRead(transcriptionWav);
                 Logger.Info($"Audio stream opened, position: {audio.Position}, length: {audio.Length}");
 
                 int segmentCount = 0;
                 double totalDurationSeconds = 0;
                 try
                 {
-                    using var probe = new WaveFileReader(compatibleWav);
+                    using var probe = new WaveFileReader(transcriptionWav);
                     totalDurationSeconds = probe.TotalTime.TotalSeconds;
                 }
                 catch
@@ -155,6 +161,18 @@ namespace Talkies.Windows.Services
             }
             finally
             {
+                if (transcriptionWav != compatibleWav && File.Exists(transcriptionWav))
+                {
+                    try
+                    {
+                        File.Delete(transcriptionWav);
+                    }
+                    catch
+                    {
+                        // Ignore temporary VAD output cleanup errors.
+                    }
+                }
+
                 // Cleanup temporary converted file if it was created
                 if (compatibleWav != filePath && File.Exists(compatibleWav))
                 {
