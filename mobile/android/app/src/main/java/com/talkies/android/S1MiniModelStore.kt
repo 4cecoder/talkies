@@ -57,13 +57,15 @@ internal class S1MiniModelStore(private val directory: File) {
     fun delete(): Boolean {
         LocalWhisper.unloadCleanupModel()
         verifiedFingerprint = null
-        VerifiedModelInstaller.partialFile(modelFile).delete()
-        VerifiedModelInstaller.partialFile(licenseFile).delete()
-        VerifiedModelInstaller.partialFile(noticeFile).delete()
-        licenseFile.delete()
-        noticeFile.delete()
-        return (!modelFile.exists() || modelFile.delete()) &&
-            !licenseFile.exists() && !noticeFile.exists()
+        val partialFilesRemoved = listOf(modelFile, licenseFile, noticeFile)
+            .map { VerifiedModelInstaller.partialFile(it) }
+            .map { !it.exists() || it.delete() }
+            .all { it }
+        val modelRemoved = !modelFile.exists() || modelFile.delete()
+        val licenseRemoved = !licenseFile.exists() || licenseFile.delete()
+        val noticeRemoved = !noticeFile.exists() || noticeFile.delete()
+        val attributionRemoved = licenseRemoved && noticeRemoved
+        return partialFilesRemoved && modelRemoved && attributionRemoved
     }
 
     private fun downloadAttributionIfNeeded(name: String) {

@@ -58,6 +58,42 @@ void throwJavaException(JNIEnv *env, const char *message) {
     }
 }
 
+size_t completeUtf8Prefix(const std::string &value, size_t limit) {
+    size_t index = 0;
+    while (index < limit) {
+        const auto first = static_cast<unsigned char>(value[index]);
+        size_t length = 0;
+        if (first <= 0x7f) {
+            length = 1;
+        } else if (first >= 0xc2 && first <= 0xdf) {
+            length = 2;
+        } else if (first >= 0xe0 && first <= 0xef) {
+            length = 3;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+            length = 4;
+        } else {
+            break;
+        }
+
+        if (index + length > limit) break;
+        bool valid = true;
+        for (size_t offset = 1; offset < length; ++offset) {
+            const auto continuation = static_cast<unsigned char>(value[index + offset]);
+            if ((continuation & 0xc0) != 0x80 ||
+                (offset == 1 && ((first == 0xe0 && continuation < 0xa0) ||
+                                 (first == 0xed && continuation > 0x9f) ||
+                                 (first == 0xf0 && continuation < 0x90) ||
+                                 (first == 0xf4 && continuation > 0x8f)))) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) break;
+        index += length;
+    }
+    return index;
+}
+
 bool ensureRuntime(const std::string &model_path) {
     std::call_once(backend_once, [] { llama_backend_init(); });
     if (runtime.model != nullptr && runtime.model_path == model_path) return true;
@@ -228,7 +264,7 @@ Java_com_talkies_android_LocalWhisper_clean(
             }
         }
 
-        if (output.size() > 32 * 1024) output.resize(32 * 1024);
+        output.resize(completeUtf8Prefix(output, std::min(output.size(), size_t{32 * 1024})));
         jbyteArray result = env->NewByteArray(static_cast<jsize>(output.size()));
         if (result != nullptr && !output.empty()) {
             env->SetByteArrayRegion(
