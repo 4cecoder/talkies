@@ -33,7 +33,18 @@ included in the adjacent licenses directory:
   licenses/LLamaSharp-MIT.txt and licenses/llama.cpp-MIT.txt.
   https://github.com/SciSharp/LLamaSharp
   https://github.com/ggml-org/llama.cpp
+- The self-contained Microsoft .NET runtime is accompanied by the exact
+  LICENSE.txt and ThirdPartyNotices.txt from the .NET installation used to
+  publish the Windows build, copied under licenses/dotnet/.
+- Resolved NuGet dependency licenses and attributions are collected from the
+  restored project.assets.json graph into licenses/NuGet-MIT-ATTRIBUTIONS.txt.
+  Full MIT terms are in licenses/NuGet-MIT-LICENSE.txt; packages that ship a
+  license or notice file retain that exact source file under licenses/nuget/.
+- NAudio 2.4.0's MIT license is included at licenses/NAudio-MIT.txt from the
+  package's pinned source revision. Newtonsoft.Json's package-provided MIT
+  license is included at licenses/Newtonsoft.Json-MIT.md.
 
 Talkies itself is distributed under the MIT License in the adjacent LICENSE
-file. This notice covers the inference and installer components bundled by
-this Windows release; other dependencies retain their own license terms.
+file. These notices cover the self-contained .NET runtime, restored NuGet
+dependency graph, inference runtimes, and installer components bundled by
+this Windows release.
