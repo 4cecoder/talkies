@@ -22,6 +22,7 @@ People who dictate into many desktop apps, care where their audio goes, or want 
 - Global hotkey, push-to-talk and toggle dictation, silence handling, microphone selection, and permissions.
 - Local model downloads with progress, disk use, integrity checks, selection, and offline availability.
 - Local speech recognition followed by optional local cleanup.
+- Native Kotlin Android dictation with app-managed local models and offline behavior independent of a vendor speech service.
 - Writing modes, tone, vocabulary, replacements, app-aware defaults, paste/clipboard insertion, and undo/recovery.
 - File transcription, local searchable history, export, and meeting capture where platform APIs permit it.
 - Native installers and signed/notarized releases when maintainer credentials are available.
@@ -30,7 +31,7 @@ People who dictate into many desktop apps, care where their audio goes, or want 
 
 - Hosted transcription, cloud cleanup, remote APIs, and any feature that sends user audio or text to a service.
 - Accounts, subscriptions, licensing gates, and telemetry tied to dictation content.
-- Mobile in the near-term desktop parity milestone; the existing Flutter app is marked deprecated in the current cleanup PR.
+- The legacy Flutter prototype and iOS client are not active products. Android development uses the native Kotlin app in `mobile/android/`.
 
 ## Privacy acceptance check
 
