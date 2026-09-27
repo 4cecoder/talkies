@@ -99,6 +99,17 @@ namespace Talkies.Windows
             }
         }
 
+        private void AddTranscriptSelectionToVocabulary_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem menuItem || menuItem.Parent is not ContextMenu contextMenu ||
+                contextMenu.PlacementTarget is not System.Windows.Controls.TextBox transcriptText)
+            {
+                return;
+            }
+
+            _vm.AddVocabularyTerm(transcriptText.SelectedText);
+        }
+
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(MainViewModel.IsRecording)) return;

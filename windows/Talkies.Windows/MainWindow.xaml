@@ -52,6 +52,7 @@
 
                         <TextBlock Text="Personal Vocabulary (one term per line)" FontWeight="SemiBold" FontSize="11" Margin="0,2,0,4"/>
                         <TextBox Text="{Binding VocabularyText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="68" MaxHeight="110" MaxLength="400" Padding="8,6" Margin="0,0,0,8" ToolTip="Local names and uncommon terms used as Whisper recognition hints (400 character limit)"/>
+                        <TextBlock Text="{Binding VocabularyFeedback}" Foreground="#9ecbff" FontSize="10" TextWrapping="Wrap" Margin="0,-4,0,8"/>
 
                         <TextBlock Text="Input Source" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}" DisplayMemberPath="Name" Margin="0,0,0,8" Height="32" Padding="8,6"/>
@@ -213,7 +214,14 @@
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="{Binding Timestamp}" FontFamily="Consolas" Foreground="#66b3ff" FontSize="11" Margin="0,0,12,0" MinWidth="90" VerticalAlignment="Top"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18" Foreground="White" />
+                                                <TextBox Grid.Column="1" Text="{Binding Text}" IsReadOnly="True" TextWrapping="Wrap" Foreground="White"
+                                                         Background="Transparent" BorderThickness="0" Padding="0" IsTabStop="False" Focusable="True">
+                                                    <TextBox.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem Header="Add selection to local vocabulary" Click="AddTranscriptSelectionToVocabulary_Click"/>
+                                                        </ContextMenu>
+                                                    </TextBox.ContextMenu>
+                                                </TextBox>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
