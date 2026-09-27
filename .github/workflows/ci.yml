@@ -203,6 +203,17 @@ jobs:
         working-directory: windows/Talkies.Windows.Tests
         run: dotnet test Talkies.Windows.Tests.csproj --configuration Debug --no-restore --filter "Category!=ModelIntegration" --verbosity normal
 
+      # Release publishes self-contained artifacts with different compiler and
+      # trimming settings. Validate that configuration on PRs as well as in
+      # the post-merge release workflow.
+      - name: Build Windows app (Release)
+        working-directory: windows/Talkies.Windows
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run Windows tests (Release)
+        working-directory: windows/Talkies.Windows.Tests
+        run: dotnet test Talkies.Windows.Tests.csproj --configuration Release --no-restore --filter "Category!=ModelIntegration" --verbosity normal
+
       - name: Verify cached S1-mini cleanup works offline on CPU
         working-directory: windows/Talkies.Windows.Tests
         env:
