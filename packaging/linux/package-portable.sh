@@ -20,6 +20,7 @@ fi
 for required_file in \
     "${LINUX_DIR}/zig-out/bin/talkies" \
     "${LINUX_DIR}/talkies-overlay-gtk" \
+    "${REPOSITORY_ROOT}/LICENSE" \
     "${WHISPER_LICENSE}" \
     "${LLAMA_LICENSE}"; do
     if [[ ! -f "${required_file}" ]]; then
@@ -45,6 +46,7 @@ find "${LLAMA_LIBRARY_DIR}" -maxdepth 1 \( -name 'libllama.so*' -o -name 'libggm
     -exec cp -P -t "${PACKAGE_DIR}/lib" {} +
 install -m 0644 "${WHISPER_LICENSE}" "${PACKAGE_DIR}/licenses/whisper.cpp-MIT.txt"
 install -m 0644 "${LLAMA_LICENSE}" "${PACKAGE_DIR}/licenses/llama.cpp-MIT.txt"
+install -m 0644 "${REPOSITORY_ROOT}/LICENSE" "${PACKAGE_DIR}/licenses/Talkies-MIT.txt"
 
 shopt -s nullglob
 whisper_libraries=("${PACKAGE_DIR}"/lib/libwhisper.so*)
@@ -64,6 +66,7 @@ test -x "${EXTRACTED_DIR}/talkies"
 test -x "${EXTRACTED_DIR}/talkies-overlay-gtk"
 test -s "${EXTRACTED_DIR}/licenses/whisper.cpp-MIT.txt"
 test -s "${EXTRACTED_DIR}/licenses/llama.cpp-MIT.txt"
+test -s "${EXTRACTED_DIR}/licenses/Talkies-MIT.txt"
 
 if ldd "${EXTRACTED_DIR}/talkies" | grep -F 'not found'; then
     echo "Portable Talkies binary has unresolved shared-library dependencies." >&2
@@ -122,6 +125,7 @@ test -x "${SMOKE_DIR}/deb/usr/lib/talkies/talkies"
 test -L "${SMOKE_DIR}/deb/usr/bin/talkies"
 test -s "${SMOKE_DIR}/deb/usr/lib/talkies/licenses/whisper.cpp-MIT.txt"
 test -s "${SMOKE_DIR}/deb/usr/lib/talkies/licenses/llama.cpp-MIT.txt"
+test -s "${SMOKE_DIR}/deb/usr/lib/talkies/licenses/Talkies-MIT.txt"
 if ldd "${SMOKE_DIR}/deb/usr/lib/talkies/talkies" | grep -F 'not found'; then
     echo "Debian Talkies binary has unresolved shared-library dependencies." >&2
     exit 1

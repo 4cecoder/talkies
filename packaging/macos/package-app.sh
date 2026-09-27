@@ -110,6 +110,30 @@ ditto "${LLAMA_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/llama.framework"
 ditto "${REPOSITORY_ROOT}/branding/icons/talkies-app-icon.icns" "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
 ditto "${SCRIPT_DIR}/Info.plist.template" "${APP_BUNDLE}/Contents/Info.plist"
 
+# Keep licensing material inside the .app so the same notices travel in the
+# app ZIP and the drag-install DMG. WhisperKit carries additional Apache
+# attribution notices; llama.swift ships the license for its bundled binary.
+LEGAL_DIR="${APP_BUNDLE}/Contents/Resources/Legal"
+LEGAL_LICENSE_DIR="${LEGAL_DIR}/ThirdParty"
+mkdir -p "${LEGAL_LICENSE_DIR}"
+install -m 0644 "${REPOSITORY_ROOT}/LICENSE" "${LEGAL_DIR}/LICENSE"
+WHISPERKIT_CHECKOUT="${MAC_PACKAGE}/.build/checkouts/WhisperKit"
+LLAMA_SWIFT_CHECKOUT="${MAC_PACKAGE}/.build/checkouts/llama.swift"
+for required_license in \
+    "${WHISPERKIT_CHECKOUT}/LICENSE" \
+    "${WHISPERKIT_CHECKOUT}/NOTICES" \
+    "${LLAMA_SWIFT_CHECKOUT}/LICENSE.md"; do
+    if [[ ! -s "${required_license}" ]]; then
+        echo "Missing bundled dependency license or notice: ${required_license}" >&2
+        exit 1
+    fi
+done
+install -m 0644 "${WHISPERKIT_CHECKOUT}/LICENSE" "${LEGAL_LICENSE_DIR}/WhisperKit-LICENSE.txt"
+install -m 0644 "${WHISPERKIT_CHECKOUT}/NOTICES" "${LEGAL_LICENSE_DIR}/WhisperKit-NOTICES.txt"
+install -m 0644 "${LLAMA_SWIFT_CHECKOUT}/LICENSE.md" "${LEGAL_LICENSE_DIR}/llama.swift-LICENSE.md"
+install -m 0644 "${REPOSITORY_ROOT}/packaging/shared/licenses/llama.cpp-MIT.txt" \
+    "${LEGAL_LICENSE_DIR}/llama.cpp-MIT.txt"
+
 PLIST="${APP_BUNDLE}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${BUNDLE_VERSION}" "${PLIST}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUNDLE_VERSION}" "${PLIST}"
@@ -162,6 +186,11 @@ if nm -gU "${EXECUTABLE_PATH}" | grep -Fq 'TalkiesInference'; then
 fi
 test -x "${EXECUTABLE_PATH}"
 test -s "${APP_BUNDLE}/Contents/Resources/Talkies.icns"
+test -s "${LEGAL_DIR}/LICENSE"
+test -s "${LEGAL_LICENSE_DIR}/WhisperKit-LICENSE.txt"
+test -s "${LEGAL_LICENSE_DIR}/WhisperKit-NOTICES.txt"
+test -s "${LEGAL_LICENSE_DIR}/llama.swift-LICENSE.md"
+test -s "${LEGAL_LICENSE_DIR}/llama.cpp-MIT.txt"
 test -s "${CORE_PATH}"
 test -s "${INFERENCE_PATH}"
 test -f "${APP_BUNDLE}/Contents/Frameworks/llama.framework/Versions/Current/llama"
@@ -190,6 +219,19 @@ ZIP_TMP="${ZIP_PATH}.tmp.$$"
 trap 'rm -f "${ZIP_TMP}"' EXIT
 ditto -c -k --sequesterRsrc --keepParent "${APP_BUNDLE}" "${ZIP_TMP}"
 unzip -t "${ZIP_TMP}" >/dev/null
+ZIP_SMOKE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/talkies-app-zip.XXXXXX")"
+trap 'rm -f "${ZIP_TMP}"; rm -rf "${ZIP_SMOKE_DIR}"' EXIT
+ditto -x -k "${ZIP_TMP}" "${ZIP_SMOKE_DIR}"
+for bundled_notice in \
+    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/LICENSE" \
+    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/WhisperKit-NOTICES.txt" \
+    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/llama.cpp-MIT.txt"; do
+    if [[ ! -s "${bundled_notice}" ]]; then
+        echo "App ZIP is missing a required license or notice: ${bundled_notice}" >&2
+        exit 1
+    fi
+done
 mv -f "${ZIP_TMP}" "${ZIP_PATH}"
+rm -rf "${ZIP_SMOKE_DIR}"
 trap - EXIT
 echo "Created ${ZIP_PATH}"

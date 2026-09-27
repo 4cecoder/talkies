@@ -64,6 +64,10 @@ test -s "${MOUNTED_APP}/Contents/Resources/Talkies.icns"
 test -f "${MOUNTED_APP}/Contents/Frameworks/llama.framework/Versions/Current/llama"
 test -s "${MOUNTED_APP}/Contents/Frameworks/libTalkiesCore.dylib"
 test -s "${MOUNTED_APP}/Contents/Frameworks/libTalkiesInference.dylib"
+test -s "${MOUNTED_APP}/Contents/Resources/Legal/LICENSE"
+test -s "${MOUNTED_APP}/Contents/Resources/Legal/ThirdParty/WhisperKit-LICENSE.txt"
+test -s "${MOUNTED_APP}/Contents/Resources/Legal/ThirdParty/WhisperKit-NOTICES.txt"
+test -s "${MOUNTED_APP}/Contents/Resources/Legal/ThirdParty/llama.cpp-MIT.txt"
 test -L "${MOUNT_POINT}/Applications"
 plutil -lint "${MOUNTED_APP}/Contents/Info.plist" >/dev/null
 

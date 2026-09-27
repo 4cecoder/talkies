@@ -48,6 +48,52 @@ foreach ($requiredFile in @(
     }
 }
 
+# Put legal materials beside both portable and installed builds. The native
+# backends bundled by Whisper.net and LLamaSharp are distinct from Talkies.
+$licenseDirectory = Join-Path $publishDirectory 'licenses'
+New-Item $licenseDirectory -ItemType Directory -Force | Out-Null
+Copy-Item (Join-Path $repositoryRoot 'LICENSE') (Join-Path $publishDirectory 'LICENSE')
+Copy-Item (Join-Path $PSScriptRoot 'THIRD-PARTY-NOTICES.txt') `
+    (Join-Path $publishDirectory 'THIRD-PARTY-NOTICES.txt')
+Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\llama.cpp-MIT.txt') `
+    (Join-Path $licenseDirectory 'llama.cpp-MIT.txt')
+Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\whisper.cpp-MIT.txt') `
+    (Join-Path $licenseDirectory 'whisper.cpp-MIT.txt')
+Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\LLamaSharp-MIT.txt') `
+    (Join-Path $licenseDirectory 'LLamaSharp-MIT.txt')
+
+$whisperReference = Select-String -Path $projectPath `
+    -Pattern '<PackageReference Include="Whisper.net" Version="([^"]+)"' |
+    Select-Object -First 1
+if ($null -eq $whisperReference -or $whisperReference.Matches.Count -eq 0) {
+    throw 'Could not determine the pinned Whisper.net package version for its license.'
+}
+$whisperVersion = $whisperReference.Matches[0].Groups[1].Value
+$nugetRoot = if ($env:NUGET_PACKAGES) {
+    $env:NUGET_PACKAGES
+} else {
+    Join-Path $env:USERPROFILE '.nuget/packages'
+}
+$whisperLicense = Join-Path $nugetRoot "whisper.net/$whisperVersion/LICENSE"
+if (-not (Test-Path $whisperLicense -PathType Leaf)) {
+    throw "Whisper.net license file is missing from restored package ${whisperVersion}: $whisperLicense"
+}
+Copy-Item $whisperLicense (Join-Path $licenseDirectory 'Whisper.net-MIT.txt')
+
+foreach ($requiredNotice in @(
+    'LICENSE',
+    'THIRD-PARTY-NOTICES.txt',
+    'licenses/llama.cpp-MIT.txt',
+    'licenses/whisper.cpp-MIT.txt',
+    'licenses/LLamaSharp-MIT.txt',
+    'licenses/Whisper.net-MIT.txt'
+)) {
+    $noticePath = Join-Path $publishDirectory $requiredNotice
+    if (-not (Test-Path $noticePath -PathType Leaf) -or (Get-Item $noticePath).Length -le 0) {
+        throw "Release publish directory is missing a non-empty legal file: $requiredNotice"
+    }
+}
+
 Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $archivePath -CompressionLevel Optimal
 Expand-Archive -Path $archivePath -DestinationPath $extractDirectory -Force
 
@@ -56,11 +102,22 @@ foreach ($requiredFile in @(
     'Talkies.Windows.dll',
     'Talkies.Windows.deps.json',
     'Talkies.Windows.runtimeconfig.json',
-    'Resources/talkies-app-icon.ico'
+    'Resources/talkies-app-icon.ico',
+    'LICENSE',
+    'THIRD-PARTY-NOTICES.txt',
+    'licenses/llama.cpp-MIT.txt',
+    'licenses/whisper.cpp-MIT.txt',
+    'licenses/LLamaSharp-MIT.txt',
+    'licenses/Whisper.net-MIT.txt'
 )) {
     $extractedPath = Join-Path $extractDirectory $requiredFile
     if (-not (Test-Path $extractedPath -PathType Leaf)) {
         throw "Release archive is missing required file after extraction: $requiredFile"
+    }
+    if ($requiredFile -match '^(LICENSE|THIRD-PARTY-NOTICES\.txt|licenses/)') {
+        if ((Get-Item $extractedPath).Length -le 0) {
+            throw "Release archive contains an empty legal file: $requiredFile"
+        }
     }
 }
 
@@ -105,11 +162,21 @@ function Assert-InstalledApplication([string]$Directory) {
         'Talkies.Windows.deps.json',
         'Talkies.Windows.runtimeconfig.json',
         'Resources/talkies-app-icon.ico',
+        'LICENSE',
         'THIRD-PARTY-NOTICES.txt',
+        'licenses/llama.cpp-MIT.txt',
+        'licenses/whisper.cpp-MIT.txt',
+        'licenses/LLamaSharp-MIT.txt',
+        'licenses/Whisper.net-MIT.txt',
         'Uninstall.exe'
     )) {
         if (-not (Test-Path (Join-Path $Directory $requiredFile) -PathType Leaf)) {
             throw "Installer smoke test is missing installed file: $requiredFile"
+        }
+        if ($requiredFile -match '^(LICENSE|THIRD-PARTY-NOTICES\.txt|licenses/)') {
+            if ((Get-Item (Join-Path $Directory $requiredFile)).Length -le 0) {
+                throw "Installer smoke test found an empty legal file: $requiredFile"
+            }
         }
     }
 }
