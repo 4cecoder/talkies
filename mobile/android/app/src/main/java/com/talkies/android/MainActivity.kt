@@ -143,7 +143,6 @@ class MainActivity : ComponentActivity() {
 
     private fun stopRecognition() {
         recognizer?.stopListening()
-        listening = false
         status = "Finishing transcription…"
     }
 
