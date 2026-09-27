@@ -38,6 +38,8 @@ Audio and transcript text are processed on the device. The app does not send the
 
 ## Troubleshooting
 
+See the shared [first-run and troubleshooting guide](first-run-and-troubleshooting.md) for model setup, offline checks, and cache recovery.
+
 ### A model is missing or won't download
 
 Check that the device has an internet connection for the first download and enough free disk space. Talkies verifies downloaded model size and SHA-256 before installing it; an interrupted or invalid download is not accepted. Retry the download from the app. After download, the model can be used offline.

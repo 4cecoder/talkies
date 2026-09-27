@@ -1,5 +1,7 @@
 # Talkies Linux - Voice Transcription
 
+For model setup, offline checks, and first-run troubleshooting across platforms, see the [first-run guide](first-run-and-troubleshooting.md).
+
 Zig-based voice transcription application for Linux with global hotkey support for both X11 and Wayland.
 
 ## Features

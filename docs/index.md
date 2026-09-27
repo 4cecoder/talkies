@@ -12,6 +12,8 @@ Talkies is a free, open-source dictation app for macOS, Windows, and Linux. The 
 | See what exists and what is missing | [Feature gap analysis](product/feature-gap-analysis.md) |
 | Build the macOS app | [macOS build guide](platforms/macos.md) |
 | Build Windows / Linux | [Platform guides](README.md#platform-build-guides) |
+| Set up models and troubleshoot first run | [First-run guide](platforms/first-run-and-troubleshooting.md) |
+| Review user-facing changes | [Changelog](../CHANGELOG.md) |
 | Build the website | [Website guide](platforms/website.md) |
 | Understand the macOS package boundaries | [Volatility split](architecture/macos-volatility-split.md) |
 | Work on CI, tests, and installers | [Quality and distribution](engineering/quality-and-distribution.md) |
