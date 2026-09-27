@@ -21,12 +21,15 @@ import kotlinx.coroutines.runBlocking
 @RunWith(AndroidJUnit4::class)
 class LocalWhisperOfflineAcceptanceTest {
     @Test
-    fun cachedWhisperTranscribesFixtureWithExternalNetworkingDisabled() {
+    fun cachedWhisperAndS1MiniCompleteDictationWithExternalNetworkingDisabled() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val model = File(context.filesDir, "models/${WhisperTinyModelStore.MODEL_FILENAME}")
         val fixture = File(context.filesDir, "fixtures/jfk.wav")
+        val cleanupDirectory = File(context.filesDir, "models/S1-mini-${S1MiniModelStore.MODEL_REVISION}")
+        val cleanupStore = S1MiniModelStore(cleanupDirectory)
         assertTrue("CI must pre-provision the pinned ASR model", WhisperTinyModelStore(context.filesDir.resolve("models")).isInstalled())
+        assertTrue("CI must pre-provision the pinned S1-mini model and attribution", cleanupStore.isInstalled())
         assertTrue("CI must provision the shared WAV fixture", fixture.isFile)
         val samples = readPcm16Mono16kHz(fixture)
 
@@ -39,6 +42,10 @@ class LocalWhisperOfflineAcceptanceTest {
 
             val transcript = LocalWhisper.transcribe(model.absolutePath, samples)
             assertTrue("Whisper output did not recognize the shared JFK speech fixture: $transcript", transcript.contains("country", ignoreCase = true))
+
+            val cleaned = S1MiniCleaner(cleanupStore).clean(transcript)
+            assertTrue("S1-mini returned no cleaned transcript", cleaned.isNotBlank())
+            assertTrue("S1-mini lost the key phrase from the recognized speech: $cleaned", cleaned.contains("country", ignoreCase = true))
         } finally {
             samples.fill(0f)
             fixture.delete()
