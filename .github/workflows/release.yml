@@ -13,7 +13,7 @@ concurrency:
 jobs:
   resolve-version:
     name: Resolve release version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       release_label: ${{ steps.version.outputs.release_label }}
@@ -202,7 +202,7 @@ jobs:
 
   build-linux:
     name: Build Linux Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: resolve-version
 
     steps:
@@ -325,7 +325,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [resolve-version, build-macos, build-windows, build-linux]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 

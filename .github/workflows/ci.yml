@@ -28,7 +28,7 @@ jobs:
   # Determine which jobs need to run based on changed files
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       macos: ${{ steps.filter.outputs.macos }}
       windows: ${{ steps.filter.outputs.windows }}
@@ -60,7 +60,7 @@ jobs:
 
   workflow-validation:
     name: GitHub Actions Workflow Validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: changes
     if: ${{ needs.changes.outputs.workflows == 'true' }}
     steps:
@@ -71,6 +71,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '1.26.x'
+          cache: false
 
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -249,7 +250,7 @@ jobs:
 
   linux:
     name: Linux Build & Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: changes
     if: ${{ needs.changes.outputs.linux == 'true' }}
 
