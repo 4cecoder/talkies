@@ -27,7 +27,7 @@ const faqs = [
   },
   {
     question: "Does my data leave my device?",
-    answer: "No. Transcription runs locally using WhisperKit (macOS), Whisper.net (Windows), or whisper.cpp (Linux) — your audio and transcripts are never uploaded to a server. The in-browser demo on this site works the same way: it runs a small model client-side in your browser.",
+    answer: "No. Transcription runs locally using WhisperKit (macOS), Whisper.net (Windows), whisper.cpp (Linux and Android), or Whisper (iOS). Your audio and transcripts are never uploaded to a server.",
     gradient: "from-purple-300 to-pink-300",
     hoverColor: "purple-500"
   },

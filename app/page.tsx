@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { Header } from './components/sections/Header';
 import { FAQSkeleton } from './components/ui/Skeleton';
 import { Globe, Shield, Zap, Sparkles, Download, Apple, Monitor, Terminal, Github } from './components/icons';
-import { LiveTranscriptionDemo } from './components/demo/LiveTranscriptionDemo';
 
 const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
 const RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
@@ -115,21 +114,6 @@ export default function Home() {
             100% on-device • No account required • Free, forever
           </div>
         </div>
-      </section>
-
-      {/* Live ML Demo Section */}
-      <section className="relative py-20 px-6">
-        <div className="mx-auto max-w-4xl text-center mb-12">
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Try It Now - Right in Your Browser
-            </span>
-          </h2>
-          <p className="text-lg text-neutral-400 max-w-2xl mx-auto">
-            Powered by AI running on <span className="text-purple-300 font-semibold">YOUR device</span>. No signup, no cloud, 100% private.
-          </p>
-        </div>
-        <LiveTranscriptionDemo />
       </section>
 
       {/* Features Section */}

@@ -30,6 +30,7 @@ for (const [route, file] of pages) {
 }
 
 const homepage = readFileSync(join(output, 'index.html'), 'utf8');
+assert.doesNotMatch(homepage, /Live Transcription Demo|Try It Now - Right in Your Browser|Xenova\/whisper-base/i, 'The static homepage must not include the browser ML demo');
 assert.match(homepage, /property=\"og:image\" content=\"https:\/\/4cecoder\.github\.io\/talkies\/og-image\.svg\"/, 'Open Graph image must use the Pages site URL');
 assert.ok(existsSync(join(output, 'og-image.svg')), 'Open Graph image is missing from the static export');
 assert.ok(existsSync(join(output, 'favicon.svg')), 'Favicon is missing from the static export');
