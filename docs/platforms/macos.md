@@ -39,10 +39,28 @@ A native Swift macOS dictation app using WhisperKit for speech recognition and o
 
 ## Requirements
 
-- macOS 15+
+- macOS 15+ for the released native app
 - Apple Silicon recommended for WhisperKit performance
 - Swift 6.3 or newer
 - Microphone access permission
+
+#### macOS Monterey 12.7.6
+
+Monterey is **not supported by the current macOS app or its release builds**. The app
+uses SwiftUI APIs introduced after Monterey, and its Swift packages declare macOS 15
+while the pinned WhisperKit and llama.swift dependencies require at least macOS 13.
+Swift 6.3's published deployment support also starts at macOS 13. Lowering
+`LSMinimumSystemVersion` or the package deployment target alone will not make this
+app run on Monterey.
+
+To support Monterey, Talkies needs a separate compatibility build: use a Monterey-capable
+Swift 5.x toolchain, replace WhisperKit and llama.swift with local C/C++ inference
+backends that support macOS 12, and provide Monterey-compatible SwiftUI/AppKit
+implementations for newer UI and login-item APIs. That build must be exercised on a
+12.7.6 Mac before it can be advertised or distributed. The current DMG/ZIP is not a
+Monterey install workaround; use a Mac running macOS 15 or later for the existing app.
+See [the Monterey compatibility assessment](macos-monterey.md) for the verified
+blockers and implementation path.
 
 ## Quick Start
 
