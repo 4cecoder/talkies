@@ -1,65 +1,25 @@
-# CLAUDE.md
+# Agent notes for Talkies
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Talkies is an open-source, local-first dictation app with native clients for macOS, Windows, Linux,
+and Android. Model downloads are explicit; recording, inference, cleanup, and text insertion run
+on-device after setup. There is no hosted speech or transcript-cleanup service.
 
-## Project Overview
+Before changing code:
 
-Talkies is a free, open-source, privacy-first voice transcription app with native clients for macOS, Windows, and Linux, plus a Next.js web frontend. Transcription runs on-device — nothing is uploaded — and there's no account or subscription. There was previously a Flutter mobile client (`mobile/`); it's deprecated and no longer built or maintained.
+1. Read [`AGENTS.md`](AGENTS.md) for supported platforms, toolchains, commands, and coding rules.
+2. Read [`docs/architecture/module-volatility.md`](docs/architecture/module-volatility.md) before
+   changing library boundaries or introducing shared abstractions.
+3. Check the relevant platform guide under [`docs/platforms/`](docs/platforms/) and open GitHub
+   issues before starting larger work.
 
-## Build Commands
+## Repository boundaries
 
-### macOS (Swift/SwiftUI)
-```bash
-cd mac
-swift build                    # Debug build
-swift build -c release         # Release build
-swift test                     # Run tests
-swift run Talkies              # Run app
-```
+- `mac/`, `windows/`, `linux/`, and `mobile/android/` contain active application implementations.
+- `archive/` contains historical prototypes and planning; do not treat it as current product code.
+- The website is maintained on the separate [`website` branch](https://github.com/4cecoder/talkies/tree/website)
+  and published by GitHub Pages. Do not add its source or a server backend to the application branch.
+- GitHub Issues and milestones are the canonical work queue.
 
-### Windows (.NET WPF)
-```bash
-cd windows/Talkies.Windows
-uv run dotnet build            # Debug build
-uv run dotnet build -c Release # Release build
-uv run dotnet test             # Run tests
-uv run dotnet run              # Run app
-```
-
-### Frontend (Next.js)
-```bash
-cd frontend
-npm install                    # Install dependencies
-npm run dev                    # Development server (localhost:3000)
-npm run build                  # Production build
-npm run lint                   # Lint code
-```
-
-## Architecture
-
-### macOS (`mac/`)
-- Swift 6.0 + SwiftUI, targets macOS 15+
-- **WhisperKit** for on-device transcription (Apple Silicon optimized)
-- **MLX** framework for ML inference on Metal GPU
-- Plugin system: `Sources/Talkies/Plugins/` for TTS, image gen, sentiment analysis
-- Core services: `AudioRecorder.swift`, `TranscriptionService.swift`
-
-### Windows (`windows/`)
-- .NET 8.0 WPF with MVVM pattern
-- **Whisper.net** for transcription, **NAudio** for audio capture
-- LLM enhancement via Ollama/LM Studio (`Plugins/OllamaEnhancer.cs`, `LmStudioProvider.cs`)
-- Main logic in `ViewModels/MainViewModel.cs`
-- Services layer: `Services/` directory for audio, transcription, settings, hotkeys
-
-### Frontend (`frontend/`)
-- Next.js 16 with App Router, React 19, TypeScript
-- Tailwind CSS v4 for styling
-- SaaS landing page with auth modals, pricing, dashboard
-- Components in `app/components/`, UI primitives in `app/components/ui/`
-
-## Key Patterns
-
-- **Use uv for everything** - Wrap dotnet/npm commands with `uv run` where applicable
-- Both desktop apps support multi-format export (SRT, VTT, TXT)
-- Both desktop apps integrate with local LLMs (Ollama) for text enhancement
-- Privacy-first: all transcription happens locally on-device
+Use platform-native APIs and follow the tests and dependency boundaries already present. Do not
+bundle model weights, commit user data, bypass SHA-256 model checks, or add a network fallback to
+local inference. Preserve upstream license and attribution files.

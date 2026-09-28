@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a focused improvement to Talkies.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Search open issues first. Keep one user problem or closely related set of needs per issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What user problem should this solve?
+      description: Describe who is affected and what is difficult today.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform scope
+      multiple: true
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Android (Kotlin)
+        - Cross-platform contract or documentation
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Desired outcome
+      description: Explain what success looks like without prescribing unnecessary implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes or tests that would show the problem is solved.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: false

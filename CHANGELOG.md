@@ -13,7 +13,7 @@ This is the current cross-platform release candidate. It is not the first stable
 - Revision-pinned model downloads with size and SHA-256 verification; models remain outside the desktop application packages.
 - Local vocabulary hints, editable transcripts, and TXT/VTT/SRT export support across desktop platforms.
 - macOS app ZIP and DMG, Windows portable ZIP and setup installer, and Linux portable tarball and Debian package.
-- CI coverage for native builds, model-free tests, cached-model offline inference, and release package smoke checks. Android CI also runs an API 35 emulator acceptance flow with external networking disabled.
+- CI coverage for native builds, model-free tests, cached-model offline inference, and release package smoke checks. Android CI also runs API 28 emulator acceptance with external networking disabled.
 - GitHub Pages documentation and product site maintained separately from the application source.
 
 ### Known release limitations

@@ -1,4 +1,8 @@
-# Implementation Notes - Talkies Mobile
+# Deprecated Flutter implementation notes (historical)
+
+> This document describes the unsupported Flutter prototype. It is not a current architecture or
+> build guide. See the [active module boundaries](../../docs/architecture/module-volatility.md)
+> and [Android guide](../../docs/platforms/mobile.md).
 
 ## Overview
 This document provides technical notes about the implementation of Talkies Mobile, created as a Flutter application that combines the best features from the macOS (Swift) and Windows (.NET) versions.

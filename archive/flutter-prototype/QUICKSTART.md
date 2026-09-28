@@ -1,4 +1,7 @@
-# Talkies Mobile - Quick Start Guide
+# Deprecated Flutter quick-start (historical)
+
+> This guide describes an unsupported Flutter prototype. Do not follow these commands for a
+> current Talkies build. Use the native Kotlin Android app and its [current guide](../../docs/platforms/mobile.md).
 
 Get up and running with Talkies Mobile in 5 minutes.
 

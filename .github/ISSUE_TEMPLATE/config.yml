@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question or discuss an idea
+    url: https://github.com/4cecoder/talkies/discussions
+    about: Use Discussions for support and open-ended design questions.
+  - name: Read platform setup and troubleshooting
+    url: https://github.com/4cecoder/talkies/tree/master/docs/platforms
+    about: Check the platform guides before filing an installation or model setup issue.

@@ -1,4 +1,8 @@
-# Talkies Mobile - Feature Implementation
+# Deprecated Flutter feature notes (historical)
+
+> This document describes an unsupported prototype and is not a description of current Talkies
+> capabilities. The supported Android implementation is native Kotlin; see
+> [the current Android guide](../../docs/platforms/mobile.md).
 
 This document details the features implemented in the Flutter mobile application, drawing from the best aspects of both macOS and Windows versions.
 
