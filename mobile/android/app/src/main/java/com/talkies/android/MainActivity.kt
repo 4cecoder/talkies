@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.view.inputmethod.InputMethodManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,7 +70,7 @@ private fun CleanupOptionSelector(
     }
 }
 
-private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String?, default: T): T =
+internal inline fun <reified T : Enum<T>> enumValueOrDefault(value: String?, default: T): T =
     value?.let { candidate -> enumValues<T>().firstOrNull { it.name == candidate } } ?: default
 
 class MainActivity : ComponentActivity() {
@@ -119,6 +121,21 @@ class MainActivity : ComponentActivity() {
                         Text("Talkies", style = MaterialTheme.typography.headlineLarge)
                         Text("Private, on-device dictation", style = MaterialTheme.typography.titleMedium)
                         Text(status, style = MaterialTheme.typography.bodyMedium)
+
+                        Text("Type by voice in any app", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Enable Talkies voice typing as a keyboard, grant microphone access here, then select Talkies from your keyboard switcher. Dictation and optional S1-mini cleanup run on-device and insert into the focused field.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(onClick = {
+                                startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
+                            }) { Text("Enable keyboard") }
+                            OutlinedButton(onClick = {
+                                (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+                                    .showInputMethodPicker()
+                            }) { Text("Select keyboard") }
+                        }
 
                         if (!modelReady) {
                             Button(enabled = !modelBusy && !cleanupBusy, onClick = { downloadModel() }) {
