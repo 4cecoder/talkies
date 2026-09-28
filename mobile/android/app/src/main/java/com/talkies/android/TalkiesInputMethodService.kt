@@ -28,6 +28,7 @@ class TalkiesInputMethodService : InputMethodService() {
     private var recording = false
     private var processing = false
     private var inputSession = 0
+    private var inputViewGeneration = 0
     private var inputViewActive = false
     private var statusView: TextView? = null
     private var recordButton: Button? = null
@@ -68,10 +69,12 @@ class TalkiesInputMethodService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        inputViewGeneration += 1
         inputViewActive = true
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        inputViewGeneration += 1
         inputViewActive = false
         if (recording) {
             audioCapture.cancel()
@@ -102,6 +105,7 @@ class TalkiesInputMethodService : InputMethodService() {
     private fun startRecording() {
         if (processing || recording) return
         val targetSession = inputSession
+        val targetViewGeneration = inputViewGeneration
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             updateControls("Grant microphone permission in Talkies first")
             return
@@ -115,7 +119,7 @@ class TalkiesInputMethodService : InputMethodService() {
                     updateControls("Download Whisper in Talkies first")
                     return@launch
                 }
-                check(targetSession == inputSession && inputViewActive) {
+                check(targetSession == inputSession && targetViewGeneration == inputViewGeneration && inputViewActive) {
                     "The text field changed before recording could start."
                 }
                 processing = false
@@ -139,6 +143,7 @@ class TalkiesInputMethodService : InputMethodService() {
         recording = false
         processing = true
         val targetSession = inputSession
+        val targetViewGeneration = inputViewGeneration
         updateControls(if (maximumDurationReached) "Time limit · transcribing…" else "Transcribing offline…")
         serviceScope.launch {
             var samples: FloatArray? = null
@@ -165,7 +170,9 @@ class TalkiesInputMethodService : InputMethodService() {
                     )
                     result = runCatching { cleanupCleaner.clean(result, options) }.getOrDefault(result)
                 }
-                check(targetSession == inputSession) { "The text field changed before dictation finished." }
+                check(
+                    targetSession == inputSession && targetViewGeneration == inputViewGeneration && inputViewActive
+                ) { "The text field closed before dictation finished." }
                 val connection = currentInputConnection
                     ?: error("The active text field closed before insertion completed.")
                 val selectedText = connection.getSelectedText(0)?.toString().orEmpty()
