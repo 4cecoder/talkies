@@ -13,7 +13,7 @@ do not let a test silently download weights during an offline inference check.
 | macOS | `cd mac && swift build` (release: `swift build -c release`) | `cd mac && swift test` |
 | Windows | `cd windows/Talkies.Windows && uv run dotnet build` | `cd windows/Talkies.Windows && uv run dotnet test ../Talkies.Windows.Tests` |
 | Linux | `cd linux && ./run.sh build` | `cd linux && ./run.sh test` |
-| Android | `cd mobile/android && ./gradlew assembleDebug assembleRelease` | `cd mobile/android && ./gradlew testDebugUnitTest testReleaseUnitTest` |
+| Android | `cd mobile/android && ./gradlew assembleDebug assembleRelease` | `cd mobile/android && ./gradlew :core:test :inference:testDebugUnitTest :inference:testReleaseUnitTest :app:testDebugUnitTest :app:testReleaseUnitTest` |
 
 Toolchain versions, model provisioning, offline acceptance, and packaging details live in the
 [platform guides](docs/README.md#platform-build-guides) and

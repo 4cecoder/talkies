@@ -1,7 +1,7 @@
 package com.talkies.android
 
 /** Holds little-endian PCM16 samples up to a fixed memory limit. */
-internal class BoundedPcmBuffer(maxBytes: Int) {
+class BoundedPcmBuffer(maxBytes: Int) {
     private val output = WipingPcmOutputStream(initialCapacity(maxBytes), maxBytes)
 
     private fun initialCapacity(maxBytes: Int): Int {

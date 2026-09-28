@@ -1,6 +1,6 @@
 package com.talkies.android
 
-internal enum class TranscriptStyle(val label: String, val wireValue: String) {
+enum class TranscriptStyle(val label: String, val wireValue: String) {
     CASUAL("casual", "casual"),
     SEMI_CASUAL("semi-casual", "semi-casual"),
     BALANCED("balanced", "semi-formal"),
@@ -8,24 +8,24 @@ internal enum class TranscriptStyle(val label: String, val wireValue: String) {
     FORMAL("formal", "formal")
 }
 
-internal enum class TranscriptStructure(val wireValue: String) {
+enum class TranscriptStructure(val wireValue: String) {
     PROSE("prose"),
     LISTS("lists")
 }
 
-internal enum class TranscriptContext(val wireValue: String) {
+enum class TranscriptContext(val wireValue: String) {
     GENERAL("general"),
     EMAIL("email")
 }
 
-internal data class TranscriptCleanupOptions(
+data class TranscriptCleanupOptions(
     val style: TranscriptStyle = TranscriptStyle.SEMI_FORMAL,
     val structure: TranscriptStructure = TranscriptStructure.PROSE,
     val context: TranscriptContext = TranscriptContext.GENERAL
 )
 
 /** Exact Qwen3 chat prefix used by the shared desktop S1-mini cleaners. */
-internal object S1MiniPrompt {
+object S1MiniPrompt {
     const val SYSTEM = "You are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text."
 
     fun render(transcript: String, options: TranscriptCleanupOptions = TranscriptCleanupOptions()): String {
@@ -39,17 +39,5 @@ internal object S1MiniPrompt {
     fun resolve(original: String, modelOutput: String): String {
         val candidate = modelOutput.trim(' ', '\t', '\r', '\n')
         return candidate.ifEmpty { original }
-    }
-}
-
-internal class S1MiniCleaner(private val modelStore: S1MiniModelStore) {
-    suspend fun clean(transcript: String, options: TranscriptCleanupOptions = TranscriptCleanupOptions()): String {
-        if (transcript.isBlank()) return transcript
-        check(modelStore.isInstalled()) { "S1-mini is not installed. Download it before enabling cleanup." }
-        val prompt = S1MiniPrompt.render(transcript, options)
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            val output = LocalWhisper.clean(modelStore.modelFile.absolutePath, prompt.encodeToByteArray())
-            S1MiniPrompt.resolve(transcript, output.decodeToString())
-        }
     }
 }

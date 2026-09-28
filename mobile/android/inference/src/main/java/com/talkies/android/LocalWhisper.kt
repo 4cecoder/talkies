@@ -1,6 +1,6 @@
 package com.talkies.android
 
-internal object LocalWhisper {
+object LocalWhisper {
     init {
         System.loadLibrary("talkies_whisper")
     }

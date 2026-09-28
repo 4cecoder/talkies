@@ -75,8 +75,9 @@ internal inline fun <reified T : Enum<T>> enumValueOrDefault(value: String?, def
 
 class MainActivity : ComponentActivity() {
     private lateinit var modelStore: WhisperTinyModelStore
+    private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var cleanupModelStore: S1MiniModelStore
-    private lateinit var cleanupCleaner: S1MiniCleaner
+    private lateinit var cleanupCleaner: TranscriptCleaner
     private val audioCapture = OfflineAudioCapture()
     private var transcript by mutableStateOf("")
     private var status by mutableStateOf("Download the local Whisper model to get started.")
@@ -96,6 +97,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         modelStore = WhisperTinyModelStore(File(filesDir, "models"))
+        speechRecognizer = WhisperTinyRecognizer(modelStore)
         cleanupModelStore = S1MiniModelStore(
             File(File(filesDir, "models"), "S1-mini-${S1MiniModelStore.MODEL_REVISION}")
         )
@@ -389,12 +391,8 @@ class MainActivity : ComponentActivity() {
             var samples: FloatArray? = null
             try {
                 samples = withContext(Dispatchers.IO) { audioCapture.stop() }
-                val modelFile = withContext(Dispatchers.IO) {
-                    check(modelStore.isInstalled()) { "The local Whisper model is missing or invalid. Download it again." }
-                    modelStore.modelFile
-                }
                 val recognized = withContext(Dispatchers.Default) {
-                    LocalWhisper.transcribe(modelFile.absolutePath, requireNotNull(samples))
+                    speechRecognizer.transcribe(requireNotNull(samples))
                 }.trim()
                 if (recognized.isBlank()) {
                     status = "No speech was recognized. Try again when ready."

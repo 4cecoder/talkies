@@ -47,11 +47,9 @@ APIs, but should assert the same contract where behavior is intended to match.
 | macOS | `mac/Packages/TalkiesCore` | `mac/Packages/TalkiesInference`; `mac/Sources/TalkiesAudio`; `mac/Sources/TalkiesAccessibility`; SwiftUI app in `mac/Sources/Talkies` | Core and inference are separate Swift packages/products; audio and accessibility are separate targets. See [the macOS package design](macos-volatility-split.md). |
 | Windows | Shared JSON fixtures under `tests/fixtures`; typed models in `windows/Talkies.Windows/Models` | WPF UI, services, plugins, and Whisper/llama runtime integration in `windows/Talkies.Windows` | Keep current .NET project boundaries; do not extract a library until it has an independent consumer or test need. |
 | Linux | Shared JSON fixtures under `tests/fixtures`; transcript/cleanup contracts in Zig source | GTK/Wayland/X11 integration, native inference and build bindings under `linux/src` | Keep generated bindings and third-party build wiring isolated from app policy. |
-| Android | Shared prompt and transcript helpers under `mobile/android/app/src/main/java/com/talkies/android` | Activity, input method, audio capture, model stores, JNI and native runtimes | Currently one Gradle app module. A future split should separate stable Kotlin contracts from the OS UI and JNI/model runtime. Scope and acceptance criteria are tracked in [Android module issue #201](https://github.com/4cecoder/talkies/issues/201). |
+| Android | Pure Kotlin contracts in `mobile/android/core` | Compose app and input method in `:app`; model stores, cleanup adapter, JNI and native runtimes in `:inference` | The app is the composition root. `:core` has no Android or model-runtime dependency; `:inference` depends on `:core`; `:app` composes both. |
 
-`mobile/android/third_party/whisper.cpp` is a pinned submodule. Treat it as upstream-owned. Keep
-Talkies JNI adapters, CMake options, and license integration in `mobile/android/app/src/main/cpp`
-and the Android app module.
+`mobile/android/third_party/whisper.cpp` and `llama.cpp` are pinned submodules. Treat them as upstream-owned. Keep Talkies JNI adapters, CMake options, and third-party license integration inside `mobile/android/inference`; keep microphone capture, permissions, and input-method lifecycle inside `mobile/android/app`.
 
 ## When changing a boundary
 

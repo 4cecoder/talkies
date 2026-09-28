@@ -9,10 +9,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import javax.net.ssl.HttpsURLConnection
 
-internal data class S1MiniDownloadProgress(val downloadedBytes: Long, val totalBytes: Long)
+data class S1MiniDownloadProgress(val downloadedBytes: Long, val totalBytes: Long)
 
 /** Stores verified S1-mini weights and the model's required attribution files on-device. */
-internal class S1MiniModelStore(private val directory: File) {
+class S1MiniModelStore(private val directory: File) {
     val modelFile: File get() = File(directory, MODEL_FILENAME)
     private val licenseFile: File get() = File(directory, LICENSE_FILENAME)
     private val noticeFile: File get() = File(directory, NOTICE_FILENAME)

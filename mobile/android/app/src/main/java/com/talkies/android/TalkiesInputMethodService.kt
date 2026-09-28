@@ -23,8 +23,9 @@ class TalkiesInputMethodService : InputMethodService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val audioCapture = OfflineAudioCapture()
     private lateinit var modelStore: WhisperTinyModelStore
+    private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var cleanupModelStore: S1MiniModelStore
-    private lateinit var cleanupCleaner: S1MiniCleaner
+    private lateinit var cleanupCleaner: TranscriptCleaner
     private var recording = false
     private var processing = false
     private var inputSession = 0
@@ -36,6 +37,7 @@ class TalkiesInputMethodService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         modelStore = WhisperTinyModelStore(File(filesDir, "models"))
+        speechRecognizer = WhisperTinyRecognizer(modelStore)
         cleanupModelStore = S1MiniModelStore(
             File(File(filesDir, "models"), "S1-mini-${S1MiniModelStore.MODEL_REVISION}")
         )
@@ -149,12 +151,8 @@ class TalkiesInputMethodService : InputMethodService() {
             var samples: FloatArray? = null
             try {
                 samples = withContext(Dispatchers.IO) { audioCapture.stop() }
-                val modelPath = withContext(Dispatchers.IO) {
-                    check(modelStore.isInstalled()) { "Whisper model is missing. Open Talkies to download it." }
-                    modelStore.modelFile.absolutePath
-                }
                 var result = withContext(Dispatchers.Default) {
-                    LocalWhisper.transcribe(modelPath, requireNotNull(samples))
+                    speechRecognizer.transcribe(requireNotNull(samples))
                 }.trim()
                 check(result.isNotBlank()) { "No speech recognized. Try again." }
 
