@@ -44,10 +44,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6.3.0
       - name: Build debug APK
         working-directory: mobile/android
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug :core:test :inference:testDebugUnitTest :app:testDebugUnitTest
       - name: Build release APK and run release unit tests
         working-directory: mobile/android
-        run: ./gradlew --no-daemon assembleRelease testReleaseUnitTest
+        run: ./gradlew --no-daemon assembleRelease :inference:testReleaseUnitTest :app:testReleaseUnitTest
       - name: Verify APKs contain the local runtime and license, not model weights
         shell: bash
         run: |
@@ -69,7 +69,7 @@ jobs:
           done
       - name: Run unit tests
         working-directory: mobile/android
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon :core:test :inference:testDebugUnitTest :app:testDebugUnitTest
       - name: Upload tested debug APK
         uses: actions/upload-artifact@v7.0.1
         with:

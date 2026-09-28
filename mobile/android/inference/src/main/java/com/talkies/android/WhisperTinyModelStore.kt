@@ -12,9 +12,9 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import javax.net.ssl.HttpsURLConnection
 
-internal data class ModelDownloadProgress(val downloadedBytes: Long, val totalBytes: Long)
+data class ModelDownloadProgress(val downloadedBytes: Long, val totalBytes: Long)
 
-internal class WhisperTinyModelStore(private val directory: File) {
+class WhisperTinyModelStore(private val directory: File) {
     val modelFile: File get() = File(directory, MODEL_FILENAME)
 
     fun isInstalled(): Boolean = VerifiedModelInstaller.isVerified(modelFile, MODEL_SIZE_BYTES, MODEL_SHA256)

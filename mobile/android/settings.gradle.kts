@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "TalkiesAndroid"
-include(":app")
+include(":app", ":core", ":inference")

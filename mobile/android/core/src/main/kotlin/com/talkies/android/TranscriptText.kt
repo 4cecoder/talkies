@@ -1,9 +1,9 @@
 package com.talkies.android
 
-internal fun appendTranscript(existing: String, recognized: String): String =
+fun appendTranscript(existing: String, recognized: String): String =
     listOf(existing.trim(), recognized.trim()).filter(String::isNotBlank).joinToString(" ")
 
-internal fun appendDictationSpacing(
+fun appendDictationSpacing(
     beforeCursor: String,
     dictatedText: String,
     afterCursor: String = ""
