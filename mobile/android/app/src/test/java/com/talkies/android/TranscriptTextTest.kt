@@ -11,4 +11,13 @@ class TranscriptTextTest {
     @Test fun emptyRecognitionDoesNotAlterTranscript() {
         assertEquals("Existing words", appendTranscript("Existing words", "  "))
     }
+
+    @Test fun insertsSpacingAtExistingWordBoundary() {
+        assertEquals(" dictated", appendDictationSpacing("word", "dictated"))
+    }
+
+    @Test fun preservesExistingWhitespaceAndLeadingDictatedWhitespace() {
+        assertEquals("dictated", appendDictationSpacing("word ", "dictated"))
+        assertEquals(" dictated", appendDictationSpacing("word", " dictated"))
+    }
 }
