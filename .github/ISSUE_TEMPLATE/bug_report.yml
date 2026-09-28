@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in a supported Talkies build.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Please search existing issues first. Never attach recordings, private transcript text,
+        credentials, or model weights. Redact personal information from logs.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Android (Kotlin)
+        - Website
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Talkies version or commit
+      description: For a source build, provide the commit SHA.
+      placeholder: 0.1.5 or abc1234
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating system and version
+      placeholder: Windows 11 24H2; Android 14/API 34
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest sequence that reliably reproduces the problem.
+      placeholder: 1. Open… 2. Select… 3. Start…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Remove names, paths, tokens, transcript content, and other sensitive details first.
+    validations:
+      required: false

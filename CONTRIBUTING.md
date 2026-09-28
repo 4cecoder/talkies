@@ -1,64 +1,64 @@
 # Contributing to Talkies
 
-Thanks for taking a look! Talkies is a hobby, open-source project — there's no company behind
-it, no roadmap deadlines, and no expectation of full-time effort from anyone. All skill levels
-are welcome, whether this is your first pull request ever or your five-hundredth.
+Thanks for helping improve Talkies. It is an open-source, MIT-licensed project maintained in the
+open. Contributions of any size are welcome.
 
-## Picking something to work on
+## Find or report work
 
-Talkies is multi-platform, so pick whichever stack you're comfortable in (or want to learn):
+GitHub Issues are the canonical backlog. Before starting a larger change, search the
+[open issues](https://github.com/4cecoder/talkies/issues) and comment on the relevant item so work
+does not overlap. If the issue is unclear or the change crosses platforms, ask for scope in the
+issue before expanding it.
 
-- **macOS** (`mac/`) — Swift 6 + SwiftUI, WhisperKit for on-device transcription.
-- **Windows** (`windows/`) — .NET 8 WPF, Whisper.net for transcription.
-- **Linux** (`linux/`) — Zig + whisper.cpp, X11/Wayland global hotkeys.
-- **Mobile** (`mobile/`) — Flutter, deprecated. Not actively developed and not built in CI; see [`docs/platforms/mobile.md`](docs/platforms/mobile.md) before starting work here.
-- **Frontend** (`frontend/`) — Next.js site (this project's homepage, the live browser demo,
-  and onboarding docs).
+- [Report a reproducible bug](https://github.com/4cecoder/talkies/issues/new?template=bug_report.yml)
+- [Propose an improvement](https://github.com/4cecoder/talkies/issues/new?template=feature_request.yml)
+- [Browse milestones](https://github.com/4cecoder/talkies/milestones)
 
-Not sure what's worth doing? Check [`docs/ROADMAP.md`](docs/ROADMAP.md) for the current list of
-open and in-progress items across every platform — it's a plain markdown file, so feel free to
-add, edit, or claim an item via a normal pull request. Found a bug that's not listed there? Open
-a GitHub issue, or just fix it and open a PR.
+Do not attach recordings, private transcripts, credentials, or model weights to public issues.
+Include the platform, app version or commit, operating-system version, expected behavior, observed
+behavior, and the shortest safe reproduction steps. Redact personal information from logs.
 
-## Building and testing
+## Choose the active implementation
 
-The canonical, up-to-date command reference lives in
-[`.claude/skills/talkies-dev/SKILL.md`](.claude/skills/talkies-dev/SKILL.md) and
-[`AGENTS.md`](AGENTS.md) — rather than duplicate them here (and risk them drifting out of sync),
-go there for the exact build/test/run commands for whichever platform you're touching. As a
-quick pointer, everything is invoked from that platform's subdirectory (`cd mac`, `cd
-windows/Talkies.Windows`, `cd mobile`, `cd frontend`, `cd linux`), and Windows/Python commands
-are wrapped with `uv run` per repo convention.
+| Platform | Source | Primary tools |
+|---|---|---|
+| macOS | `mac/` | Swift 6.3+, SwiftUI, Swift Package Manager |
+| Windows | `windows/` | .NET 8, WPF, `uv` for repository Python tooling |
+| Linux | `linux/` | Zig master, native system libraries |
+| Android | `mobile/android/` | Kotlin, Gradle, Android NDK |
 
-## Code style
+Android is native Kotlin. The former Flutter prototype is archived under
+[`archive/flutter-prototype/`](archive/flutter-prototype/README.md) and is not built, tested, or
+released. The GitHub Pages website is a separate project on the [`website` branch](https://github.com/4cecoder/talkies/tree/website);
+it is intentionally absent from the application source on `master`.
 
-See [`AGENTS.md`](AGENTS.md) for per-language style conventions (Swift, C#, TypeScript/React,
-Dart, Python). The short version: follow the existing patterns in whichever directory you're
-editing rather than introducing a new style, and keep comments to complex logic that actually
-needs explaining.
+Start with [`AGENTS.md`](AGENTS.md) for the exact build and test commands, then use the relevant
+[platform guide](docs/README.md#platform-build-guides). Read
+[`docs/architecture/module-volatility.md`](docs/architecture/module-volatility.md) before adding
+cross-platform abstractions or moving code between modules.
 
-## Opening a pull request
+## Make a focused change
 
-1. Fork the repo and create a branch for your change.
-2. Keep the change focused — smaller PRs are easier to review and merge.
-3. Make sure the relevant platform's build/tests pass locally (see above).
-4. Open a PR with a short description of what changed and why. Screenshots or a quick recording
-   are appreciated for UI changes.
-5. Be patient — this is maintained on a best-effort basis, so review may take a bit.
+1. Create a branch from current `master` with a descriptive name.
+2. Keep the change limited to one behavior or closely related set of fixes.
+3. Follow the existing module boundary and platform conventions; do not edit vendored or generated
+   code unless the change is specifically about its integration.
+4. Run the platform's documented lint, build, and tests. State clearly which commands ran and which
+   checks require hardware or model files that were unavailable locally.
+5. Update the user or developer documentation when behavior, setup, supported platforms, or build
+   requirements change.
+6. Open a pull request with the reason for the change, a concise summary, validation evidence, and
+   screenshots for visible UI changes.
 
-## Reporting bugs
+Review is best-effort. A green build does not replace review of security, privacy, data loss, and
+cross-platform behavior.
 
-Open a GitHub issue with what you expected, what happened instead, your platform/OS version, and
-steps to reproduce if you have them. For crash logs or stack traces, paste the relevant portion
-rather than a screenshot when you can.
+## Code, models, and licensing
 
-## License
+Talkies source is MIT-licensed. Model weights, native inference libraries, and other third-party
+components may use different terms. Preserve attribution and license files, do not bundle model
+weights without an explicit licensing and distribution review, and do not add a cloud inference
+fallback. Model downloads must be explicit, revision-pinned, and integrity-checked.
 
-Talkies project code is released under the MIT License in [`LICENSE`](LICENSE). Contributions
-are submitted under that same license. Third-party dependencies and model weights retain their
-own licenses and notices.
-
----
-
-Questions, ideas, or just want to say hi? Open an issue or start a discussion on GitHub. Thanks
-for being here.
+For a documentation correction, open a small pull request directly. For questions and design
+discussion, use [GitHub Discussions](https://github.com/4cecoder/talkies/discussions).

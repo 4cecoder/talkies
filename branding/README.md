@@ -2,7 +2,7 @@
 
 > **Single source of truth for all Talkies brand assets across platforms**
 
-This directory contains all official Talkies brand assets for use across macOS, Windows, and web platforms. All assets are designed to maintain consistent brand identity while being optimized for each platform.
+This directory contains shared Talkies brand assets for the native macOS and Windows apps. The public website is maintained on the separate `website` branch; web-specific integration paths below apply only to a checkout of that branch.
 
 ## 📁 Directory Structure
 
@@ -34,17 +34,8 @@ branding/
 
 ## 🎨 Quick Start
 
-### For Web/Frontend Developers
-```bash
-# Copy web assets
-cp branding/icons/favicon.svg frontend/public/
-cp branding/logos/talkies-logo.svg frontend/public/
-cp branding/social/og-image.svg frontend/public/
-
-# Import color palette
-# Add to your CSS:
-@import url('../../../branding/colors/palette.css');
-```
+### For Website Developers
+The website source and its framework dependencies live on the [`website` branch](https://github.com/4cecoder/talkies/tree/website). Check out that branch before following website-specific paths. Keep website content and build tooling on that branch; do not add them to `master`.
 
 ### For macOS Developers
 ```swift
@@ -112,20 +103,9 @@ ln -s ../branding mac/Resources/Branding
 </ResourceDictionary.MergedDictionaries>
 ```
 
-### Frontend (`frontend/`)
+### Website (`website` branch)
 
-**Favicon & Icons**
-- Copy `branding/icons/favicon.svg` to `frontend/public/`
-- Reference in `frontend/app/layout.tsx` metadata
-
-**OG Image**
-- Copy `branding/social/og-image.svg` to `frontend/public/`
-- Configure in Next.js metadata for social sharing
-
-**Colors**
-- Colors already integrated in `frontend/tailwind.config.ts`
-- Optionally import `branding/colors/palette.css` for CSS variables
-- Use Tailwind classes: `bg-gradient-to-r from-purple-400 to-pink-400`
+Website integration files are maintained separately from the native app repository tree. Use the website branch checkout to update its favicon, social metadata, and web color tokens. The `master` branch contains shared brand source assets only.
 
 ## 📐 Logo Usage Guidelines
 
@@ -245,7 +225,7 @@ When updating brand assets:
 
 1. **Update source files** in `/branding` first
 2. **Propagate to platforms:**
-   - Frontend: Copy to `frontend/public/`
+   - Website: update the corresponding files on the separate `website` branch
    - macOS: Update assets in `mac/Resources/`
    - Windows: Update assets in `windows/Talkies.Windows/Resources/`
 3. **Update version** in this README

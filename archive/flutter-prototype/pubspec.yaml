@@ -1,5 +1,5 @@
 name: talkies_mobile
-description: A mobile voice transcription application combining the best features from macOS and Windows versions
+description: DEPRECATED historical Flutter prototype; the supported Android application is native Kotlin under mobile/android.
 publish_to: 'none'
 version: 1.0.0+1
 

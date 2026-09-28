@@ -1,94 +1,80 @@
-# AGENTS.md - Coding Guidelines for Talkies
+# Coding guidelines for Talkies
 
-## Build, Lint & Test Commands
+Read this file before changing code. Start with [the root README](README.md) for the supported
+platforms and repository layout. Long-lived architecture and setup guidance belongs in `docs/`.
 
-### Frontend (Next.js/TypeScript)
-- **Development**: `cd frontend && npm run dev`
-- **Build**: `cd frontend && npm run build`
-- **Lint**: `cd frontend && npm run lint`
-- **Single test**: `cd frontend && npm test -- [test-file]`
+## Build, lint, and test
 
-### macOS (Swift/SwiftUI)
-- **Debug build**: `cd mac && swift build`
-- **Release build**: `cd mac && swift build -c release`
-- **Test**: `cd mac && swift test`
-- **Single test**: `cd mac && swift test --filter [TestClass].[testMethod]`
+Run commands from the listed directory. Model-backed tests may need locally provisioned model files;
+do not let a test silently download weights during an offline inference check.
 
-### Windows (.NET WPF)
-- **Build**: `cd windows/Talkies.Windows && uv run dotnet build`
-- **Test**: `cd windows/Talkies.Windows && uv run dotnet test`
-- **Single test**: `cd windows/Talkies.Windows && uv run dotnet test --filter [FullyQualifiedName]`
+| Platform | Build | Tests |
+|---|---|---|
+| macOS | `cd mac && swift build` (release: `swift build -c release`) | `cd mac && swift test` |
+| Windows | `cd windows/Talkies.Windows && uv run dotnet build` | `cd windows/Talkies.Windows && uv run dotnet test ../Talkies.Windows.Tests` |
+| Linux | `cd linux && ./run.sh build` | `cd linux && ./run.sh test` |
+| Android | `cd mobile/android && ./gradlew assembleDebug assembleRelease` | `cd mobile/android && ./gradlew testDebugUnitTest testReleaseUnitTest` |
 
-### Python (CLI tools)
-- **Test**: `cd archive && uv run pytest`
-- **Single test**: `cd archive && uv run pytest tests/test_[name].py`
-- **With coverage**: `cd archive && uv run pytest --cov=src`
+Toolchain versions, model provisioning, offline acceptance, and packaging details live in the
+[platform guides](docs/README.md#platform-build-guides) and
+[quality and distribution guide](docs/engineering/quality-and-distribution.md).
+Use `uv` for Python tooling and the documented .NET commands; do not wrap SwiftPM, Gradle, or Bun
+commands unless their platform guide explicitly says to.
 
-### Mobile (Flutter/Dart)
-- **Test**: `cd mobile && flutter test`
-- **Single test**: `cd mobile && flutter test test/[test_file].dart`
+The public website source is on the [`website` branch](https://github.com/4cecoder/talkies/tree/website),
+not under this branch's application tree. Follow [its guide](docs/platforms/website.md) and run its
+Bun scripts from a checkout of that branch. The deprecated Flutter prototype is archived under
+`archive/flutter-prototype/`; it is not a supported build target.
 
-## Code Style Guidelines
+## Code style
 
-### TypeScript/React (Frontend)
-- Use `forwardRef` for components that need ref forwarding
-- Type all props with interfaces, use union types for variants
-- Use `cn()` utility from `@/app/lib/utils` for conditional classes
-- Include accessibility attributes (`aria-*`, `role`)
-- Use `React.forwardRef` with `displayName` for debugging
-- Prefer functional components with hooks
-- Use `const` assertions for literal objects
-- Follow Next.js App Router conventions
+### Swift
 
-### Swift (macOS)
-- Use `@MainActor` for UI-related code
-- Prefer `Combine` for reactive programming
-- Use `OSAllocatedUnfairLock` for thread-safe properties
-- Follow Swift 6 concurrency model with `nonisolated`
-- Use `#if os(macOS)` for platform-specific code
-- Prefer `struct` over `class` when possible
-- Use `Task { @MainActor in ... }` for main thread updates
-- Handle errors with `do/catch` blocks
-- Use `guard` statements for early returns
+- Use `@MainActor` for UI state and follow the Swift 6 concurrency model.
+- Keep Foundation-only contracts separate from AppKit, AVFoundation, Accessibility, and inference
+  frameworks as described in [module boundaries by volatility](docs/architecture/module-volatility.md).
+- Handle errors at the boundary that can explain or recover from them.
 
-### C# (.NET Windows)
-- Use interfaces for service contracts (`IAudioRecorder`, etc.)
-- Include XML documentation comments (`/// <summary>`)
-- Use `using` statements for resource management
-- Follow MVVM pattern with ViewModels
-- Use nullable reference types (`?`)
-- Prefer `init` properties for immutable data
-- Use `event EventHandler<T>` for events
-- Handle exceptions gracefully in UI callbacks
-- Use `StringComparison.OrdinalIgnoreCase` for case-insensitive string operations
+### C# / WPF
 
-### Python (CLI)
-- Use type hints for all function parameters and return values
-- Include docstrings for all public functions and classes
-- Use `pathlib.Path` instead of string paths
-- Use `click` for CLI argument parsing
-- Follow logging best practices with appropriate levels
-- Use `contextlib` for resource management
-- Prefer f-strings for string formatting
-- Use `dataclasses` or `pydantic` for structured data
-- Handle exceptions with specific exception types
+- Follow MVVM and the existing service interfaces.
+- Keep nullable reference types enabled; use `StringComparison.OrdinalIgnoreCase` for explicit
+  case-insensitive comparisons.
+- Dispose native, audio, and stream resources deterministically.
+- Keep user-facing errors actionable and avoid swallowing exceptions silently.
 
-### Flutter/Dart (Mobile)
-- Use `const` constructors when possible
-- Follow BLoC or Provider pattern for state management
-- Use `async/await` for asynchronous operations
-- Include proper error handling with try/catch
-- Use `Key` classes for widget identification in tests
-- Follow material design guidelines
-- Use `const` for immutable values
+### Zig
 
-## General Principles
-- **Use uv for everything** - Wrap dotnet/npm commands with `uv run` where applicable
-- Follow existing patterns in each platform directory
-- Include proper error handling and logging
-- Write tests for new functionality
-- Use platform-appropriate dependency injection
-- Follow security best practices (no secrets in code)
-- Use descriptive variable and function names
-- Add comments for complex logic only when necessary</content>
-<parameter name="filePath">/home/fource/talkies/AGENTS.md
+- Track Zig master as pinned by CI. Do not assume bindings or standard-library APIs from an older
+  compiler remain compatible.
+- Keep OS and C-library boundaries in the existing modules and generated bindings in the build
+  integration; do not hand-edit generated output.
+- Use explicit allocator ownership and `defer` for cleanup.
+
+### Kotlin / Android
+
+- Android's supported implementation is native Kotlin in `mobile/android/`.
+- Keep UI work on the main dispatcher and file, model-integrity, and inference work off it.
+- Preserve the offline boundary: network access is only for an explicit, verified model download.
+- Wipe ephemeral PCM buffers after use and invalidate asynchronous work when its input view or
+  editor is no longer active.
+
+### TypeScript / website
+
+- This repository's default branch contains no web application. The static website is built from
+  the separate `website` branch and deployed through GitHub Pages.
+- Follow that branch's ESLint, TypeScript, and accessibility patterns. Keep browser code compatible
+  with static export; do not introduce a server-only runtime or hosted service.
+
+## General principles
+
+- Follow existing patterns and module boundaries. Read
+  [`docs/architecture/module-volatility.md`](docs/architecture/module-volatility.md) before adding
+  a library or moving code between layers.
+- Add focused tests for new behavior and update platform or architecture docs when behavior or
+  setup changes.
+- Keep model weights, secrets, recordings, and transcript content out of source control, logs, and
+  issue attachments.
+- Preserve third-party license and attribution files. Talkies source is MIT; bundled libraries and
+  downloaded models may use different terms.
+- Keep recording, recognition, cleanup, and insertion local. Do not add a hosted inference fallback.

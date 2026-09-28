@@ -60,12 +60,15 @@ AVAudioEngine → SpeechRecognizer.transcribe → raw transcript
 
 The ASR and cleanup stages receive local files/text only. Model downloads go through a model-store service with verified files, version pinning, and offline-ready status. The cleanup protocol returns either cleaned text, a valid empty result, or a typed failure. The pipeline retains raw ASR until cleanup succeeds and follows a user-visible fallback policy.
 
-## Migration order
+## Current status and next changes
 
-1. `TalkiesCore` is a real target with Foundation-only transcript and cleanup contracts.
-2. `TalkiesAudio` owns microphone recording, device selection, level monitoring, and audio-file lifecycle.
-3. Keep WhisperKit types behind `WhisperKitRecognizer`; add focused model-free adapter tests and isolate presentation state from inference.
-4. Move SwiftUI/AppKit code into `TalkiesApp` and add app-bundle packaging.
-5. Add model progress and explicit download/delete controls. The model-backed CPU golden test now runs in macOS CI. Keep model files out of the source bundle unless redistribution terms and artifact size are explicitly handled.
+The Core, Audio, Accessibility, and Inference packages/targets are implemented. WhisperKit and
+llama.cpp are behind inference adapters. The `Talkies` executable is the SwiftUI/AppKit composition
+root, and the app packager embeds the dynamic libraries and nested runtime frameworks. Model
+download/delete controls and model-backed cleanup coverage are implemented.
 
-No migration step should silently delete or rewrite the user's uncommitted files.
+When modifying this graph, preserve Core's Foundation-only dependency rule and run the macOS
+package tests. Change package boundaries only when profiling, tests, or a separately changing
+runtime justifies the added packaging and ABI surface. Keep model files in persistent user storage;
+do not copy them into the app bundle. For shared repository rules, see
+[module boundaries by volatility](module-volatility.md).

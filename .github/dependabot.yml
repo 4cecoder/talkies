@@ -30,21 +30,8 @@ updates:
       prefix-development: "chore(deps-dev)"
       include: "scope"
 
-  # Frontend Bun dependencies
-  - package-ecosystem: "bun"
-    directory: "/frontend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "frontend"
-    commit-message:
-      prefix: "chore(deps)"
-      prefix-development: "chore(deps-dev)"
-      include: "scope"
-
+  # This configuration applies to the default branch. The static website has a separate
+  # dependency manifest on the `website` branch and is updated there rather than in the native app repository tree.
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
     directory: "/"

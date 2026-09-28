@@ -31,7 +31,7 @@ People who dictate into many desktop apps, care where their audio goes, or want 
 
 - Hosted transcription, cloud cleanup, remote APIs, and any feature that sends user audio or text to a service.
 - Accounts, subscriptions, licensing gates, and telemetry tied to dictation content.
-- The legacy Flutter prototype and iOS client are not active products. Android development uses the native Kotlin app in `mobile/android/`.
+- Android development uses the native Kotlin app in `mobile/android/`. The former Flutter prototype is deprecated and preserved for reference under `archive/flutter-prototype/`; there is no active iOS release target.
 
 ## Privacy acceptance check
 
