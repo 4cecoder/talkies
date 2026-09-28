@@ -28,6 +28,7 @@ class TalkiesInputMethodService : InputMethodService() {
     private var recording = false
     private var processing = false
     private var inputSession = 0
+    private var inputViewActive = false
     private var statusView: TextView? = null
     private var recordButton: Button? = null
 
@@ -65,8 +66,24 @@ class TalkiesInputMethodService : InputMethodService() {
         if (!recording && !processing) updateControls("Talkies offline voice typing")
     }
 
+    override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        inputViewActive = true
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        inputViewActive = false
+        if (recording) {
+            audioCapture.cancel()
+            recording = false
+            updateControls("Recording cancelled")
+        }
+        super.onFinishInputView(finishingInput)
+    }
+
     override fun onFinishInput() {
         inputSession += 1
+        inputViewActive = false
         if (recording) {
             audioCapture.cancel()
             recording = false
@@ -84,6 +101,7 @@ class TalkiesInputMethodService : InputMethodService() {
 
     private fun startRecording() {
         if (processing || recording) return
+        val targetSession = inputSession
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             updateControls("Grant microphone permission in Talkies first")
             return
@@ -96,6 +114,9 @@ class TalkiesInputMethodService : InputMethodService() {
                 if (!ready) {
                     updateControls("Download Whisper in Talkies first")
                     return@launch
+                }
+                check(targetSession == inputSession && inputViewActive) {
+                    "The text field changed before recording could start."
                 }
                 processing = false
                 audioCapture.start {
@@ -149,7 +170,10 @@ class TalkiesInputMethodService : InputMethodService() {
                     ?: error("The active text field closed before insertion completed.")
                 val selectedText = connection.getSelectedText(0)?.toString().orEmpty()
                 val beforeCursor = connection.getTextBeforeCursor(1, 0)?.toString().orEmpty()
-                val insertion = if (selectedText.isNotEmpty()) result else appendDictationSpacing(beforeCursor, result)
+                val afterCursor = connection.getTextAfterCursor(1, 0)?.toString().orEmpty()
+                val insertion = if (selectedText.isNotEmpty()) result else {
+                    appendDictationSpacing(beforeCursor, result, afterCursor)
+                }
                 if (!connection.commitText(insertion, 1)) {
                     error("The app did not accept the dictated text.")
                 }

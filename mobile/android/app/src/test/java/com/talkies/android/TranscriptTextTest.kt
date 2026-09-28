@@ -20,4 +20,12 @@ class TranscriptTextTest {
         assertEquals("dictated", appendDictationSpacing("word ", "dictated"))
         assertEquals(" dictated", appendDictationSpacing("word", " dictated"))
     }
+
+    @Test fun separatesDictationFromExistingWordAfterCursor() {
+        assertEquals(" dictated ", appendDictationSpacing("word", "dictated", "next"))
+    }
+
+    @Test fun doesNotInsertSpaceBeforePunctuationAfterCursor() {
+        assertEquals(" dictated", appendDictationSpacing("word", "dictated", "."))
+    }
 }
