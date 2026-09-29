@@ -59,8 +59,9 @@ backends that support macOS 12, and provide Monterey-compatible SwiftUI/AppKit
 implementations for newer UI and login-item APIs. That build must be exercised on a
 12.7.6 Mac before it can be advertised or distributed. The current DMG/ZIP is not a
 Monterey install workaround; use a Mac running macOS 15 or later for the existing app.
-See [the Monterey compatibility assessment](macos-monterey.md) for the verified
-blockers and implementation path.
+See [the Monterey compatibility assessment](macos-monterey.md) for the current
+status and port plan, and the [Monterey preview build guide](../../mac/Monterey/README.md)
+for the separate compatibility build.
 
 ## Quick Start
 

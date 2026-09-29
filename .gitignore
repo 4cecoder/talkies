@@ -7,6 +7,8 @@
 
 # Swift build artifacts (mac/)
 mac/.build/
+mac/Monterey/.build/
+mac/Monterey/dist/
 mac/.swiftpm/
 *.xcodeproj
 *.xcworkspace
