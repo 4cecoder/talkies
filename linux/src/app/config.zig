@@ -20,6 +20,11 @@ pub const EnhancerProvider = enum {
     }
 };
 
+/// S1-mini cleanup options, as offered by the macOS General settings.
+pub const CleanupStyle = enum { casual, semi_casual, semi_formal };
+pub const CleanupStructure = enum { prose, lists };
+pub const CleanupContext = enum { general, email };
+
 /// Application configuration.
 ///
 /// Stored as TOML at `$XDG_CONFIG_HOME/talkies/config.toml`. Section and key
@@ -36,6 +41,8 @@ pub const Config = struct {
     // [general]
     push_to_talk_threshold: f64 = 0.15, // seconds a hotkey must be held to count as push-to-talk
     show_hud: bool = true,
+    /// Compact 360x126 dictation panel (macOS "Use mini window").
+    mini_window: bool = false,
     show_status_gui: bool = false,
     sounds: bool = false, // start/stop beeps
     voice_assistant_mode: bool = false,
@@ -54,6 +61,11 @@ pub const Config = struct {
     // [enhancement]
     /// Off by default, like macOS: dictation is inserted as transcribed.
     enhancer: EnhancerProvider = .none,
+
+    // [cleanup] S1-mini output style
+    cleanup_style: CleanupStyle = .semi_formal,
+    cleanup_structure: CleanupStructure = .prose,
+    cleanup_context: CleanupContext = .general,
 
     // [ollama]
     ollama_selected_model: []const u8 = "llama3.2:3b",
@@ -366,6 +378,7 @@ const FieldSpec = struct {
 const field_specs = [_]FieldSpec{
     .{ .section = "general", .key = "push_to_talk_threshold", .field = "push_to_talk_threshold", .comment = "Hold the hotkey longer than this (seconds) for push-to-talk; a quicker tap toggles recording" },
     .{ .section = "general", .key = "show_hud", .field = "show_hud", .comment = "Floating dictation window with live waveform and pipeline status" },
+    .{ .section = "general", .key = "mini_window", .field = "mini_window", .comment = "Compact dictation panel (turn off for the larger transcript panel)" },
     .{ .section = "general", .key = "show_status_gui", .field = "show_status_gui", .comment = "Developer status monitor with live logs" },
     .{ .section = "general", .key = "sounds", .field = "sounds", .comment = "Play a short sound when recording starts and stops" },
     .{ .section = "general", .key = "voice_assistant_mode", .field = "voice_assistant_mode", .comment = "Speak the result aloud (spd-say / espeak-ng) instead of inserting it" },
@@ -380,6 +393,10 @@ const field_specs = [_]FieldSpec{
     .{ .section = "transcription", .key = "vocabulary_prompt", .field = "vocabulary_prompt", .comment = "Comma-separated names and uncommon words used as on-device Whisper hints (max 400 chars)" },
 
     .{ .section = "enhancement", .key = "provider", .field = "enhancer", .comment = "none | s1_mini | ollama | lm_studio" },
+
+    .{ .section = "cleanup", .key = "style", .field = "cleanup_style", .comment = "S1-mini writing style: casual | semi_casual | semi_formal" },
+    .{ .section = "cleanup", .key = "structure", .field = "cleanup_structure", .comment = "prose | lists" },
+    .{ .section = "cleanup", .key = "context", .field = "cleanup_context", .comment = "general | email" },
 
     .{ .section = "ollama", .key = "selected_model", .field = "ollama_selected_model" },
     .{ .section = "ollama", .key = "host", .field = "ollama_host", .comment = "Must be a loopback address; transcripts never leave this machine" },
@@ -526,6 +543,10 @@ test "config initialization matches macOS defaults" {
     try std.testing.expectEqual(@as(u32, 4096), cfg.lm_studio_max_tokens);
     try std.testing.expectEqual(EnhancerProvider.none, cfg.enhancer);
     try std.testing.expect(!cfg.sounds);
+    try std.testing.expect(!cfg.mini_window);
+    try std.testing.expectEqual(CleanupStyle.semi_formal, cfg.cleanup_style);
+    try std.testing.expectEqual(CleanupStructure.prose, cfg.cleanup_structure);
+    try std.testing.expectEqual(CleanupContext.general, cfg.cleanup_context);
 }
 
 test "parse string value" {
@@ -616,6 +637,10 @@ test "toToml round trips every field" {
     original.enhancer = .lm_studio;
     original.lm_studio_max_tokens = 1234;
     original.push_to_talk_threshold = 0.25;
+    original.mini_window = true;
+    original.cleanup_style = .casual;
+    original.cleanup_structure = .lists;
+    original.cleanup_context = .email;
     try original.setString("ollama_custom_system_prompt", "Line one\n\"quoted\"");
 
     const toml = try original.toToml(allocator);
@@ -628,6 +653,10 @@ test "toToml round trips every field" {
     try std.testing.expectEqual(EnhancerProvider.lm_studio, parsed.enhancer);
     try std.testing.expectEqual(@as(u32, 1234), parsed.lm_studio_max_tokens);
     try std.testing.expectEqual(@as(f64, 0.25), parsed.push_to_talk_threshold);
+    try std.testing.expect(parsed.mini_window);
+    try std.testing.expectEqual(CleanupStyle.casual, parsed.cleanup_style);
+    try std.testing.expectEqual(CleanupStructure.lists, parsed.cleanup_structure);
+    try std.testing.expectEqual(CleanupContext.email, parsed.cleanup_context);
     try std.testing.expectEqualStrings("Line one\n\"quoted\"", parsed.ollama_custom_system_prompt);
 }
 

@@ -55,9 +55,11 @@ fn wsPort() u16 {
 }
 /// Keep recording briefly after stop so trailing words aren't clipped.
 const tail_ms: c_uint = 350;
-/// macOS hides the window 1.5s after "Done!".
-const hide_after_complete_ms: c_uint = 1500;
-const hide_after_error_ms: c_uint = 3000;
+/// macOS collapses the panel 2.5s after a successful insertion. Errors,
+/// "no speech" and manual-paste results stay until the user dismisses them.
+const collapse_after_complete_ms: c_uint = 2500;
+/// Without a visible panel nothing can dismiss a result, so return to idle.
+const idle_after_result_headless_ms: c_uint = 3000;
 const level_broadcast_interval_ms: i64 = 50;
 /// HUD waveform refresh while recording (~30 fps).
 const level_interval_ms: c_uint = 33;
@@ -74,6 +76,9 @@ pub const Stage = enum(u8) {
     inserting,
     complete,
     @"error",
+    no_speech,
+    cleanup_fallback,
+    clipboard_fallback,
 
     pub fn text(self: Stage) []const u8 {
         return switch (self) {
@@ -87,6 +92,9 @@ pub const Stage = enum(u8) {
             .inserting => "Inserting text...",
             .complete => "Done!",
             .@"error" => "Error",
+            .no_speech => "No speech detected",
+            .cleanup_fallback => "Using the raw transcript",
+            .clipboard_fallback => "Manual paste needed",
         };
     }
 };
@@ -94,6 +102,7 @@ pub const Stage = enum(u8) {
 comptime {
     std.debug.assert(@intFromEnum(Stage.@"error") == c_hud.TALKIES_HUD_ERROR);
     std.debug.assert(@intFromEnum(Stage.enhancing_lm_studio) == c_hud.TALKIES_HUD_ENHANCING_LM_STUDIO);
+    std.debug.assert(@intFromEnum(Stage.clipboard_fallback) == c_hud.TALKIES_HUD_CLIPBOARD_FALLBACK);
 }
 
 /// Map an RMS amplitude to the macOS meter scale: dB clamped to -60..0,
@@ -104,7 +113,14 @@ pub fn normalizeLevel(rms: f32) f32 {
     return (std.math.clamp(db, -60.0, 0.0) + 60.0) / 60.0;
 }
 
-const Outcome = enum { delivered, no_voice, failed, yap };
+const Outcome = enum {
+    delivered,
+    no_voice,
+    failed,
+    yap,
+    /// Typing into the app failed; the text was put on the clipboard instead.
+    manual_paste,
+};
 
 /// One recording's trip through the pipeline on a worker thread.
 const Job = struct {
@@ -115,6 +131,11 @@ const Job = struct {
     text: ?[]u8 = null,
     error_buf: [160]u8 = undefined,
     error_len: usize = 0,
+    /// The enhancer failed or was unavailable, so the raw transcript was used.
+    cleanup_failed: bool = false,
+    /// Shown under the result (e.g. why manual paste is needed).
+    notice_buf: [200]u8 = undefined,
+    notice_len: usize = 0,
     duration_ms: i64 = 0,
     /// Snapshot of YAP routing at spawn time (main thread owns yap state).
     route_to_yap: bool = false,
@@ -135,6 +156,15 @@ const Job = struct {
 
     fn errorMessage(self: *const Job) []const u8 {
         return self.error_buf[0..self.error_len];
+    }
+
+    fn setNotice(self: *Job, comptime fmt: []const u8, args: anytype) void {
+        const msg = std.fmt.bufPrint(&self.notice_buf, fmt, args) catch self.notice_buf[0..];
+        self.notice_len = msg.len;
+    }
+
+    fn notice(self: *const Job) ?[]const u8 {
+        return if (self.notice_len == 0) null else self.notice_buf[0..self.notice_len];
     }
 
     fn run(self: *Job) void {
@@ -210,11 +240,13 @@ const Job = struct {
             .s1_mini => {
                 if (!self.s1_ready) {
                     utils.log("S1-mini not installed (Settings > Enhancement); inserting raw transcript", .{});
+                    self.cleanup_failed = true;
                     return d.allocator.dupe(u8, raw);
                 }
                 self.setStage(.cleaning);
-                return d.cleanup_service.clean(raw, .{}) catch |err| {
+                return d.cleanup_service.clean(raw, cleanupOptions(cfg)) catch |err| {
                     utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
+                    self.cleanup_failed = true;
                     return d.allocator.dupe(u8, raw);
                 };
             },
@@ -222,6 +254,7 @@ const Job = struct {
                 self.setStage(if (cfg.enhancer == .ollama) .enhancing_ollama else .enhancing_lm_studio);
                 return enhance.enhance(d.allocator, cfg, raw) catch |err| {
                     utils.logError("{s} enhancement failed; keeping raw transcript: {}", .{ cfg.enhancer.displayName(), err });
+                    self.cleanup_failed = true;
                     return d.allocator.dupe(u8, raw);
                 };
             },
@@ -243,7 +276,17 @@ const Job = struct {
         if (cfg.auto_paste) {
             self.setStage(.inserting);
             d.inserter.insertTextAtCursor(text, cfg.paste_keybind, cfg.restore_clipboard) catch |err| {
-                self.fail("Could not insert text: {s}", .{@errorName(err)});
+                // Like macOS's manual-paste fallback: keep the words on the
+                // clipboard so nothing is lost.
+                utils.logError("Could not type into the focused app: {}", .{err});
+                var clip = clipboard.Clipboard.init(d.allocator);
+                defer clip.deinit();
+                clip.copy(text) catch |copy_err| {
+                    self.fail("Could not insert or copy text: {s}", .{@errorName(copy_err)});
+                    return;
+                };
+                self.setNotice("Couldn't type into the app ({s}). The transcript is on the clipboard: press Ctrl+V.", .{@errorName(err)});
+                self.outcome = .manual_paste;
                 return;
             };
         } else {
@@ -253,10 +296,29 @@ const Job = struct {
                 self.fail("Could not copy text: {s}", .{@errorName(err)});
                 return;
             };
+            self.setNotice("Copied to the clipboard. Press Ctrl+V in the target field.", .{});
         }
         self.outcome = .delivered;
     }
 };
+
+fn cleanupOptions(cfg: *const config.Config) cleanup.Options {
+    return .{
+        .style = switch (cfg.cleanup_style) {
+            .casual => .casual,
+            .semi_casual => .semi_casual,
+            .semi_formal => .semi_formal,
+        },
+        .structure = switch (cfg.cleanup_structure) {
+            .prose => .prose,
+            .lists => .lists,
+        },
+        .context = switch (cfg.cleanup_context) {
+            .general => .general,
+            .email => .email,
+        },
+    };
+}
 
 /// Speak text with speech-dispatcher, falling back to espeak-ng
 /// (the Linux stand-in for NSSpeechSynthesizer).
@@ -369,6 +431,12 @@ pub const Daemon = struct {
     // UI requests raised from GTK / D-Bus callbacks, handled in tick().
     request_toggle: bool = false,
     request_toggle_hud: bool = false,
+    request_expand_hud: bool = false,
+    request_dismiss: bool = false,
+    /// Stage and detail shown when entering .complete / .failed.
+    result_stage: Stage = .complete,
+    result_detail_buf: [256]u8 = undefined,
+    result_detail_len: usize = 0,
     request_settings: bool = false,
     quit: bool = false,
 
@@ -479,7 +547,25 @@ pub const Daemon = struct {
         if (self.health_report) |*old| old.deinit();
         self.health_report = report;
         self.pushHealth();
+        self.pushAttention();
         if (self.phase == .idle) self.setStage(.idle, null); // refresh tooltip
+    }
+
+    /// A failing check (no audio server, no way to type) replaces "Ready to
+    /// dictate" in the panel, like macOS's "Microphone access needed".
+    fn pushAttention(self: *Daemon) void {
+        const hud = self.hud orelse return;
+        const report = if (self.health_report) |*r| r else return;
+        for (report.checks.items) |check| {
+            if (check.level != .fail) continue;
+            var status_buf: [200]u8 = undefined;
+            var hint_buf: [300]u8 = undefined;
+            const status = bufPrintZ(&status_buf, "{s}", .{check.detail}) catch @as([:0]const u8, "Setup needed");
+            const hint = bufPrintZ(&hint_buf, "{s}", .{if (check.fix.len > 0) check.fix else "Open Settings for details."}) catch @as([:0]const u8, "");
+            c_hud.talkies_hud_set_attention(hud, status.ptr, hint.ptr);
+            return;
+        }
+        c_hud.talkies_hud_set_attention(hud, null, null);
     }
 
     fn pushHealth(self: *Daemon) void {
@@ -533,37 +619,91 @@ pub const Daemon = struct {
         switch (next) {
             .starting => self.setStage(.loading_model, null),
             .idle => {
-                self.hideHud();
+                self.collapseHud();
                 self.setStage(.idle, null);
             },
             .recording => {
-                self.showHud();
+                self.expandHud();
                 self.setStage(.recording, null);
             },
             .stopping => {}, // still shows Recording while the tail is captured
             .processing => self.setStage(.transcribing, null),
             .yap => {
-                self.hideHud();
+                self.collapseHud();
                 self.setStage(.idle, null);
             },
             .complete => {
-                self.setStage(.complete, null);
-                self.scheduleHide(hide_after_complete_ms);
+                // .complete or .cleanup_fallback; both put themselves away.
+                const stage = self.takeResultStage(.complete);
+                self.setStage(stage, detail orelse self.resultDetail());
+                self.scheduleCollapse(collapse_after_complete_ms);
             },
             .failed => {
-                self.showHud();
-                self.setStage(.@"error", detail);
-                self.scheduleHide(hide_after_error_ms);
+                // .error, .no_speech or .clipboard_fallback: these stay open
+                // until the user dismisses the panel (as on macOS).
+                const stage = self.takeResultStage(.@"error");
+                self.expandHud();
+                self.setStage(stage, detail orelse self.resultDetail());
+                if (!self.hudVisible()) self.scheduleCollapse(idle_after_result_headless_ms);
             },
         }
         // publicState() is the one mapping to the WebSocket contract.
         self.setWsState(std.meta.stringToEnum(daemon_ws.State, next.publicState()).?);
     }
 
-    fn showHud(self: *Daemon) void {
+    /// Finish a dictation: `stage` picks the result view, `detail` the line
+    /// under it. Successful results auto-collapse; the others wait.
+    fn enterResult(self: *Daemon, stage: Stage, detail: ?[]const u8) void {
+        self.result_stage = stage;
+        const n = if (detail) |dtl| @min(dtl.len, self.result_detail_buf.len) else 0;
+        if (detail) |dtl| @memcpy(self.result_detail_buf[0..n], dtl[0..n]);
+        self.result_detail_len = n;
+        const phase: Phase = switch (stage) {
+            .complete, .cleanup_fallback => .complete,
+            else => .failed,
+        };
+        self.enter(phase, null);
+    }
+
+    fn takeResultStage(self: *Daemon, default: Stage) Stage {
+        const stage = self.result_stage;
+        self.result_stage = default;
+        return switch (stage) {
+            .complete, .cleanup_fallback, .@"error", .no_speech, .clipboard_fallback => stage,
+            else => default,
+        };
+    }
+
+    fn resultDetail(self: *Daemon) ?[]const u8 {
+        const n = self.result_detail_len;
+        self.result_detail_len = 0;
+        return if (n == 0) null else self.result_detail_buf[0..n];
+    }
+
+    fn hudVisible(self: *Daemon) bool {
+        const hud = self.hud orelse return false;
+        return self.cfg.show_hud and c_hud.talkies_hud_is_visible(hud) != 0;
+    }
+
+    /// Show the panel opened up (recording, results, model loading).
+    fn expandHud(self: *Daemon) void {
         self.cancelHide();
+        const hud = self.hud orelse return;
         if (!self.cfg.show_hud) return;
-        if (self.hud) |hud| c_hud.talkies_hud_show(hud);
+        c_hud.talkies_hud_show(hud);
+        c_hud.talkies_hud_set_expanded(hud, 1);
+    }
+
+    /// Rest as the waveform pill at the top of the screen (macOS idle state).
+    fn collapseHud(self: *Daemon) void {
+        self.cancelHide();
+        const hud = self.hud orelse return;
+        if (!self.cfg.show_hud) {
+            c_hud.talkies_hud_hide(hud);
+            return;
+        }
+        c_hud.talkies_hud_set_expanded(hud, 0);
+        c_hud.talkies_hud_show(hud);
     }
 
     fn hideHud(self: *Daemon) void {
@@ -576,8 +716,9 @@ pub const Daemon = struct {
         self.hide_timer = 0;
     }
 
-    /// Hide the HUD after `ms` unless something new starts first.
-    fn scheduleHide(self: *Daemon, ms: c_uint) void {
+    /// Collapse the panel and return to idle after `ms`, unless something
+    /// new starts first.
+    fn scheduleCollapse(self: *Daemon, ms: c_uint) void {
         self.cancelHide();
         self.hide_timer = c_loop.talkies_loop_timeout(ms, onHideTimer, self);
     }
@@ -590,7 +731,7 @@ pub const Daemon = struct {
     }
 
     fn showError(self: *Daemon, message: []const u8) void {
-        self.enter(.failed, message);
+        self.enterResult(.@"error", message);
     }
 
     // -----------------------------------------------------------------
@@ -731,11 +872,22 @@ pub const Daemon = struct {
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.log(.info, "Delivered {d} chars in {d}ms", .{ text.len, job.duration_ms });
                 if (self.status_win) |win| win.setLastTranscription(text);
-                self.enter(.complete, null);
+                if (job.cleanup_failed) {
+                    self.enterResult(.cleanup_fallback, null);
+                } else {
+                    self.enterResult(.complete, job.notice());
+                }
+            },
+            .manual_paste => {
+                const text = job.text orelse "";
+                self.rememberTranscript(text);
+                self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
+                self.log(.warn, "Manual paste needed: {s}", .{job.notice() orelse ""});
+                self.enterResult(.clipboard_fallback, job.notice());
             },
             .no_voice => {
                 self.log(.warn, "No speech detected", .{});
-                self.enter(if (self.yap_win != null) .yap else .idle, null);
+                if (self.yap_win != null) self.enter(.yap, null) else self.enterResult(.no_speech, null);
             },
             .failed => {
                 self.log(.err, "{s}", .{job.errorMessage()});
@@ -756,7 +908,10 @@ pub const Daemon = struct {
         const copy = utils.dupeZ(self.allocator, text) catch return;
         if (self.last_transcript) |old| self.allocator.free(old);
         self.last_transcript = copy;
-        if (self.hud) |hud| c_hud.talkies_hud_set_transcript(hud, copy.ptr);
+        if (self.hud) |hud| {
+            c_hud.talkies_hud_set_transcript(hud, copy.ptr);
+            c_hud.talkies_hud_add_history(hud, copy.ptr);
+        }
     }
 
     // -----------------------------------------------------------------
@@ -826,12 +981,22 @@ pub const Daemon = struct {
         }
         if (self.request_toggle_hud) {
             self.request_toggle_hud = false;
+            // Tray left-click: expand the pill, or put the open panel away.
             if (self.hud) |hud| {
-                if (c_hud.talkies_hud_is_visible(hud) != 0) self.hideHud() else {
-                    self.cancelHide();
-                    c_hud.talkies_hud_show(hud);
+                if (self.hudVisible() and c_hud.talkies_hud_is_expanded(hud) != 0) {
+                    if (self.phase.isQuiescent() and self.phase != .yap) self.dismissResult();
+                } else {
+                    self.expandHud();
                 }
             }
+        }
+        if (self.request_expand_hud) {
+            self.request_expand_hud = false;
+            self.expandHud();
+        }
+        if (self.request_dismiss) {
+            self.request_dismiss = false;
+            self.dismissResult();
         }
         if (self.request_settings) {
             self.request_settings = false;
@@ -844,10 +1009,26 @@ pub const Daemon = struct {
         self.request_toggle = true;
     }
 
+    /// The user put the panel away (pointer left it).
+    fn onHudDismiss(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.request_dismiss = true;
+    }
+
+    /// A finished result was put away: back to idle (and the pill).
+    fn dismissResult(self: *Daemon) void {
+        switch (self.phase) {
+            .complete, .failed => self.enter(.idle, null),
+            .idle => self.collapseHud(),
+            else => {},
+        }
+    }
+
     fn onTray(action: c_tray.TalkiesTrayAction, user_data: ?*anyopaque) callconv(.c) void {
         const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
         switch (action) {
-            c_tray.TALKIES_TRAY_ACTIVATE, c_tray.TALKIES_TRAY_OPEN => self.request_toggle_hud = true,
+            c_tray.TALKIES_TRAY_ACTIVATE => self.request_toggle_hud = true,
+            c_tray.TALKIES_TRAY_OPEN => self.request_expand_hud = true,
             c_tray.TALKIES_TRAY_TOGGLE_RECORD => self.request_toggle = true,
             c_tray.TALKIES_TRAY_SETTINGS => self.request_settings = true,
             c_tray.TALKIES_TRAY_QUIT => self.quit = true,
@@ -1065,7 +1246,8 @@ pub const Daemon = struct {
             self.cleanup_service.deinit();
             self.cleanup_service = .{ .allocator = self.allocator, .threads = self.cfg.threads };
         }
-        if (!self.cfg.show_hud) self.hideHud();
+        if (self.hud) |hud| c_hud.talkies_hud_set_mini(hud, @intFromBool(self.cfg.mini_window));
+        if (!self.cfg.show_hud) self.hideHud() else if (self.phase == .idle) self.collapseHud();
         if (model_changed) try self.loadWhisperModel(true);
         self.log(.info, "Settings applied", .{});
         self.refreshHealth();
@@ -1073,12 +1255,12 @@ pub const Daemon = struct {
 
     fn loadWhisperModel(self: *Daemon, show_progress: bool) !void {
         self.enter(.starting, null);
-        if (show_progress) self.showHud();
+        if (show_progress) self.expandHud();
         pumpGtk();
         if (self.status_win) |win| win.setModel(self.cfg.model);
         self.whisper_service.loadModel(self.cfg.model) catch |err| {
             self.log(.err, "Could not load model '{s}': {}", .{ self.cfg.model, err });
-            self.enter(.failed, "Could not load Whisper model");
+            self.showError("Could not load Whisper model");
             return err;
         };
         self.log(.info, "Model '{s}' loaded", .{self.cfg.model});
@@ -1103,7 +1285,7 @@ pub const Daemon = struct {
         } else {
             // YAP unavailable: behave like normal dictation.
             self.output(text);
-            self.enter(.complete, null);
+            self.enterResult(.complete, null);
         }
     }
 
@@ -1507,8 +1689,15 @@ fn findIconThemePath(buf: *[std.fs.max_path_bytes:0]u8) ?[:0]const u8 {
 
 /// Apply Hyprland window rules so the HUD floats, stays on top and never
 /// takes focus (GTK4 cannot request this itself on Wayland).
-fn applyCompositorRules() void {
+fn applyCompositorRules(allocator: std.mem.Allocator) void {
     if (utils.getEnv("HYPRLAND_INSTANCE_SIGNATURE") == null) return;
+    // Top centre, 34px below the top of the usable area (macOS anchors the
+    // panel under the menu bar; here, under any top bar).
+    var move_buf: [160]u8 = undefined;
+    const move_rule = std.fmt.bufPrint(&move_buf, "match:title ^(Talkies Dictation)$, move ((monitor_w-{d})/2) ({d})", .{
+        c_hud.TALKIES_HUD_WINDOW_WIDTH,
+        hyprlandReservedTop(allocator) + c_hud.TALKIES_HUD_SCREEN_TOP - c_hud.TALKIES_HUD_PANEL_TOP,
+    }) catch "match:title ^(Talkies Dictation)$, center true";
     const rules = [_][]const u8{
         "match:title ^(Talkies Dictation)$, float true",
         "match:title ^(Talkies Dictation)$, pin true",
@@ -1517,7 +1706,14 @@ fn applyCompositorRules() void {
         "match:title ^(Talkies Dictation)$, border_size 0",
         "match:title ^(Talkies Dictation)$, no_shadow true",
         "match:title ^(Talkies Dictation)$, no_anim true",
-        "match:title ^(Talkies Dictation)$, move ((monitor_w-520)/2) ((monitor_h-140)/2-100)",
+        // The panel draws its own translucent glass; blur would fill the
+        // transparent margins of the fixed-size window.
+        "match:title ^(Talkies Dictation)$, no_blur true",
+        // It never takes focus, so it would otherwise be dimmed as inactive.
+        "match:title ^(Talkies Dictation)$, no_dim true",
+        // Inactive-window opacity would fade the glass (it never has focus).
+        "match:title ^(Talkies Dictation)$, opacity 1.0 override 1.0 override",
+        move_rule,
         // Settings is a compact dialog (macOS: 600x500), not a tiled pane.
         "match:title ^(Talkies Settings)$, float true",
         "match:title ^(Talkies Settings)$, size 680 560",
@@ -1528,6 +1724,42 @@ fn applyCompositorRules() void {
             utils.logError("hyprctl rule '{s}' failed: {} (see README for manual rules)", .{ rule, err });
         };
     }
+}
+
+/// Height of the bars reserved at the top of the focused Hyprland monitor
+/// (0 if unknown).
+fn hyprlandReservedTop(allocator: std.mem.Allocator) i64 {
+    const output = utils.runCapture(allocator, &.{ "hyprctl", "-j", "monitors" }) catch |err| {
+        utils.logError("hyprctl monitors failed: {}", .{err});
+        return 0;
+    };
+    defer allocator.free(output);
+    return parseReservedTop(allocator, output) catch |err| {
+        utils.logError("Could not read Hyprland monitors: {}", .{err});
+        return 0;
+    };
+}
+
+fn parseReservedTop(allocator: std.mem.Allocator, json: []const u8) !i64 {
+    const Monitor = struct { focused: bool = false, reserved: []const i64 = &.{} };
+    const parsed = try std.json.parseFromSlice([]const Monitor, allocator, json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    var top: i64 = 0;
+    for (parsed.value) |m| {
+        if (m.reserved.len < 2) continue;
+        if (m.focused) return m.reserved[1];
+        top = @max(top, m.reserved[1]);
+    }
+    return top;
+}
+
+test "reserved top comes from the focused Hyprland monitor" {
+    const json =
+        \\[{"name":"HDMI-A-1","focused":false,"reserved":[0,30,0,0]},
+        \\ {"name":"DP-3","focused":true,"reserved":[0,59,0,0],"scale":1}]
+    ;
+    try std.testing.expectEqual(@as(i64, 59), try parseReservedTop(std.testing.allocator, json));
+    try std.testing.expectEqual(@as(i64, 0), try parseReservedTop(std.testing.allocator, "[]"));
 }
 
 // ---------------------------------------------------------------------
@@ -1595,11 +1827,13 @@ pub fn run(allocator: std.mem.Allocator) !void {
     }
 
     // UI (all optional: the daemon keeps working headless)
-    applyCompositorRules();
+    applyCompositorRules(allocator);
     daemon.hud = c_hud.talkies_hud_new();
     if (daemon.hud) |hud| {
         c_hud.talkies_hud_set_hotkey_name(hud, daemon.hotkey_name.ptr);
         c_hud.talkies_hud_set_record_callback(hud, Daemon.onHudRecord, &daemon);
+        c_hud.talkies_hud_set_dismiss_callback(hud, Daemon.onHudDismiss, &daemon);
+        c_hud.talkies_hud_set_mini(hud, @intFromBool(daemon.cfg.mini_window));
     }
     if (daemon.cfg.show_status_gui) {
         daemon.status_win = daemon_status_window.DaemonStatusWindow.create(allocator) catch |err| blk: {
