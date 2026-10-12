@@ -1,0 +1,23 @@
+# Maintainer: Talkies contributors <opensource@talkies.app>
+pkgname=talkies-bin
+pkgver=@APP_VERSION@
+pkgrel=1
+pkgdesc='Private, on-device voice dictation (Whisper) for X11 and Wayland'
+arch=('x86_64')
+url='https://github.com/4cecoder/talkies'
+license=('MIT' 'BSD-3-Clause')
+depends=('gtk4' 'libpulse' 'sqlite' 'libx11' 'dbus' 'gcc-libs' 'glibc')
+optdepends=('wl-clipboard: copy and paste on Wayland'
+            'xclip: copy and paste on X11'
+            'pipewire-pulse: audio capture through PipeWire')
+provides=('talkies')
+conflicts=('talkies')
+options=('!strip' '!debug')
+source=("talkies-${pkgver}.tar.gz::https://github.com/4cecoder/talkies/releases/download/v${pkgver}/Talkies-Linux-v${pkgver}.tar.gz")
+sha256sums=('@SHA256@')
+
+package() {
+  cd "talkies-${pkgver}"
+  cp -a usr "${pkgdir}/"
+  install -Dm644 usr/share/doc/talkies/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

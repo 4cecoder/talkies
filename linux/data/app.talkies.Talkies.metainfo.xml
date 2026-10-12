@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.talkies.Talkies</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Talkies</name>
+  <summary>Private, on-device voice dictation</summary>
+  <description>
+    <p>
+      Hold Right Alt, speak, and release: Talkies transcribes your speech
+      locally with Whisper and types the text into the app you are using.
+      Nothing leaves your computer.
+    </p>
+    <ul>
+      <li>Push-to-talk or tap-to-toggle hotkey on X11 and Wayland</li>
+      <li>Optional cleanup with the bundled S1-mini model, Ollama, or LM Studio</li>
+      <li>Floating dictation indicator and a system tray item</li>
+      <li>Restores your clipboard after inserting text</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">app.talkies.Talkies.desktop</launchable>
+  <url type="homepage">https://github.com/4cecoder/talkies</url>
+  <url type="bugtracker">https://github.com/4cecoder/talkies/issues</url>
+  <developer id="app.talkies">
+    <name>Talkies contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>talkies</binary>
+  </provides>
+  <releases>
+    <release version="0.1.5" date="2026-10-12"/>
+  </releases>
+</component>

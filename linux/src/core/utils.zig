@@ -104,13 +104,23 @@ pub fn privateRuntimePath(allocator: std.mem.Allocator, name: []const u8) ![]u8 
     return std.fmt.allocPrint(allocator, "{s}/{s}", .{ base, name });
 }
 
-/// Ensure a directory exists, creating it if necessary
+/// Ensure an absolute directory exists, creating missing parents (mkdir -p):
+/// on a fresh account even ~/.config or ~/.local/share may not exist yet.
 pub fn ensureDir(path: []const u8) !void {
-    std.Io.Dir.createDirAbsolute(std.Io.Threaded.global_single_threaded.io(), path, .default_dir) catch |err| {
-        if (err != error.PathAlreadyExists) {
-            return err;
-        }
-    };
+    try std.Io.Dir.cwd().createDirPath(std.Io.Threaded.global_single_threaded.io(), path);
+}
+
+test "ensureDir creates missing parents and tolerates existing dirs" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const base_len = try tmp.dir.realPath(std.testing.io, &buf);
+    const nested = try std.fmt.allocPrint(std.testing.allocator, "{s}/a/b/c", .{buf[0..base_len]});
+    defer std.testing.allocator.free(nested);
+    try ensureDir(nested);
+    try ensureDir(nested);
+    var dir = try std.Io.Dir.openDirAbsolute(std.testing.io, nested, .{});
+    dir.close(std.testing.io);
 }
 
 /// Run a command and capture its stdout. Fails if it exits unsuccessfully.
@@ -166,4 +176,18 @@ test "XDG directory resolution" {
 
     try std.testing.expect(std.mem.endsWith(u8, config_dir, "/talkies"));
     try std.testing.expect(std.mem.endsWith(u8, data_dir, "/talkies"));
+}
+
+/// Write all of `bytes` to standard output (for machine-readable command
+/// output such as `talkies --version`; logs go to stderr).
+pub fn writeStdout(bytes: []const u8) error{WriteFailed}!void {
+    var rest = bytes;
+    while (rest.len > 0) {
+        const rc = std.os.linux.write(1, rest.ptr, rest.len);
+        switch (std.os.linux.errno(rc)) {
+            .SUCCESS => rest = rest[rc..],
+            .INTR => continue,
+            else => return error.WriteFailed,
+        }
+    }
 }

@@ -304,6 +304,23 @@ pub const WhisperService = struct {
     }
 };
 
+/// Bytes still to download for `model_name` (0 when a complete file is
+/// present). A size check only: cheap enough for `talkies doctor`; loading
+/// still verifies the SHA-256.
+pub fn missingModelBytes(allocator: std.mem.Allocator, model_name: []const u8) !u64 {
+    const model = ModelCatalog.get(model_name) orelse return error.UnknownModel;
+    const data_dir = try utils.getDataDir(allocator);
+    defer allocator.free(data_dir);
+    const path = try std.fmt.allocPrint(allocator, "{s}/models/{s}", .{ data_dir, model.filename });
+    defer allocator.free(path);
+    const file = std.Io.Dir.openFileAbsolute(utils.io(), path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return model.size,
+        else => return err,
+    };
+    defer file.close(utils.io());
+    return if ((try file.stat(utils.io())).size == model.size) 0 else model.size;
+}
+
 fn isVerified(path: []const u8, model: ModelInfo) !bool {
     const file = std.Io.Dir.openFileAbsolute(utils.io(), path, .{}) catch return false;
     defer file.close(utils.io());

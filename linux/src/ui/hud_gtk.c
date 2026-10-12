@@ -1,7 +1,7 @@
 #include "hud_gtk.h"
 #include "loop_glib.h"
 
-#include <gtk/gtk.h>
+#include "gtk_compat.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>

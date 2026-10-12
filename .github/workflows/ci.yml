@@ -12,6 +12,7 @@ on:
       - 'packaging/linux/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/linux-package.yml'
   pull_request:
     branches: [ master ]
     paths:
@@ -23,6 +24,7 @@ on:
       - 'packaging/linux/**'
       - '.github/workflows/ci.yml'
       - '.github/workflows/release.yml'
+      - '.github/workflows/linux-package.yml'
 
 jobs:
   # Determine which jobs need to run based on changed files
@@ -55,6 +57,7 @@ jobs:
               - 'packaging/linux/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
+              - '.github/workflows/linux-package.yml'
             workflows:
               - '.github/workflows/**'
 
@@ -78,7 +81,7 @@ jobs:
 
       - name: Lint CI, release, and Android workflows
         run: |
-          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/android-ci.yml
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/linux-package.yml .github/workflows/android-ci.yml
 
   macos:
     name: macOS Build & Test
@@ -249,150 +252,10 @@ jobs:
           Remove-Item $settingsMarker, $modelMarker -Force
 
   linux:
-    name: Linux Build & Test
-    runs-on: ubuntu-24.04
+    name: Linux Build, Package & Install Tests
     needs: changes
     if: ${{ needs.changes.outputs.linux == 'true' }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          # Track master while Linux integration migrates to each current compiler change.
-          version: master
-
-      - name: Install system build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake git pkg-config \
-            libpulse-dev \
-            libsqlite3-dev \
-            libx11-dev \
-            libdbus-1-dev \
-            libgtk-4-dev \
-            libglib2.0-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgraphene-1.0-dev \
-            libharfbuzz-dev
-
-      - name: Workaround Ubuntu multiarch include paths
-        # linux/build.zig hardcodes Gentoo/Fedora-style /usr/lib64/<pkg>/include
-        # paths (e.g. for glibconfig.h, graphene-config.h) that don't exist on
-        # Debian/Ubuntu, which install those generated headers under
-        # /usr/lib/<multiarch-triplet>/<pkg>/include instead. Symlinking
-        # /usr/lib64 to the multiarch lib dir lets the hardcoded paths resolve.
-        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
-
-      - name: Build pinned CPU-only llama.cpp
-        run: |
-          git init /tmp/llama.cpp
-          git -C /tmp/llama.cpp fetch --depth=1 https://github.com/ggml-org/llama.cpp.git 53ed051ce5e8193652e449f43216ca3859454f49
-          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
-          cd /tmp/llama.cpp
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DGGML_NATIVE=OFF \
-            -DGGML_OPENMP=ON \
-            -DGGML_METAL=OFF \
-            -DGGML_CUDA=OFF \
-            -DGGML_VULKAN=OFF \
-            -DLLAMA_CURL=OFF \
-            -DLLAMA_BUILD_COMMON=OFF \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_TOOLS=OFF \
-            -DLLAMA_BUILD_APP=OFF \
-            -DLLAMA_BUILD_SERVER=OFF
-          cmake --build build --target llama -j2
-          sudo cmake --install build
-          sudo ldconfig
-
-      - name: Build whisper.cpp
-        # whisper.cpp is not packaged for Ubuntu/Debian; build and install it
-        # from source per linux/docs/DEPENDENCIES.md and linux/SHIPPING.md.
-        run: |
-          git init /tmp/whisper.cpp
-          git -C /tmp/whisper.cpp fetch --depth=1 https://github.com/ggml-org/whisper.cpp.git d09f61a708f3487afa956ff578e60eae5e7a233c
-          git -C /tmp/whisper.cpp checkout --detach FETCH_HEAD
-          cd /tmp/whisper.cpp
-          make
-          # whisper.cpp's CMake layout has shifted upstream: shared libs
-          # (libwhisper.so + several libggml*.so backend libs) now land
-          # under build/, not the repo root. Locate and install whatever
-          # got produced instead of hardcoding a path that goes stale on
-          # every upstream change.
-          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
-          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
-          sudo ldconfig
-
-      - name: Build
-        working-directory: linux
-        run: zig build
-
-      - name: Cache pinned S1-mini model
-        uses: actions/cache@v6
-        with:
-          path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
-          key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
-
-      - name: Cache pinned Whisper tiny model
-        uses: actions/cache@v6
-        with:
-          path: ~/.local/share/talkies/models/ggml-tiny.bin
-          key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
-
-      - name: Run tests
-        working-directory: linux
-        env:
-          TALKIES_TEST_S1_MINI: "1"
-          TALKIES_TEST_WHISPER: "1"
-        run: zig build test
-
-      - name: Verify offline cached-model dictation acceptance
-        working-directory: linux
-        env:
-          TALKIES_OFFLINE_ACCEPTANCE: "1"
-        run: zig build test
-
-      - name: Smoke-test portable Linux release archive
-        env:
-          VERSION: ci-${{ github.run_id }}
-          OUTPUT_DIR: ${{ runner.temp }}/talkies-linux-package
-        run: APP_VERSION="$(tr -d '[:space:]' < packaging/shared/version.txt)" packaging/linux/package-portable.sh
-
-      - name: Install, upgrade, and uninstall Debian package
-        env:
-          DEB_PACKAGE: ${{ runner.temp }}/talkies-linux-package/Talkies-Linux-ci-${{ github.run_id }}.deb
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.config/talkies" "$HOME/.local/share/talkies/models"
-          printf 'preserve-config\n' > "$HOME/.config/talkies/ci-preservation-check"
-          printf 'preserve-model\n' > "$HOME/.local/share/talkies/models/ci-preservation-check"
-          sudo apt-get install -y "$DEB_PACKAGE"
-          command -v talkies
-          talkies --help >/dev/null
-          python3 -c "import gi, websocket; gi.require_version('Gtk', '4.0'); gi.require_version('Gdk', '4.0')"
-          upgrade_root="${RUNNER_TEMP}/talkies-upgrade-root"
-          dpkg-deb --extract "$DEB_PACKAGE" "$upgrade_root"
-          dpkg-deb --control "$DEB_PACKAGE" "$upgrade_root/DEBIAN"
-          app_version="$(tr -d '[:space:]' < packaging/shared/version.txt)"
-          IFS='.' read -r version_major version_minor version_patch <<< "$app_version"
-          upgrade_version="${version_major}.${version_minor}.$((version_patch + 1))"
-          sed -i "s/^Version: .*/Version: ${upgrade_version}/" "$upgrade_root/DEBIAN/control"
-          upgrade_package="${RUNNER_TEMP}/talkies-upgrade.deb"
-          dpkg-deb --build --root-owner-group "$upgrade_root" "$upgrade_package"
-          sudo apt-get install -y "$upgrade_package"
-          test "$(dpkg-query -W -f='${Version}' talkies)" = "$upgrade_version"
-          talkies --help >/dev/null
-          sudo apt-get remove -y talkies
-          test ! -e /usr/lib/talkies
-          test ! -e /usr/bin/talkies
-          grep -Fx 'preserve-config' "$HOME/.config/talkies/ci-preservation-check"
-          grep -Fx 'preserve-model' "$HOME/.local/share/talkies/models/ci-preservation-check"
+    uses: ./.github/workflows/linux-package.yml
+    with:
+      release_label: ci-${{ github.run_id }}
+      artifact_name: linux-ci-packages

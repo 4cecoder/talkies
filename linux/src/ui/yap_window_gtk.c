@@ -1,6 +1,6 @@
 #include "yap_window_gtk.h"
 #include "loop_glib.h"
-#include <gtk/gtk.h>
+#include "gtk_compat.h"
 #include <string.h>
 
 // Actual struct definition (not exposed in header)

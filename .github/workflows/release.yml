@@ -204,126 +204,13 @@ jobs:
           retention-days: 1
 
   build-linux:
-    name: Build Linux Release
-    runs-on: ubuntu-24.04
+    name: Linux packages
     needs: resolve-version
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          # Keep Linux releases aligned with the compiler used by CI.
-          version: master
-
-      - name: Install system build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake git pkg-config \
-            libpulse-dev \
-            libsqlite3-dev \
-            libx11-dev \
-            libdbus-1-dev \
-            libgtk-4-dev \
-            libglib2.0-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libgdk-pixbuf-2.0-dev \
-            libgraphene-1.0-dev \
-            libharfbuzz-dev
-
-      - name: Workaround Ubuntu multiarch include paths
-        # See matching step in ci.yml: linux/build.zig hardcodes
-        # /usr/lib64/<pkg>/include paths that only exist on Gentoo/Fedora.
-        run: sudo ln -sf "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" /usr/lib64
-
-      - name: Build pinned CPU-only llama.cpp
-        run: |
-          git init /tmp/llama.cpp
-          git -C /tmp/llama.cpp fetch --depth=1 https://github.com/ggml-org/llama.cpp.git 53ed051ce5e8193652e449f43216ca3859454f49
-          git -C /tmp/llama.cpp checkout --detach FETCH_HEAD
-          cd /tmp/llama.cpp
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DGGML_NATIVE=OFF \
-            -DGGML_OPENMP=ON \
-            -DGGML_METAL=OFF \
-            -DGGML_CUDA=OFF \
-            -DGGML_VULKAN=OFF \
-            -DLLAMA_CURL=OFF \
-            -DLLAMA_BUILD_COMMON=OFF \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_TOOLS=OFF \
-            -DLLAMA_BUILD_APP=OFF \
-            -DLLAMA_BUILD_SERVER=OFF
-          cmake --build build --target llama -j2
-          sudo cmake --install build
-          sudo ldconfig
-
-      - name: Build whisper.cpp
-        run: |
-          git init /tmp/whisper.cpp
-          git -C /tmp/whisper.cpp fetch --depth=1 https://github.com/ggml-org/whisper.cpp.git d09f61a708f3487afa956ff578e60eae5e7a233c
-          git -C /tmp/whisper.cpp checkout --detach FETCH_HEAD
-          cd /tmp/whisper.cpp
-          make
-          # See matching comment in ci.yml: whisper.cpp's shared libs now
-          # land under build/, not the repo root, and depend on multiple
-          # libggml*.so backend libs — install whatever it actually built.
-          sudo find build -name 'lib*.so*' -exec cp -P {} /usr/local/lib/ \;
-          sudo find . -name '*.h' -path '*/include/*' -exec cp {} /usr/local/include/ \;
-          sudo ldconfig
-
-      - name: Build Linux release binary
-        working-directory: linux
-        run: zig build -Doptimize=ReleaseFast
-
-      - name: Cache pinned S1-mini model
-        uses: actions/cache@v6
-        with:
-          path: ~/.local/share/talkies/models/s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c
-          key: s1-mini-34add00a48a2e5d24e5a4ee5405a99620a3a240c-3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634
-
-      - name: Cache pinned Whisper tiny model
-        uses: actions/cache@v6
-        with:
-          path: ~/.local/share/talkies/models/ggml-tiny.bin
-          key: whisper-tiny-5359861c739e955e79d9a303bcbc70fb988958b1-be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
-
-      - name: Run Linux tests
-        working-directory: linux
-        env:
-          TALKIES_TEST_S1_MINI: "1"
-          TALKIES_TEST_WHISPER: "1"
-        run: zig build test
-
-      - name: Verify offline cached-model dictation acceptance
-        working-directory: linux
-        env:
-          TALKIES_OFFLINE_ACCEPTANCE: "1"
-        run: zig build test
-
-      - name: Package Linux binary
-        env:
-          VERSION: ${{ needs.resolve-version.outputs.release_label }}
-          APP_VERSION: ${{ needs.resolve-version.outputs.app_version }}
-          OUTPUT_DIR: ${{ github.workspace }}/linux/dist
-        run: |
-          packaging/linux/package-portable.sh
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: linux-release
-          path: |
-            linux/dist/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
-            linux/dist/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb
-          retention-days: 1
+    uses: ./.github/workflows/linux-package.yml
+    with:
+      release_label: ${{ needs.resolve-version.outputs.release_label }}
+      app_version: ${{ needs.resolve-version.outputs.app_version }}
+      artifact_name: linux-release
 
   create-release:
     name: Create GitHub Release
@@ -357,14 +244,14 @@ jobs:
       - name: Generate SHA-256 checksums
         working-directory: artifacts
         run: |
-          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA13-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA12-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb > SHA256SUMS
+          sha256sum Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-macOS-${{ needs.resolve-version.outputs.release_label }}.dmg Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}-Setup.exe Talkies-Windows-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA13-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-CUDA12-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.rpm Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.pkg.tar.zst > SHA256SUMS
           sha256sum --check SHA256SUMS
           {
             echo "commit=$GITHUB_SHA"
             echo "ref=$GITHUB_REF"
             echo "release=${{ needs.resolve-version.outputs.release_label }}"
             echo "app_version=${{ needs.resolve-version.outputs.app_version }}"
-            echo "platforms=macOS,windows-x64,linux-x86_64"
+            echo "platforms=macOS,windows-x64,linux-x86_64 (tar.gz, deb, rpm, Arch)"
           } > BUILD-INFO.txt
 
       - name: Point rolling latest at the tested commit
@@ -394,7 +281,21 @@ jobs:
             artifacts/Talkies-Windows-Whisper-Vulkan-Runtime-${{ needs.resolve-version.outputs.release_label }}.zip
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.tar.gz
             artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.deb
+            artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.rpm
+            artifacts/Talkies-Linux-${{ needs.resolve-version.outputs.release_label }}.pkg.tar.zst
             artifacts/SHA256SUMS
             artifacts/BUILD-INFO.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The AUR PKGBUILD and Gentoo ebuild download the tagged tarball and pin
+      # its SHA-256, so they only make sense on versioned releases.
+      - name: Attach AUR and Gentoo recipes
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.resolve-version.outputs.release_label }}" \
+            artifacts/PKGBUILD \
+            "artifacts/talkies-bin-${{ needs.resolve-version.outputs.app_version }}.ebuild" \
+            --clobber

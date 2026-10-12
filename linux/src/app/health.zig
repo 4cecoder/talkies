@@ -27,6 +27,8 @@ pub const Probe = struct {
     hotkey: HotkeySource,
     tray_host: bool,
     model: ?[]const u8 = null,
+    /// Size of the model download still needed; 0 when installed.
+    model_missing_bytes: u64 = 0,
 };
 
 pub const Report = struct {
@@ -139,7 +141,7 @@ pub fn run(allocator: std.mem.Allocator, cfg: *const config.Config, probe: Probe
             .level = .fail,
             .title = "Clipboard",
             .detail = report.fmt("{s} is not installed", .{clip_tool}),
-            .fix = if (wayland) "Install wl-clipboard." else "Install xclip.",
+            .fix = installHint(&report, if (wayland) "wl-clipboard" else "xclip"),
         });
     }
 
@@ -157,7 +159,17 @@ pub fn run(allocator: std.mem.Allocator, cfg: *const config.Config, probe: Probe
     }
 
     if (probe.model) |model| {
-        try report.add(.{ .id = .model, .level = .ok, .title = "Speech model", .detail = report.fmt("Whisper {s}", .{model}) });
+        if (probe.model_missing_bytes == 0) {
+            try report.add(.{ .id = .model, .level = .ok, .title = "Speech model", .detail = report.fmt("Whisper {s}", .{model}) });
+        } else {
+            try report.add(.{
+                .id = .model,
+                .level = .warn,
+                .title = "Speech model",
+                .detail = report.fmt("Whisper {s} is not downloaded yet ({d} MB)", .{ model, probe.model_missing_bytes / 1_000_000 }),
+                .fix = "It downloads automatically the first time Talkies starts (once, then works offline). To fetch it now: talkies models",
+            });
+        }
     }
     return report;
 }
@@ -174,6 +186,32 @@ fn audioFix(desktop: []const u8) []const u8 {
     }
     if (onPath("pipewire")) return "Start pipewire, pipewire-pulse and wireplumber from your session autostart.";
     return "Install and start PipeWire (with pipewire-pulse) or PulseAudio.";
+}
+
+/// "Install <pkg>: <command>" for the package manager this system uses.
+fn installHint(report: *Report, package: []const u8) []const u8 {
+    const managers = [_]struct { tool: []const u8, command: []const u8 }{
+        .{ .tool = "apt-get", .command = "sudo apt install" },
+        .{ .tool = "dnf", .command = "sudo dnf install" },
+        .{ .tool = "zypper", .command = "sudo zypper install" },
+        .{ .tool = "pacman", .command = "sudo pacman -S" },
+        .{ .tool = "emerge", .command = "emerge --ask" },
+        .{ .tool = "xbps-install", .command = "sudo xbps-install" },
+        .{ .tool = "apk", .command = "sudo apk add" },
+    };
+    for (managers) |m| {
+        if (onPath(m.tool)) {
+            const name = if (std.mem.eql(u8, m.tool, "emerge")) gentooAtom(package) else package;
+            return report.fmt("Install {s}: {s} {s}", .{ package, m.command, name });
+        }
+    }
+    return report.fmt("Install {s} with your package manager.", .{package});
+}
+
+fn gentooAtom(package: []const u8) []const u8 {
+    if (std.mem.eql(u8, package, "xclip")) return "x11-misc/xclip";
+    if (std.mem.eql(u8, package, "wl-clipboard")) return "gui-apps/wl-clipboard";
+    return package;
 }
 
 /// XDG_CURRENT_DESKTOP, with the Hyprland/Sway signatures as fallbacks.

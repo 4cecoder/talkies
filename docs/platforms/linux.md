@@ -6,12 +6,12 @@ Zig-based voice transcription application for Linux with global hotkey support f
 
 ## Features
 
-- 🎙️ **Voice Recording** - Press Right Alt to record, release to transcribe
-- 🚀 **GPU Acceleration** - Vulkan/CUDA support via whisper.cpp
-- ⌨️ **Auto-paste** - Inserts transcribed text at cursor automatically
-- 🔧 **Highly Configurable** - TOML-based configuration
-- 🖥️ **Dual Mode** - Works on both X11 and Wayland (Hyprland)
-- 📦 **Lightweight** - <5MB binary, <10 second builds
+- **Push-to-talk dictation**: hold Right Alt, speak, release; or tap to toggle.
+- **Types into the focused app** and restores your clipboard afterwards.
+- **On-device Whisper** transcription with optional cleanup by the bundled S1-mini model, Ollama, or LM Studio.
+- **Desktop integration**: floating indicator, StatusNotifierItem tray (KDE, GNOME with AppIndicator, waybar, AGS), Settings window.
+- **X11 and Wayland**: GNOME, KDE Plasma, Hyprland, Sway, and X11 window managers.
+- **`talkies doctor`** checks audio, hotkey, paste, clipboard and tray support and names the fix.
 
 Ollama transcript cleanup accepts only `localhost`, `127.0.0.0/8`, or IPv6 `::1` endpoints.
 Remote endpoints are rejected and HTTP redirects are disabled to keep transcript requests on
@@ -30,58 +30,63 @@ Reports are never uploaded. To remove them, quit Talkies and run:
 rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics"
 ```
 
-## Quick Start
+## Install
 
-### Option A: Install a Debian/Ubuntu release
+Every release on [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest) ships the same
+x86_64 build in several formats. It bundles Talkies' Whisper/llama.cpp runtimes, so only standard
+desktop libraries (GTK 4, PulseAudio client or pipewire-pulse, SQLite, D-Bus) come from your
+distribution. Minimum: glibc 2.35 and GTK 4.6 (Ubuntu 22.04, Debian 12, RHEL 9 or newer) and a CPU
+with AVX2 (2013 or newer). CI installs each package on the distributions below before every release.
 
-Download `Talkies-Linux-*.deb` from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest)
-and install it with apt. Apt installs the system library dependencies; Talkies' Whisper and llama
-runtimes are bundled. Model weights are downloaded once into your user data directory and then run
-offline.
+| Distribution | Package | Install |
+| --- | --- | --- |
+| Ubuntu 22.04+, Debian 12+, Mint, Pop!_OS | `.deb` | `sudo apt install ./Talkies-Linux-<version>.deb` |
+| Fedora, RHEL / Alma / Rocky 9+ | `.rpm` | `sudo dnf install ./Talkies-Linux-<version>.rpm` |
+| openSUSE Tumbleweed / Leap | `.rpm` | `sudo zypper install --allow-unsigned-rpm ./Talkies-Linux-<version>.rpm` |
+| Arch, Manjaro, EndeavourOS | `.pkg.tar.zst` or AUR `PKGBUILD` | `sudo pacman -U ./Talkies-Linux-<version>.pkg.tar.zst` |
+| Gentoo | `talkies-bin` ebuild | see below |
+| Anything else (glibc) | `.tar.gz` | `tar xf Talkies-Linux-<version>.tar.gz && sudo ./talkies-*/install.sh` |
 
-```bash
-sudo apt install ./Talkies-Linux-*.deb
-talkies audio-list
-```
+Then start **Talkies** from your app menu (or run `talkies daemon`) and run `talkies doctor` if
+anything does not work. The first start downloads the Whisper model once (about 150 MB); after that
+Talkies runs fully offline.
 
-Remove the app with `sudo apt remove talkies`; this preserves configuration and downloaded models.
+The packages install a udev rule that gives the logged-in user access to `/dev/uinput`, which Talkies
+uses to type text. On Wayland, the Right Alt hotkey additionally needs read access to keyboards:
+`sudo usermod -aG input $USER`, then log in again (or bind `talkies-hotkey.sh` in your compositor).
 
-### Option B: Download a portable release
+**Arch (AUR-style build).** Download `PKGBUILD` from the release and run `makepkg -si` next to it.
 
-Grab `Talkies-Linux-*.tar.gz` from [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest)
-and extract it. The tarball bundles `libwhisper`/`libggml` (built from source at release time,
-since no Linux distro packages them — see [`DEPENDENCIES.md`](../../linux/docs/DEPENDENCIES.md)) in a
-`lib/` folder next to the `talkies` binary, so you don't need to build whisper.cpp yourself. You
-do still need PulseAudio, GTK4, D-Bus, sqlite3, and (on X11) libX11 installed — these are standard
-packages on any desktop Linux distro; see [`DEPENDENCIES.md`](../../linux/docs/DEPENDENCIES.md) for exact package names per
-distro if any are missing. The GTK overlay also requires Python's GTK bindings and WebSocket client
-(`python3-gi`, `gir1.2-gtk-4.0`, and `python3-websocket` on Debian/Ubuntu); these dependencies are
-included automatically with the `.deb` package.
-
-```bash
-tar -xzf Talkies-Linux-*.tar.gz
-cd talkies-linux
-./talkies audio-list
-```
-
-### Option C: Build from source
+**Gentoo.** Put the release's `talkies-bin-<version>.ebuild` in a local overlay and emerge it:
 
 ```bash
-# Build
-./run.sh build
-
-# List audio devices
-zig-out/bin/talkies audio-list
-
-# Set your microphone
-zig-out/bin/talkies audio-set alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback
-
-# Download whisper model
-zig-out/bin/talkies models
-
-# Start daemon (if port is already in use, run: zig build cleanup)
-zig-out/bin/talkies daemon
+doas mkdir -p /var/db/repos/local/app-accessibility/talkies-bin
+doas cp talkies-bin-<version>.ebuild /var/db/repos/local/app-accessibility/talkies-bin/
+cd /var/db/repos/local/app-accessibility/talkies-bin && doas ebuild talkies-bin-<version>.ebuild manifest
+doas emerge --ask app-accessibility/talkies-bin   # USE="X wayland" pulls xclip / wl-clipboard
 ```
+
+**User-only install (no root).** `./talkies-*/install.sh` without sudo installs into `~/.local`;
+typing into apps then needs `/dev/uinput` access, which the root install sets up.
+
+**Uninstall.** Use your package manager (`apt remove talkies`, `dnf remove talkies`,
+`pacman -R talkies`, `emerge --depclean talkies-bin`) or `./talkies-*/install.sh --uninstall`.
+Settings (`~/.config/talkies`) and models (`~/.local/share/talkies`) are kept.
+
+### Build from source
+
+Needs Zig master (0.18.0-dev), GTK 4 and PulseAudio development files, and the pinned whisper.cpp and
+llama.cpp, which `packaging/linux/build-native-deps.sh` builds:
+
+```bash
+packaging/linux/build-native-deps.sh          # once; installs into /usr/local
+cd linux && zig build -Doptimize=ReleaseSafe   # zig-out/bin/talkies
+zig build test                                 # unit tests by layer
+scripts/install.sh --restart                   # developer install + restart the daemon
+```
+
+To produce the release packages locally: `zig build -Doptimize=ReleaseSafe -Dversion=X.Y.Z`, then
+`VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh` (writes `linux/dist/`).
 
 Whisper models are pinned to a [specific upstream revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1), checked against exact size and SHA-256, and installed from a temporary file. Talkies verifies the cached model before each load; verified models work offline.
 

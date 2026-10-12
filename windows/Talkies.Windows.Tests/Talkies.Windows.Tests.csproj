@@ -24,9 +24,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\tests\fixtures\jfk.wav" Link="Fixtures\jfk.wav" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\linux\src\testdata\transcript-export-golden.json" Link="Fixtures\transcript-export-golden.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\linux\src\testdata\s1-mini-prompt-golden.json" Link="Fixtures\s1-mini-prompt-golden.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\linux\src\testdata\local-vocabulary-golden.json" Link="Fixtures\local-vocabulary-golden.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\linux\src\testdata\s1-mini-cleanup-result-golden.json" Link="Fixtures\s1-mini-cleanup-result-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\core\testdata\transcript-export-golden.json" Link="Fixtures\transcript-export-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\engine\testdata\s1-mini-prompt-golden.json" Link="Fixtures\s1-mini-prompt-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\core\testdata\local-vocabulary-golden.json" Link="Fixtures\local-vocabulary-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\linux\src\engine\testdata\s1-mini-cleanup-result-golden.json" Link="Fixtures\s1-mini-cleanup-result-golden.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

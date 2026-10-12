@@ -1,0 +1,59 @@
+# Copyright 2026 Talkies contributors
+# Distributed under the terms of the MIT License
+
+EAPI=8
+
+inherit udev xdg
+
+DESCRIPTION="Private, on-device voice dictation (Whisper) for X11 and Wayland"
+HOMEPAGE="https://github.com/4cecoder/talkies"
+SRC_URI="https://github.com/4cecoder/talkies/releases/download/v${PV}/Talkies-Linux-v${PV}.tar.gz -> ${P}.tar.gz"
+S="${WORKDIR}/talkies-${PV}"
+
+LICENSE="MIT BSD"
+SLOT="0"
+KEYWORDS="~amd64"
+IUSE="+X wayland"
+RESTRICT="bindist mirror strip"
+
+RDEPEND="
+	dev-db/sqlite:3
+	gui-libs/gtk:4
+	media-libs/libpulse
+	sys-apps/dbus
+	sys-devel/gcc:*[openmp]
+	x11-libs/libX11
+	X? ( x11-misc/xclip )
+	wayland? ( gui-apps/wl-clipboard )
+"
+
+# Prebuilt: Talkies plus its bundled whisper.cpp / llama.cpp / ggml runtimes.
+QA_PREBUILT="opt/talkies/*"
+
+src_install() {
+	insinto /opt/talkies
+	doins -r usr/lib/talkies/.
+	fperms 0755 /opt/talkies/talkies
+	dosym -r /opt/talkies/talkies /usr/bin/talkies
+
+	insinto /usr/share
+	doins -r usr/share/applications usr/share/metainfo usr/share/icons usr/share/talkies
+	fperms 0755 /usr/share/talkies/talkies-hotkey.sh
+	dodoc usr/share/doc/talkies/README.md usr/share/doc/talkies/licenses/*
+
+	udev_dorules usr/lib/udev/rules.d/70-talkies-uinput.rules
+}
+
+pkg_postinst() {
+	xdg_pkg_postinst
+	udev_reload
+	elog "Start Talkies from your app menu or run: talkies daemon"
+	elog "Check audio, hotkey and paste support any time with: talkies doctor"
+	elog "On Wayland, the Right Alt hotkey needs read access to keyboards:"
+	elog "  usermod -aG input <user>   (then log in again)"
+}
+
+pkg_postrm() {
+	xdg_pkg_postrm
+	udev_reload
+}

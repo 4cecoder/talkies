@@ -18,7 +18,7 @@ numeric version. The workflow publishes a SHA-256 manifest and `BUILD-INFO.txt` 
 |---|---|---|---|
 | macOS | `Talkies-macOS-{LABEL}.dmg` and `.zip` | DMG contains `Talkies.app`, `llama.framework`, and an `/Applications` shortcut; ZIP contains the app bundle | Open the DMG and drag Talkies to Applications, or expand the ZIP and move `Talkies.app` to `/Applications`. |
 | Windows x64 | `Talkies-Windows-{LABEL}-Setup.exe`, `.zip`, and optional `Talkies-Windows-Whisper-{CUDA13\|CUDA12\|Vulkan}-Runtime-{LABEL}.zip` | CPU-only per-user installer and portable app by default; separate optional Whisper runtime archives | Run the setup wizard or portable app. Download only the CUDA 13, CUDA 12, or Vulkan runtime that matches your GPU and driver, then extract it into the Talkies app directory. |
-| Linux x86_64 | `Talkies-Linux-{LABEL}.deb` and `.tar.gz` | Debian package or portable `talkies-linux/` directory, with app binary, whisper/llama runtime libraries, and their licenses | Debian/Ubuntu: `sudo apt install ./Talkies-Linux-{LABEL}.deb`. Other distributions: extract the archive and run `talkies-linux/talkies`. |
+| Linux x86_64 | `Talkies-Linux-{LABEL}.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`; on tagged releases also `PKGBUILD` (AUR) and `talkies-bin-{VERSION}.ebuild` (Gentoo) | One glibc 2.35 / GTK 4.6 build with bundled whisper/llama runtimes and licenses, installed as `/usr/lib/talkies` + `/usr/bin/talkies` (`/opt/talkies` on Gentoo) | `apt install ./….deb`, `dnf install ./….rpm`, `zypper install ./….rpm`, `pacman -U ./….pkg.tar.zst`, or `sudo ./talkies-*/install.sh` from the tarball. See [Linux install](../docs/platforms/linux.md#install). |
 | All | `SHA256SUMS`, `BUILD-INFO.txt` | Artifact hashes and build provenance | Verify before installation. |
 
 The public macOS DMG and ZIP and the Windows setup EXE are unsigned because CI has no maintainer
@@ -42,8 +42,8 @@ shasum -a 256 -c SHA256SUMS
 
 On Linux, `sha256sum -c SHA256SUMS` is also available. On macOS, open the DMG and drag Talkies to
 Applications, or expand the ZIP. On Windows, run the setup EXE for the per-user install, or expand
-the ZIP for portable use. On Debian/Ubuntu, install the `.deb` with
-`sudo apt install ./Talkies-Linux-{LABEL}.deb`; other distributions can use the Linux tarball.
+the ZIP for portable use. On Linux, install the package for your distribution (`.deb`, `.rpm`, Arch `.pkg.tar.zst`, Gentoo
+ebuild) or run `install.sh` from the tarball; see [Linux install](../docs/platforms/linux.md#install).
 If downloading only one artifact, calculate its SHA-256 with `shasum -a 256 path/to/artifact` on
 macOS, `Get-FileHash path/to/artifact -Algorithm SHA256` in PowerShell, or
 `sha256sum path/to/artifact` on Linux, then
@@ -72,8 +72,8 @@ verify it against that release's `SHA256SUMS`, and update using the same install
 - **Windows:** close Talkies and run the new setup EXE. It updates the per-user installation and
   replaces obsolete app files. For a portable ZIP, close Talkies and replace the extracted app
   directory with the new archive contents.
-- **Debian/Ubuntu:** run `sudo apt install ./Talkies-Linux-{LABEL}.deb`; apt upgrades the installed
-  package. For the portable tarball, replace the extracted `talkies-linux/` directory.
+- **Linux:** install the newer package with the same command (`apt`, `dnf`, `zypper`, `pacman -U`)
+  or rerun the newer tarball's `install.sh`; it replaces the previous version in place.
 
 ## Roll back to a previous release
 
@@ -85,9 +85,9 @@ update:
   older copy. You can also restore the app bundle from the older ZIP.
 - **Windows:** quit Talkies and run the older per-user setup EXE, or replace the portable app
   directory with the older ZIP contents.
-- **Debian/Ubuntu:** install the older package with
-  `sudo apt install --allow-downgrades ./Talkies-Linux-{LABEL}.deb`. For a portable installation,
-  replace the extracted `talkies-linux/` directory with the older archive contents.
+- **Linux:** install the older package (`sudo apt install --allow-downgrades ./….deb`,
+  `sudo dnf downgrade ./….rpm`, `sudo pacman -U ./….pkg.tar.zst`) or run the older tarball's
+  `install.sh`.
 
 These operations replace application files only. Settings and downloaded models remain in their
 user-data directories, so the previous release can be restored without reinstalling models. If an
@@ -112,7 +112,8 @@ folder. Removing the application does not remove model downloads or settings:
   `%USERPROFILE%\.talkies\`; the S1-mini weights are under
   `%LOCALAPPDATA%\Talkies\Models\`. Delete those directories only if you want to remove settings
   and downloaded models too.
-- **Linux:** remove the extracted `talkies-linux/` directory. Settings are under
+- **Linux:** remove the package (`apt remove talkies`, `dnf remove talkies`, `pacman -R talkies`,
+  `emerge --depclean talkies-bin`) or run the tarball's `install.sh --uninstall`. Settings are under
   `${XDG_CONFIG_HOME:-$HOME/.config}/talkies/`, and models and local app data are under
   `${XDG_DATA_HOME:-$HOME/.local/share}/talkies/`. Delete those directories only if you want to
   remove settings and downloaded data too.
@@ -124,7 +125,7 @@ platform-specific checks are documented in the platform guides. Useful checks in
 
 ```sh
 (cd mac && swift test)
-actionlint .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/deploy-pages.yml
+actionlint .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/linux-package.yml
 ```
 
 For a locally signed macOS `.app` zip, provide the certificate identity and actual Team ID:
@@ -136,7 +137,8 @@ VERSION="$(tr -d '[:space:]' < packaging/shared/version.txt)" \
 OUTPUT_DIR="$PWD/dist" ./packaging/macos/package-app.sh
 ```
 
-See [macOS packaging](./macos/README.md) and [Windows packaging](./windows/README.md) for
+See [macOS packaging](./macos/README.md), [Windows packaging](./windows/README.md), and
+[Linux packaging](./linux/README.md) for
 maintainer-only build details. Those guides also describe optional signing; signing credentials
 are not required for public open-source builds.
 

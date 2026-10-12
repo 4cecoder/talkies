@@ -23,6 +23,7 @@ const offline_acceptance = @import("offline_acceptance.zig");
 const health = @import("health.zig");
 const evdev_hotkey = engine.evdev_hotkey;
 const c_tray = @import("c_tray");
+const build_options = @import("build_options");
 
 test {
     _ = config;
@@ -48,6 +49,7 @@ const Command = enum {
     transcribe_test,
     daemon,
     doctor,
+    version,
     help,
 };
 
@@ -58,6 +60,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     run(init, allocator) catch |err| switch (err) {
         // Expected, already explained to the user: not a crash.
         error.AlreadyRunning, error.MissingArgument => std.process.exit(1),
+        error.UnknownCommand => std.process.exit(2),
         else => {
             local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
             return err;
@@ -82,7 +85,7 @@ fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
     const command = parseCommand(arguments[1]) orelse {
         std.debug.print("Unknown command: {s}\n", .{arguments[1]});
         try printHelp();
-        return;
+        return error.UnknownCommand;
     };
 
     switch (command) {
@@ -96,6 +99,7 @@ fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
         .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
         .doctor => try runDoctor(allocator),
+        .version => try utils.writeStdout("talkies " ++ build_options.version ++ "\n"),
         .help => try printHelp(),
     }
 }
@@ -112,6 +116,9 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "transcribe", .transcribe_test },
         .{ "daemon", .daemon },
         .{ "doctor", .doctor },
+        .{ "version", .version },
+        .{ "--version", .version },
+        .{ "-V", .version },
         .{ "help", .help },
         .{ "--help", .help },
         .{ "-h", .help },
@@ -527,6 +534,10 @@ fn runDoctor(allocator: std.mem.Allocator) !void {
         .hotkey = if (!wayland) .x11_grab else if (listener.count > 0) .evdev else .compositor_only,
         .tray_host = c_tray.talkies_tray_host_available() != 0,
         .model = cfg.model,
+        .model_missing_bytes = whisper.missingModelBytes(allocator, cfg.model) catch |err| blk: {
+            std.debug.print("Could not check the Whisper model: {}\n", .{err});
+            break :blk 0;
+        },
     };
     var report = try health.run(allocator, &cfg, probe);
     defer report.deinit();
@@ -570,6 +581,7 @@ fn printHelp() !void {
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
         \\  transcribe [wav]   Transcribe a WAV, optionally exporting TXT/VTT/SRT
+        \\  version            Print the Talkies version
         \\  help               Show this help message
         \\
         \\Examples:
@@ -588,5 +600,6 @@ fn printHelp() !void {
 test "command parsing" {
     try std.testing.expectEqual(Command.quick, parseCommand("quick").?);
     try std.testing.expectEqual(Command.help, parseCommand("--help").?);
+    try std.testing.expectEqual(Command.version, parseCommand("--version").?);
     try std.testing.expect(parseCommand("invalid") == null);
 }

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Talkies
+GenericName=Voice Dictation
+Comment=Dictate into any app with on-device speech recognition
+Exec=talkies daemon
+Icon=talkies
+Terminal=false
+Categories=Utility;Accessibility;AudioVideo;Audio;
+Keywords=dictation;speech;voice;transcription;whisper;speech-to-text;
+StartupNotify=false
+SingleMainWindow=true
+X-GNOME-UsesNotifications=true

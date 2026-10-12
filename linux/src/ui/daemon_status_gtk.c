@@ -1,6 +1,6 @@
 #include "daemon_status_gtk.h"
 #include "loop_glib.h"
-#include <gtk/gtk.h>
+#include "gtk_compat.h"
 #include <string.h>
 #include <time.h>
 

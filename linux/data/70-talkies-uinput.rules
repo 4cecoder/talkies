@@ -1,0 +1,4 @@
+# Talkies types dictated text through a virtual keyboard (/dev/uinput).
+# Grant the user at the active local seat access, like game-controller
+# tools do; no group membership or re-login required.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

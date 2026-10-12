@@ -35,6 +35,8 @@ pub fn build(b: *std.Build) void {
     const build_options = b.addOptions();
     build_options.addOption(bool, "x11", gtk_targets.x11);
     build_options.addOption(bool, "wayland", gtk_targets.wayland);
+    // Release builds pass -Dversion=X.Y.Z (packaging/shared/version.txt).
+    build_options.addOption([]const u8, "version", b.option([]const u8, "version", "Talkies version string") orelse "dev");
 
     // --- C shared libraries -------------------------------------------
     const native_lib = addNativeLib(ctx);

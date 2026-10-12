@@ -34,7 +34,7 @@ final class TranscriptCleanupTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/s1-mini-prompt-golden.json")
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/engine/testdata/s1-mini-prompt-golden.json")
         let fixture = try JSONDecoder().decode(PromptGoldenFixture.self, from: Data(contentsOf: fixtureURL))
 
         for testCase in fixture.cases {
@@ -53,7 +53,7 @@ final class TranscriptCleanupTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/s1-mini-cleanup-result-golden.json")
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/engine/testdata/s1-mini-cleanup-result-golden.json")
         let fixture = try JSONDecoder().decode(CleanupResultGoldenFixture.self, from: Data(contentsOf: fixtureURL))
 
         for testCase in fixture.cases {

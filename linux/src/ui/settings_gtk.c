@@ -1,7 +1,7 @@
 #include "settings_gtk.h"
 #include "loop_glib.h"
 
-#include <gtk/gtk.h>
+#include "gtk_compat.h"
 #include <string.h>
 
 #define MODE_COUNT 5
@@ -379,8 +379,15 @@ static GtkWidget *choice_new(TalkiesSettingsWindow *win, const char *const *labe
             gtk_label_set_wrap(GTK_LABEL(desc), TRUE);
             gtk_box_append(GTK_BOX(text), title);
             gtk_box_append(GTK_BOX(text), desc);
-            gtk_check_button_set_child(GTK_CHECK_BUTTON(button), text);
-            gtk_accessible_update_relation(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_RELATION_DESCRIBED_BY, desc, NULL, -1);
+            if (talkies_check_button_set_child(GTK_CHECK_BUTTON(button), text)) {
+                gtk_accessible_update_relation(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_RELATION_DESCRIBED_BY, desc, NULL, -1);
+            } else {
+                // GTK < 4.8: title only, description as tooltip.
+                g_object_ref_sink(text);
+                g_object_unref(text);
+                gtk_check_button_set_label(GTK_CHECK_BUTTON(button), labels[i]);
+                gtk_widget_set_tooltip_text(button, descriptions[i]);
+            }
             if (first) gtk_check_button_set_group(GTK_CHECK_BUTTON(button), GTK_CHECK_BUTTON(first));
         } else {
             button = gtk_toggle_button_new_with_label(labels[i]);

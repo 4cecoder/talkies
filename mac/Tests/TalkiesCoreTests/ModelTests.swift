@@ -41,7 +41,7 @@ final class ModelTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let fixtureURL = repositoryRoot.appending(path: "linux/src/testdata/local-vocabulary-golden.json")
+        let fixtureURL = repositoryRoot.appending(path: "linux/src/core/testdata/local-vocabulary-golden.json")
         let fixture = try JSONDecoder().decode(VocabularyGoldenFixture.self, from: Data(contentsOf: fixtureURL))
 
         for testCase in fixture.cases {
