@@ -69,45 +69,48 @@ YapWindowGtk* yap_window_gtk_new(void) {
     win->window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(win->window), "YAP Mode - Conversational Transcription");
     gtk_window_set_default_size(GTK_WINDOW(win->window), 1000, 700);
+    gtk_widget_add_css_class(win->window, "talkies-yap");
 
     // Apply Tokyo Night dark theme
     GtkCssProvider *css_provider = gtk_css_provider_new();
+    // Scoped to this window: an unscoped theme would restyle every Talkies
+    // window (Settings, the dictation panel) once this one exists.
     const char *tokyo_night_css =
-        "window {"
+        "window.talkies-yap {"
         "  background-color: #1a1b26;"
         "  color: #c0caf5;"
         "}"
-        "label {"
+        ".talkies-yap label {"
         "  color: #c0caf5;"
         "}"
-        "textview {"
+        ".talkies-yap textview {"
         "  background-color: #24283b;"
         "  color: #c0caf5;"
         "  caret-color: #c0caf5;"
         "}"
-        "textview text {"
+        ".talkies-yap textview text {"
         "  background-color: #24283b;"
         "  color: #c0caf5;"
         "}"
-        "button {"
+        ".talkies-yap button {"
         "  background-color: #414868;"
         "  color: #c0caf5;"
         "  border: 1px solid #565f89;"
         "  border-radius: 4px;"
         "  padding: 6px 12px;"
         "}"
-        "button:hover {"
+        ".talkies-yap button:hover {"
         "  background-color: #565f89;"
         "}"
-        "scrolledwindow {"
+        ".talkies-yap scrolledwindow {"
         "  background-color: #24283b;"
         "}"
-        "frame {"
+        ".talkies-yap frame {"
         "  border: 1px solid #565f89;"
         "  border-radius: 6px;"
         "  background-color: #1e2030;"
         "}"
-        "separator {"
+        ".talkies-yap separator {"
         "  background-color: #414868;"
         "  min-height: 1px;"
         "}";

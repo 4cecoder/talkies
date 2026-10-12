@@ -78,41 +78,44 @@ DaemonStatusWindow* daemon_status_window_new(void) {
     win->window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(win->window), "Talkies Daemon - Status Monitor");
     gtk_window_set_default_size(GTK_WINDOW(win->window), 800, 600);
+    gtk_widget_add_css_class(win->window, "talkies-monitor");
     g_signal_connect(win->window, "close-request", G_CALLBACK(on_close_request), win);
 
     // Apply Tokyo Night dark theme
     GtkCssProvider *css_provider = gtk_css_provider_new();
+    // Scoped to this window: an unscoped theme would restyle every Talkies
+    // window (Settings, the dictation panel) once this one exists.
     const char *tokyo_night_css =
-        "window {"
+        "window.talkies-monitor {"
         "  background-color: #1a1b26;"
         "  color: #c0caf5;"
         "}"
-        "label {"
+        ".talkies-monitor label {"
         "  color: #c0caf5;"
         "}"
-        "textview {"
+        ".talkies-monitor textview {"
         "  background-color: #24283b;"
         "  color: #c0caf5;"
         "  caret-color: #c0caf5;"
         "}"
-        "textview text {"
+        ".talkies-monitor textview text {"
         "  background-color: #24283b;"
         "  color: #c0caf5;"
         "}"
-        "button {"
+        ".talkies-monitor button {"
         "  background-color: #414868;"
         "  color: #c0caf5;"
         "  border: 1px solid #565f89;"
         "  border-radius: 4px;"
         "  padding: 6px 12px;"
         "}"
-        "button:hover {"
+        ".talkies-monitor button:hover {"
         "  background-color: #565f89;"
         "}"
-        "scrolledwindow {"
+        ".talkies-monitor scrolledwindow {"
         "  background-color: #24283b;"
         "}"
-        "checkbutton {"
+        ".talkies-monitor checkbutton {"
         "  color: #c0caf5;"
         "}";
 
