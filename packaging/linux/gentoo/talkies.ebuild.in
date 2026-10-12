@@ -1,0 +1,159 @@
+# Copyright 2026 Talkies contributors
+# Distributed under the terms of the MIT License
+
+EAPI=8
+
+inherit cmake edo multiprocessing toolchain-funcs udev xdg
+
+# Pinned by packaging/linux/deps.env and the Zig compiler the release was built
+# and tested with; package.sh fills these in.
+LLAMA_COMMIT="@LLAMA_COMMIT@"
+WHISPER_COMMIT="@WHISPER_COMMIT@"
+ZIG_PV="@ZIG_VERSION@"
+
+DESCRIPTION="Private, on-device voice dictation (Whisper) for X11 and Wayland"
+HOMEPAGE="https://github.com/4cecoder/talkies"
+# Talkies tracks Zig master, which Gentoo does not package; each release
+# re-hosts the exact compiler it was built with (used at build time only).
+SRC_URI="
+	https://github.com/4cecoder/talkies/releases/download/v${PV}/talkies-${PV}-src.tar.gz
+	https://github.com/ggml-org/llama.cpp/archive/${LLAMA_COMMIT}.tar.gz -> llama.cpp-${LLAMA_COMMIT}.tar.gz
+	https://github.com/ggml-org/whisper.cpp/archive/${WHISPER_COMMIT}.tar.gz -> whisper.cpp-${WHISPER_COMMIT}.tar.gz
+	https://github.com/4cecoder/talkies/releases/download/v${PV}/zig-x86_64-linux.tar.xz -> talkies-zig-${ZIG_PV}.tar.xz
+"
+
+LICENSE="MIT BSD"
+SLOT="0"
+KEYWORDS="~amd64"
+IUSE="native +X wayland"
+RESTRICT="mirror"
+
+DEPEND="
+	dev-db/sqlite:3
+	gui-libs/gtk:4
+	media-libs/libpulse
+	sys-apps/dbus
+	x11-libs/libX11
+"
+RDEPEND="${DEPEND}
+	!app-accessibility/talkies-bin
+	X? ( x11-misc/xclip )
+	wayland? ( gui-apps/wl-clipboard )
+"
+BDEPEND="virtual/pkgconfig"
+
+NATIVE_PREFIX="${WORKDIR}/native"
+ZIG_OUT="${WORKDIR}/zig-out"
+
+pkg_pretend() {
+	[[ ${MERGE_TYPE} != binary ]] && tc-check-openmp
+}
+
+pkg_setup() {
+	[[ ${MERGE_TYPE} != binary ]] && tc-check-openmp
+}
+
+# whisper.cpp is built against llama.cpp's ggml so Talkies carries exactly one
+# libggml*; both stay private to Talkies under /usr/lib*/talkies/lib.
+native_cmake() { # <source dir> [extra cmake args...]
+	local CMAKE_USE_DIR="${WORKDIR}/${1}" BUILD_DIR="${WORKDIR}/${1}_build"
+	shift
+	local mycmakeargs=(
+		-DCMAKE_INSTALL_PREFIX="${NATIVE_PREFIX}"
+		-DCMAKE_INSTALL_LIBDIR=lib
+		-DCMAKE_INSTALL_RPATH='$ORIGIN'
+		-DBUILD_SHARED_LIBS=ON
+		-DGGML_NATIVE=$(usex native)
+		-DGGML_OPENMP=ON
+		-DGGML_CUDA=OFF
+		-DGGML_VULKAN=OFF
+		-DGGML_METAL=OFF
+		"$@"
+	)
+	cmake_src_configure
+}
+
+src_prepare() {
+	# Talkies itself builds with Zig; only the bundled runtimes use CMake.
+	default
+	local CMAKE_USE_DIR
+	for CMAKE_USE_DIR in "${WORKDIR}/llama.cpp-${LLAMA_COMMIT}" "${WORKDIR}/whisper.cpp-${WHISPER_COMMIT}"; do
+		cmake_prepare
+	done
+}
+
+src_configure() {
+	# The Zig build runs in src_compile, after the native libraries exist.
+	:
+}
+
+src_compile() {
+	native_cmake "llama.cpp-${LLAMA_COMMIT}" \
+		-DLLAMA_CURL=OFF -DLLAMA_BUILD_COMMON=OFF -DLLAMA_BUILD_TESTS=OFF \
+		-DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_SERVER=OFF \
+		-DLLAMA_BUILD_APP=OFF
+	BUILD_DIR="${WORKDIR}/llama.cpp-${LLAMA_COMMIT}_build" cmake_build llama
+	edo cmake --install "${WORKDIR}/llama.cpp-${LLAMA_COMMIT}_build"
+
+	native_cmake "whisper.cpp-${WHISPER_COMMIT}" \
+		-DCMAKE_PREFIX_PATH="${NATIVE_PREFIX}" \
+		-DWHISPER_USE_SYSTEM_GGML=ON \
+		-DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF
+	BUILD_DIR="${WORKDIR}/whisper.cpp-${WHISPER_COMMIT}_build" cmake_build
+	edo cmake --install "${WORKDIR}/whisper.cpp-${WHISPER_COMMIT}_build"
+
+	talkies_zig build --prefix "${ZIG_OUT}"
+}
+
+# Run the pinned Zig against the private whisper.cpp / llama.cpp prefix.
+talkies_zig() {
+	local -x ZIG_GLOBAL_CACHE_DIR="${T}/zig-global-cache"
+	local -x ZIG_LOCAL_CACHE_DIR="${T}/zig-local-cache"
+	local -x PKG_CONFIG_PATH="${NATIVE_PREFIX}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+	local -x LD_LIBRARY_PATH="${NATIVE_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+	cd "${S}/linux" || die
+	edo "${WORKDIR}/zig-x86_64-linux-${ZIG_PV}/zig" "$@" \
+		-j"$(makeopts_jobs)" \
+		-Doptimize=ReleaseSafe \
+		-Dcpu=$(usex native native x86_64_v2) \
+		-Dversion="${PV}" \
+		-Dnative-prefix="${NATIVE_PREFIX}"
+}
+
+src_test() {
+	talkies_zig build test
+}
+
+src_install() {
+	local stage="${WORKDIR}/stage" app="/usr/$(get_libdir)/talkies"
+	DESTDIR="${stage}" ZIG_OUT="${ZIG_OUT}" NATIVE_LIBDIR="${NATIVE_PREFIX}/lib" \
+		STRIP_DEBUG=0 ALLOW_NATIVE_CPU=$(usex native 1 0) \
+		edo bash "${S}/packaging/linux/stage.sh"
+	cd "${stage}" || die
+
+	insinto "${app}"
+	doins -r usr/lib/talkies/.
+	fperms 0755 "${app}/talkies"
+	dosym -r "${app}/talkies" /usr/bin/talkies
+
+	insinto /usr/share
+	doins -r usr/share/applications usr/share/metainfo usr/share/icons usr/share/talkies
+	fperms 0755 /usr/share/talkies/talkies-hotkey.sh
+	dodoc usr/share/doc/talkies/README.md usr/share/doc/talkies/licenses/*
+
+	udev_dorules usr/lib/udev/rules.d/70-talkies-uinput.rules
+}
+
+pkg_postinst() {
+	xdg_pkg_postinst
+	udev_reload
+	elog "Start Talkies from your app menu or run: talkies daemon"
+	elog "Check audio, hotkey and paste support any time with: talkies doctor"
+	elog "On Wayland, the Right Alt hotkey needs read access to keyboards:"
+	elog "  usermod -aG input <user>   (then log in again)"
+}
+
+pkg_postrm() {
+	xdg_pkg_postrm
+	udev_reload
+}

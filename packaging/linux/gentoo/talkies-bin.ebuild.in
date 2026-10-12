@@ -17,6 +17,7 @@ IUSE="+X wayland"
 RESTRICT="bindist mirror strip"
 
 RDEPEND="
+	!app-accessibility/talkies
 	dev-db/sqlite:3
 	gui-libs/gtk:4
 	media-libs/libpulse

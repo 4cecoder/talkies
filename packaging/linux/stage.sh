@@ -12,8 +12,11 @@
 #   DESTDIR         staging root (required)
 #   ZIG_OUT         `zig build --prefix` output (default linux/zig-out)
 #   BUNDLE_NATIVE   1 = copy whisper/llama/ggml from NATIVE_LIBDIR (default 1);
-#                   0 = rely on distro packages (Gentoo ebuild)
+#                   0 = rely on system-wide whisper.cpp / llama.cpp
 #   NATIVE_LIBDIR   where build-native-deps.sh installed them (default /usr/local/lib)
+#   STRIP_DEBUG     1 = strip debug info (default); 0 = leave it to the distro
+#                   tooling (Gentoo's splitdebug / strip)
+#   ALLOW_NATIVE_CPU 1 = skip the portable-CPU check (local or -march=native builds)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,7 +62,7 @@ if [[ "${ALLOW_NATIVE_CPU:-0}" != 1 ]] && command -v objdump >/dev/null; then
 fi
 
 # Strip debug info from what we ship (sizes drop ~4x); keep symbols for backtraces.
-if command -v strip >/dev/null; then
+if [[ "${STRIP_DEBUG:-1}" == 1 ]] && command -v strip >/dev/null; then
     find "${app}" -type f \( -name talkies -o -name '*.so*' \) -exec strip --strip-debug {} +
 fi
 

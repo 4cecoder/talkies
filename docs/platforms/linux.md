@@ -44,7 +44,7 @@ with AVX2 (2013 or newer). CI installs each package on the distributions below b
 | Fedora, RHEL / Alma / Rocky 9+ | `.rpm` | `sudo dnf install ./Talkies-Linux-<version>.rpm` |
 | openSUSE Tumbleweed / Leap | `.rpm` | `sudo zypper install --allow-unsigned-rpm ./Talkies-Linux-<version>.rpm` |
 | Arch, Manjaro, EndeavourOS | `.pkg.tar.zst` or AUR `PKGBUILD` | `sudo pacman -U ./Talkies-Linux-<version>.pkg.tar.zst` |
-| Gentoo | `talkies-bin` ebuild | see below |
+| Gentoo | overlay: `talkies` (source) or `talkies-bin` | see below |
 | Anything else (glibc) | `.tar.gz` | `tar xf Talkies-Linux-<version>.tar.gz && sudo ./talkies-*/install.sh` |
 
 Then start **Talkies** from your app menu (or run `talkies daemon`) and run `talkies doctor` if
@@ -57,20 +57,27 @@ uses to type text. On Wayland, the Right Alt hotkey additionally needs read acce
 
 **Arch (AUR-style build).** Download `PKGBUILD` from the release and run `makepkg -si` next to it.
 
-**Gentoo.** Put the release's `talkies-bin-<version>.ebuild` in a local overlay and emerge it:
+**Gentoo.** Each release ships a ready overlay (`talkies-gentoo-overlay-<version>.tar.gz`, with
+Manifests) holding two packages:
+
+- `app-accessibility/talkies` builds from source: the pinned whisper.cpp / llama.cpp and the exact Zig
+  compiler the release was tested with (Gentoo does not package Zig master; it is used at build time
+  only). `USE=native` builds Talkies and ggml for your CPU instead of the portable baseline.
+- `app-accessibility/talkies-bin` installs the prebuilt release under `/opt/talkies`.
 
 ```bash
-doas mkdir -p /var/db/repos/local/app-accessibility/talkies-bin
-doas cp talkies-bin-<version>.ebuild /var/db/repos/local/app-accessibility/talkies-bin/
-cd /var/db/repos/local/app-accessibility/talkies-bin && doas ebuild talkies-bin-<version>.ebuild manifest
-doas emerge --ask app-accessibility/talkies-bin   # USE="X wayland" pulls xclip / wl-clipboard
+doas mkdir -p /var/db/repos/talkies /etc/portage/repos.conf
+doas tar xf talkies-gentoo-overlay-<version>.tar.gz -C /var/db/repos/talkies
+printf '[talkies]\nlocation = /var/db/repos/talkies\n' | doas tee /etc/portage/repos.conf/talkies.conf
+echo 'app-accessibility/talkies ~amd64' | doas tee /etc/portage/package.accept_keywords/talkies
+doas emerge --ask app-accessibility/talkies   # or talkies-bin; USE="X wayland" pull xclip / wl-clipboard
 ```
 
 **User-only install (no root).** `./talkies-*/install.sh` without sudo installs into `~/.local`;
 typing into apps then needs `/dev/uinput` access, which the root install sets up.
 
 **Uninstall.** Use your package manager (`apt remove talkies`, `dnf remove talkies`,
-`pacman -R talkies`, `emerge --depclean talkies-bin`) or `./talkies-*/install.sh --uninstall`.
+`pacman -R talkies`, `emerge --depclean talkies`) or `./talkies-*/install.sh --uninstall`.
 Settings (`~/.config/talkies`) and models (`~/.local/share/talkies`) are kept.
 
 ### Build from source

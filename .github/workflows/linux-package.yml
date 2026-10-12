@@ -17,7 +17,7 @@ on:
         type: string
         default: ""
       artifact_name:
-        description: Name of the uploaded artifact holding dist/
+        description: Name of the uploaded artifact holding dist/ (the Gentoo overlay goes to <name>-gentoo)
         required: false
         type: string
         default: linux-release
@@ -192,3 +192,35 @@ jobs:
           sudo -u builder makepkg -si --noconfirm
           talkies --version
           test -f /usr/share/licenses/talkies-bin/LICENSE
+
+  gentoo-test:
+    name: Emerge on Gentoo (talkies-bin and from source)
+    needs: build
+    runs-on: ubuntu-24.04
+    container: gentoo/stage3:latest
+
+    steps:
+      - name: Checkout packaging scripts
+        uses: actions/checkout@v7
+
+      - name: Download packages
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist
+
+      - name: Sync the Gentoo tree and trust the official binhost
+        run: |
+          emerge-webrsync --quiet
+          getuto
+
+      - name: Emerge, run, and unmerge both ebuilds
+        run: bash packaging/linux/test-gentoo.sh dist "${{ inputs.release_label }}" both
+
+      - name: Upload Gentoo overlay and build toolchain
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ inputs.artifact_name }}-gentoo
+          path: dist/gentoo-release/
+          if-no-files-found: error
+          retention-days: 7

@@ -21,6 +21,9 @@ const Ctx = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     has_x11: bool,
+    /// Install prefix of a private whisper.cpp/llama.cpp build (from-source
+    /// packaging, e.g. the Gentoo ebuild); null = system / pkg-config.
+    native_prefix: ?[]const u8,
 };
 
 pub fn build(b: *std.Build) void {
@@ -30,6 +33,7 @@ pub fn build(b: *std.Build) void {
         .target = b.standardTargetOptions(.{}),
         .optimize = b.standardOptimizeOption(.{}),
         .has_x11 = gtk_targets.x11,
+        .native_prefix = b.option([]const u8, "native-prefix", "Prefix holding whisper.cpp/llama.cpp headers and libraries"),
     };
 
     const build_options = b.addOptions();
@@ -96,6 +100,7 @@ fn addNativeLib(ctx: Ctx) *std.Build.Step.Compile {
     const module = b.createModule(.{ .target = ctx.target, .optimize = ctx.optimize, .link_libc = true });
     module.addCSourceFile(.{ .file = b.path("src/native/s1_runtime.c"), .flags = cFlags(ctx) });
     module.addIncludePath(b.path("src/native"));
+    addNativePrefix(ctx, module);
     module.linkSystemLibrary("llama", .{});
     // Resolve the bundled libllama next to this library.
     module.addRPathSpecial("$ORIGIN");
@@ -163,6 +168,7 @@ fn addEngineModule(ctx: Ctx, core: *std.Build.Module, native_lib: *std.Build.Ste
 
     module.linkSystemLibrary("pulse-simple", .{});
     module.linkSystemLibrary("pulse", .{});
+    addNativePrefix(ctx, module);
     module.linkSystemLibrary("whisper", .{});
     if (ctx.has_x11) module.linkSystemLibrary("X11", .{});
     // libfvad (WebRTC VAD) is vendored and tiny; it stays static.
@@ -217,10 +223,18 @@ fn addCImport(ctx: Ctx, module: *std.Build.Module, name: []const u8, header: []c
     });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+    if (ctx.native_prefix) |prefix| translation.addSystemIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{prefix}) });
     for ([_][]const u8{ "src/ui", "src/native", "vendor/libfvad/include" }) |dir| {
         translation.addIncludePath(b.path(dir));
     }
     module.addImport(name, translation.createModule());
+}
+
+/// Search -Dnative-prefix before the system for whisper.cpp / llama.cpp.
+fn addNativePrefix(ctx: Ctx, module: *std.Build.Module) void {
+    const prefix = ctx.native_prefix orelse return;
+    module.addIncludePath(.{ .cwd_relative = ctx.b.fmt("{s}/include", .{prefix}) });
+    module.addLibraryPath(.{ .cwd_relative = ctx.b.fmt("{s}/lib", .{prefix}) });
 }
 
 /// Fallback include paths for distros whose pkg-config metadata is

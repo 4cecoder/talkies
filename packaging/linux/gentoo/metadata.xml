@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="project">
+		<name>Talkies contributors</name>
+	</maintainer>
+	<longdescription>
+		Talkies is a local-first dictation app: hold a hotkey, speak, and the
+		transcript (Whisper, optionally cleaned up by a local LLM) is typed into
+		the focused window. Recording, inference and text insertion run on-device.
+		app-accessibility/talkies builds from source; app-accessibility/talkies-bin
+		installs the prebuilt release.
+	</longdescription>
+	<use>
+		<flag name="native">Build Talkies and ggml for this machine's CPU (-Dcpu=native, GGML_NATIVE) instead of the portable x86-64-v2 / AVX2 baseline</flag>
+		<flag name="wayland">Pull in <pkg>gui-apps/wl-clipboard</pkg> for pasting on Wayland</flag>
+		<flag name="X">Pull in <pkg>x11-misc/xclip</pkg> for pasting on X11</flag>
+	</use>
+	<upstream>
+		<remote-id type="github">4cecoder/talkies</remote-id>
+		<bugs-to>https://github.com/4cecoder/talkies/issues</bugs-to>
+	</upstream>
+</pkgmetadata>

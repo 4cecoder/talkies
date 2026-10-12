@@ -4,7 +4,13 @@
 #   Talkies-Linux-<label>.deb          Debian, Ubuntu, Mint, Pop!_OS
 #   Talkies-Linux-<label>.rpm          Fedora, RHEL/Alma/Rocky, openSUSE
 #   Talkies-Linux-<label>.pkg.tar.zst  Arch, Manjaro, EndeavourOS
-# Gentoo and AUR recipes live in packaging/linux/{gentoo,aur}.
+# Also renders the distro recipes in packaging/linux/{aur,gentoo}:
+#   PKGBUILD                           AUR talkies-bin (prebuilt tarball)
+#   gentoo/talkies-bin-<ver>.ebuild    Gentoo, prebuilt tarball
+#   gentoo/talkies-<ver>.ebuild        Gentoo, built from source with the pinned
+#                                      whisper.cpp / llama.cpp / Zig (ZIG_VERSION,
+#                                      default: `zig version`)
+#   talkies-<ver>-src.tar.gz           source archive of HEAD for that ebuild
 #
 # Requires a finished `zig build` (linux/zig-out) and build-native-deps.sh.
 set -euo pipefail
@@ -75,13 +81,26 @@ for format in ${FORMATS}; do
     esac
 done
 
-# Distro recipes that fetch the tarball from the GitHub release. They pin its
-# SHA-256, so they are only meaningful for tagged (vX.Y.Z) releases.
+# Distro recipes that fetch release assets. They pin checksums, so they are
+# only installable from tagged (vX.Y.Z) releases; CI tests them by pre-seeding
+# the distfiles (see test-gentoo.sh).
 if [[ " ${FORMATS} " == *" tar "* ]]; then
     sha="$(sha256sum "${base}.tar.gz" | cut -d' ' -f1)"
     sed "s/@APP_VERSION@/${APP_VERSION}/; s/@SHA256@/${sha}/" "${SCRIPT_DIR}/aur/PKGBUILD.in" \
         > "${OUTPUT_DIR}/PKGBUILD"
-    cp "${SCRIPT_DIR}/gentoo/talkies-bin.ebuild.in" "${OUTPUT_DIR}/talkies-bin-${APP_VERSION}.ebuild"
 fi
+
+# Gentoo: talkies-bin repackages the tarball; talkies builds from the source
+# archive with the pinned whisper.cpp / llama.cpp and Zig compiler.
+mkdir -p "${OUTPUT_DIR}/gentoo"
+cp "${SCRIPT_DIR}/gentoo/talkies-bin.ebuild.in" "${OUTPUT_DIR}/gentoo/talkies-bin-${APP_VERSION}.ebuild"
+ZIG_VERSION="${ZIG_VERSION:-$(zig version)}"
+sed -e "s/@LLAMA_COMMIT@/${LLAMA_COMMIT}/" -e "s/@WHISPER_COMMIT@/${WHISPER_COMMIT}/" \
+    -e "s/@ZIG_VERSION@/${ZIG_VERSION}/" "${SCRIPT_DIR}/gentoo/talkies.ebuild.in" \
+    > "${OUTPUT_DIR}/gentoo/talkies-${APP_VERSION}.ebuild"
+cp "${SCRIPT_DIR}/gentoo/metadata.xml" "${OUTPUT_DIR}/gentoo/metadata.xml"
+# Source archive for the from-source ebuild (and anyone building by hand).
+git -C "${ROOT}" -c safe.directory='*' archive --format=tar.gz --prefix="talkies-${APP_VERSION}/" \
+    -o "${OUTPUT_DIR}/talkies-${APP_VERSION}-src.tar.gz" HEAD
 
 ls -l "${OUTPUT_DIR}"
