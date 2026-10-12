@@ -2,11 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 
 // X11 C bindings
-const c = @cImport({
-    @cInclude("X11/Xlib.h");
-    @cInclude("X11/keysym.h");
-    @cInclude("X11/XKBlib.h");
-});
+const c = @import("c_hotkey");
 
 /// X11 error handler that ignores errors (for graceful grab failures)
 fn ignoreErrorHandler(_: ?*c.Display, _: [*c]c.XErrorEvent) callconv(.c) c_int {
@@ -102,6 +98,13 @@ pub const HotkeyListener = struct {
 
         if (!grabbed) {
             utils.log("Warning: Failed to grab Right Alt key", .{});
+        }
+
+        // Without detectable auto-repeat a held key produces press/release
+        // pairs, which would end push-to-talk immediately.
+        var supported: c_int = 0;
+        if (c.XkbSetDetectableAutoRepeat(self.display.?, 1, &supported) == 0 or supported == 0) {
+            utils.log("Warning: X server lacks detectable auto-repeat; hold-to-talk may stutter", .{});
         }
 
         _ = c.XSelectInput(self.display.?, self.root_window, c.KeyPressMask | c.KeyReleaseMask);

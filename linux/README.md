@@ -1,332 +1,123 @@
-# Talkies Linux - Voice Transcription
+# Talkies for Linux
 
-Zig-based voice transcription application for Linux with global hotkey support for both X11 and Wayland.
+Local voice dictation that works like the macOS app: hold or tap a hotkey,
+speak, and the cleaned-up text is typed into whatever app has focus.
+Transcription runs on-device (whisper.cpp). LLM enhancement only talks to
+servers on this machine.
 
-## Features
+## What you get
 
-- 🎙️ **Voice Recording** - Press Right Alt to record, release to transcribe
-- 🚀 **GPU Acceleration** - Vulkan/CUDA support via whisper.cpp
-- ⌨️ **Auto-paste** - Inserts transcribed text at cursor automatically
-- 🔧 **Highly Configurable** - TOML-based configuration
-- 🖥️ **Dual Mode** - Works on both X11 and Wayland (Hyprland)
-- 📦 **Lightweight** - <5MB binary, <10 second builds
+| | |
+|---|---|
+| **Floating dictation window** | 520×140 pill with an animated gradient, a live 60-bar waveform, a status dot, and pipeline stages (Recording → Transcribing → Enhancing → Inserting → Done!). It never takes keyboard focus and hides 1.5 s after finishing. |
+| **Hotkey** | Right Alt. Hold it longer than `push_to_talk_threshold` (0.15 s) for push-to-talk, or tap it to start and stop. |
+| **Enhancement** | Off, **S1-mini** (on-device), **Ollama**, or **LM Studio**. Ollama and LM Studio use the five macOS presets: Grammar & Clarity, Technical Writing, Concise & Professional, Creative Enhancement, AI Companion. They also support the same tuning parameters, and Ollama accepts a custom system prompt and stop sequences. |
+| **Text insertion** | Clipboard plus a paste keystroke through a built-in uinput keyboard. Your previous clipboard is restored afterwards. |
+| **Tray icon** | Click to show or hide the window. The menu has Open Talkies, Start/Stop Recording, Settings…, and Quit Talkies. |
+| **Settings window** | General, Transcription, Enhancement, Output and Advanced pages. Changes save automatically after 0.5 s. |
+| **Voice assistant mode** | Speaks the result through `spd-say` or `espeak-ng`, and can optionally insert it too. |
+| **Linux extras** | Silence trimming (WebRTC VAD), YAP refinement window (opt-in), WebSocket API, and TXT/VTT/SRT export from the CLI. |
 
-## Quick Start
+## Build and run
 
 ```bash
-# Build
-./run.sh build
-
-# List audio devices
-zig-out/bin/talkies audio-list
-
-# Set your microphone
-zig-out/bin/talkies audio-set alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback
-
-# Download whisper model
-zig-out/bin/talkies models
-
-# Start daemon (if port is already in use, run: zig build cleanup)
-zig-out/bin/talkies daemon
+cd linux
+zig build                 # requires Zig master (0.16+), GTK4, libwhisper, libllama, PulseAudio, dbus
+zig build test
+./zig-out/bin/talkies daemon
 ```
+
+Runtime tools:
+- `wl-clipboard` or `xclip`, for the clipboard.
+- Write access to `/dev/uinput`, for pasting. Add a udev rule or join the `input` group.
+- `websocat`, for compositor hotkeys.
+- Optional: `speech-dispatcher` or `espeak-ng`, for voice assistant mode.
+
+## Hotkeys
+
+**X11:** Right Alt works out of the box through a global grab.
+
+**Wayland:** global key grabs aren't allowed, so bind the key in your
+compositor and forward it with `scripts/talkies-hotkey.sh`. Hyprland example
+(see `hyprland-overlay-rules.conf`):
+
+```ini
+bind  = ,    Alt_R, exec, ~/talkies/linux/scripts/talkies-hotkey.sh down
+bindr = ALT, Alt_R, exec, ~/talkies/linux/scripts/talkies-hotkey.sh up
+```
+
+With `down`/`up` you get the same hold-or-tap behaviour as macOS. Compositors
+without release bindings can use `talkies-hotkey.sh toggle`.
+
+On Hyprland the daemon applies window rules at startup with `hyprctl`, so the
+dictation window floats, stays pinned and never steals focus.
 
 ## Configuration
 
-### Hyprland (Wayland)
-
-For Hyprland users, add this to your `~/.config/hypr/hyprland.conf`:
-
-```bash
-# Talkies voice transcription daemon
-# Start the daemon on login (optional)
-exec-once = /path/to/talkies/linux/zig-out/bin/talkies daemon
-
-# Right Alt hotkey for recording
-# Note: This won't work directly - see workaround below
-```
-
-**Hyprland Workaround** (until native Wayland hotkey support is added):
-
-Since Hyprland doesn't support press-and-hold hotkeys natively, use this approach:
-
-1. Create a wrapper script `~/.config/hypr/scripts/talkies-record.sh`:
-
-```bash
-#!/bin/bash
-# Toggle recording with talkies
-# Usage: Bind to a key in Hyprland
-
-PIDFILE="/tmp/talkies-recording.pid"
-
-if [ -f "$PIDFILE" ]; then
-    # Stop recording
-    kill -TERM $(cat "$PIDFILE")
-    rm "$PIDFILE"
-else
-    # Start recording
-    /path/to/talkies/linux/zig-out/bin/talkies quick &
-    echo $! > "$PIDFILE"
-fi
-```
-
-2. Make it executable:
-```bash
-chmod +x ~/.config/hypr/scripts/talkies-record.sh
-```
-
-3. Add to hyprland.conf:
-```bash
-# Toggle recording with Super+Alt+T (easier to use than Right Alt)
-bind = $mainMod ALT, T, exec, ~/.config/hypr/scripts/talkies-record.sh
-
-# Or try Right Alt with keycode (may conflict with other apps):
-# bind = , code:108, exec, ~/.config/hypr/scripts/talkies-record.sh
-```
-
-**Better Hyprland Solution** (Recommended):
-
-Use `submap` for press-and-hold behavior:
-
-```bash
-# Right Alt press - start recording
-bind = , Alt_R, submap, recording
-submap = recording
-
-# Right Alt release - stop recording (handled by talkies daemon)
-bind = , Alt_R, submap, reset
-
-# Escape hatch
-bind = , escape, submap, reset
-submap = reset
-```
-
-**Note**: The daemon mode currently works best on X11. Full Wayland/Hyprland press-and-hold support is coming soon.
-
-### X11 (i3, bspwm, GNOME, KDE, etc.)
-
-On X11, the daemon automatically grabs the Right Alt key globally:
-
-```bash
-# Just start the daemon
-zig-out/bin/talkies daemon
-
-# Press and hold Right Alt to record
-# Release to transcribe and paste
-```
-
-If Right Alt conflicts with other applications:
-- Firefox: `about:config` → disable Right Alt bindings
-- foot terminal: Check `~/.config/foot/foot.ini`
-
-### Application Config
-
-Edit `~/.config/talkies/config.toml`:
+`~/.config/talkies/config.toml`. The sections mirror the macOS
+`~/.talkies/config.json` keys in snake_case:
 
 ```toml
-[audio]
-device = "alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback"
+[general]
+push_to_talk_threshold = 0.15
+show_hud = true
 
-[transcription]
-model = "small"       # Options: tiny, base, small, medium, large
-language = "en"
-threads = 4
+[enhancement]
+provider = "ollama"            # none | s1_mini | ollama | lm_studio
+
+[ollama]
+selected_model = "llama3.2:3b"
+host = "http://localhost:11434"
+enhancement_mode = "grammar"   # grammar | technical | concise | creative | companion
+temperature = 0.3
+top_p = 0.9
+top_k = 40
+repeat_penalty = 1.1
+context_length = 2048
+max_tokens = 500
+
+[lm_studio]
+endpoint = "http://127.0.0.1:1234"
+max_tokens = 4096
 
 [output]
-auto_paste = true     # true = paste at cursor, false = copy to clipboard
-export_format = "txt" # Options: txt, srt, vtt
+auto_paste = true
+paste_keybind = "ctrl+v"       # ctrl+shift+v for terminals
+restore_clipboard = true
 ```
 
-## Commands
+Older configs keep working: `[cleanup] s1_mini_enabled` still maps onto the
+enhancer setting.
 
-### Daemon Mode
-```bash
-talkies daemon              # Start background daemon with hotkey
-```
+## WebSocket API (`ws://127.0.0.1:6789`)
 
-### Audio Management
-```bash
-talkies audio-list          # List available input devices
-talkies audio-set <device>  # Set input device
-talkies audio               # Test recording (5 seconds)
-```
+Commands you can send:
+- `start_recording`
+- `stop_recording`
+- `toggle_recording`
+- `hotkey_down`
+- `hotkey_up`
+- `get_state`
+- `yap_accept`
+- `yap_refine`
+- `yap_cancel`
 
-### Transcription
-```bash
-talkies quick               # One-shot: record → transcribe → paste
-talkies transcribe          # Test transcription on anime_16k.wav
-talkies models              # Download whisper model from config
-```
+Events the daemon sends:
+- `state_changed`
+- `pipeline_stage`
+- `audio_level` (about 20 Hz while recording)
+- `transcription_complete`
+- `yap_refined`
+- `error`
 
-### Configuration
-```bash
-talkies config              # Show current configuration
-```
+Set `TALKIES_WS_PORT` to run a development build next to an installed daemon.
 
-## Building from Source
-
-### Dependencies
-
-- **Zig 0.16.0+** - Systems programming language
-- **PulseAudio** - Audio recording (`libpulse-simple`, `libpulse`)
-- **whisper.cpp** - Speech recognition (`libwhisper`)
-- **X11** (X11 only) - Global hotkeys (`libX11`)
-- **wl-clipboard** (Wayland) - Clipboard access (install `wl-clipboard` package)
-
-**No xdotool needed!** - Uses native Linux uinput for keyboard simulation
-
-### Gentoo/Funtoo
-
-```bash
-# Install dependencies
-doas emerge -av media-sound/pulseaudio app-accessibility/whisper-cpp x11-libs/libX11 gui-apps/wl-clipboard
-
-# Build
-./run.sh build
-
-# Setup uinput permissions (for text pasting)
-doas modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | doas tee /etc/udev/rules.d/99-uinput.rules
-doas udevadm control --reload-rules && doas udevadm trigger
-doas usermod -aG input $USER  # Logout and login for this to take effect
-
-# Install (optional)
-doas cp zig-out/bin/talkies /usr/local/bin/
-```
-
-### Arch Linux
-
-```bash
-# Install dependencies
-sudo pacman -S zig pulseaudio whisper-cpp libx11 wl-clipboard
-
-# Build
-./run.sh build
-
-# Setup uinput permissions (for text pasting)
-sudo modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-sudo usermod -aG input $USER  # Logout and login for this to take effect
-```
-
-### Ubuntu/Debian
-
-```bash
-# Install dependencies
-sudo apt install zig libpulse-dev libwhisper-dev libx11-dev wl-clipboard
-
-# Build
-./run.sh build
-
-# Setup uinput permissions (for text pasting)
-sudo modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-sudo usermod -aG input $USER  # Logout and login for this to take effect
-```
-
-## Performance
-
-- **Build time**: <10 seconds (debug), <20 seconds (release)
-- **Binary size**: ~3-5MB (excluding models)
-- **Model loading**: ~2-3 seconds (small model)
-- **Transcription**: GPU-accelerated (Vulkan/CUDA)
-- **Memory**: ~500MB (with small model loaded)
-
-## GPU Acceleration
-
-Talkies uses whisper.cpp which supports:
-
-- **Vulkan** - Universal GPU acceleration (NVIDIA, AMD, Intel)
-- **CUDA** - NVIDIA GPUs
-- **ROCm** - AMD GPUs
-- **CPU** - Fallback (slower but works everywhere)
-
-GPU is auto-detected. Check daemon output for:
-```
-ggml_vulkan: Found 1 Vulkan devices:
-ggml_vulkan: 0 = NVIDIA GeForce GTX 1070
-```
-
-## Troubleshooting
-
-### Port already in use (AddressInUse error)
-If you see `error: AddressInUse` when starting the daemon:
-
-```bash
-# Clean up stuck processes and free ports
-zig build cleanup
-
-# Or manually:
-./scripts/cleanup.sh
-```
-
-This kills any zombie `arecord` processes and frees port 6789 (WebSocket daemon).
-
-### Text not pasting (Permission denied on /dev/uinput)
-1. Check uinput module loaded: `lsmod | grep uinput`
-2. Load if needed: `doas modprobe uinput`
-3. Check permissions: `ls -la /dev/uinput`
-4. Add udev rule (see installation instructions above)
-5. Add yourself to `input` group: `doas usermod -aG input $USER`
-6. **Important**: Logout and login for group changes to take effect
-7. Verify group membership: `groups | grep input`
-
-### No audio recorded (0 bytes)
-1. Check device is correct: `talkies audio-list`
-2. Test recording: `talkies audio`
-3. Verify PulseAudio: `pactl list sources short`
-
-### Hotkey not working (X11)
-1. Check for conflicts: `xmodmap -pke | grep Alt_R`
-2. Try different key in config (future feature)
-3. Close Firefox/foot if they grab Right Alt
-
-### Hotkey not working (Wayland/Hyprland)
-1. Make sure daemon is running: `ps aux | grep talkies`
-2. Check Hyprland config syntax
-3. Use the toggle script workaround (see Configuration section)
-4. Reload Hyprland config: `hyprctl reload`
-
-### Transcription fails
-1. Download model: `talkies models`
-2. Check model exists: `ls ~/.local/share/talkies/models/`
-3. Verify whisper.cpp: `ldd zig-out/bin/talkies | grep whisper`
-
-### GPU not detected
-1. Check Vulkan: `vulkaninfo | grep deviceName`
-2. Install Vulkan drivers for your GPU
-3. Fallback to CPU works automatically (slower)
-
-## Architecture
+## Other commands
 
 ```
-src/
-├── main.zig       - CLI entry point, daemon orchestration
-├── audio.zig      - PulseAudio recording (16kHz mono PCM)
-├── whisper.zig    - whisper.cpp C FFI bindings
-├── hotkey.zig     - X11 global hotkey listener
-├── clipboard.zig  - Wayland/X11 clipboard (wl-copy/xclip)
-├── input.zig      - Text insertion (xdotool)
-├── config.zig     - TOML config, XDG directories
-└── utils.zig      - Logging, helpers
+talkies quick | record | models | config | audio | audio-list | audio-set <dev>
+talkies transcribe file.wav --format srt --output file.srt
 ```
 
-## Comparison to Windows/macOS
-
-| Feature | Linux (Zig) | Windows (.NET) | macOS (Swift) |
-|---------|-------------|----------------|---------------|
-| Build time | <10s | ~60s | ~30s |
-| Binary size | 3-5MB | 50MB | 20MB |
-| Dependencies | 1 (whisper.cpp) | 5+ NuGet | 3+ SPM |
-| GPU | Vulkan/CUDA/ROCm | CUDA | Metal |
-| Hotkey | X11/Wayland | Global | Global |
-| Interface | CLI/Daemon | GUI (WPF) | GUI (SwiftUI) |
-
-## Contributing
-
-See [CLAUDE.md](../CLAUDE.md) for development guidelines.
-
-## License
-
-See root LICENSE file.
+More docs: [`docs/`](docs/) (build, dependencies, shipping) and the project
+wiki in [`../docs/`](../docs/index.md).

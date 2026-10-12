@@ -7,7 +7,8 @@
 typedef struct DaemonStatusWindow DaemonStatusWindow;
 
 // GTK initialization (call once at startup)
-void daemon_status_gtk_init(void);
+// Returns 0 when no display is available (the daemon then runs headless).
+int daemon_status_gtk_init(void);
 
 // GTK event loop - process pending events (call in tight loop)
 void daemon_status_gtk_process_events(void);
@@ -46,8 +47,5 @@ void daemon_status_window_set_stats(DaemonStatusWindow *win, int sessions, int e
 
 // Callbacks
 void daemon_status_window_set_settings_callback(DaemonStatusWindow *win, void (*callback)(void*), void *user_data);
-
-// Settings dialog
-void daemon_status_window_show_settings_dialog(DaemonStatusWindow *win, const char *config_path);
 
 #endif // DAEMON_STATUS_GTK_H

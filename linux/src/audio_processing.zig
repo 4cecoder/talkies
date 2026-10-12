@@ -25,13 +25,14 @@ pub fn readWavFile(allocator: std.mem.Allocator, path: []const u8) !struct {
     sample_rate: u32,
     channels: u16,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const file_io = utils.io();
+    const file = try std.Io.Dir.cwd().openFile(file_io, path, .{});
+    defer file.close(file_io);
 
     // Read WAV header
     var header: WavHeader = undefined;
     const header_bytes = std.mem.asBytes(&header);
-    _ = try file.preadAll(header_bytes, 0);
+    _ = try file.readPositionalAll(file_io, header_bytes, 0);
 
     // Validate WAV format
     if (!std.mem.eql(u8, &header.riff_header, "RIFF") or
@@ -55,7 +56,7 @@ pub fn readWavFile(allocator: std.mem.Allocator, path: []const u8) !struct {
     errdefer allocator.free(samples);
 
     const bytes = std.mem.sliceAsBytes(samples);
-    _ = try file.preadAll(bytes, @sizeOf(WavHeader));
+    _ = try file.readPositionalAll(file_io, bytes, @sizeOf(WavHeader));
 
     return .{
         .samples = samples,
@@ -66,8 +67,9 @@ pub fn readWavFile(allocator: std.mem.Allocator, path: []const u8) !struct {
 
 /// Write WAV file from PCM samples
 pub fn writeWavFile(path: []const u8, samples: []const i16, sample_rate: u32, channels: u16) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    const file_io = utils.io();
+    const file = try std.Io.Dir.cwd().createFile(file_io, path, .{});
+    defer file.close(file_io);
 
     // Create WAV header
     const data_bytes = @as(u32, @intCast(samples.len * 2)); // 16-bit = 2 bytes per sample
@@ -92,11 +94,11 @@ pub fn writeWavFile(path: []const u8, samples: []const i16, sample_rate: u32, ch
 
     // Write header
     const header_bytes = std.mem.asBytes(&header);
-    try file.writeAll(header_bytes);
+    try file.writeStreamingAll(file_io, header_bytes);
 
     // Write PCM data
     const data_bytes_slice = std.mem.sliceAsBytes(samples);
-    try file.writeAll(data_bytes_slice);
+    try file.writeStreamingAll(file_io, data_bytes_slice);
 }
 
 /// Process WAV file with VAD to trim silence
@@ -161,5 +163,5 @@ test "read and write WAV file" {
     try std.testing.expectEqualSlices(i16, &test_samples, wav.samples);
 
     // Cleanup
-    std.fs.cwd().deleteFile(test_path) catch {};
+    std.Io.Dir.cwd().deleteFile(utils.io(), test_path) catch {};
 }

@@ -1,6 +1,50 @@
 const std = @import("std");
-const posix = std.posix;
+const utils = @import("utils.zig");
 const linux = std.os.linux;
+
+/// Small Linux syscall adapter for APIs removed from std.posix in Zig 0.17.
+const posix = struct {
+    const socket_t = std.posix.socket_t;
+    const sockaddr = std.posix.sockaddr;
+    const socklen_t = std.posix.socklen_t;
+    const AF = std.posix.AF;
+    const SOCK = std.posix.SOCK;
+    const SOL = std.posix.SOL;
+    const SO = std.posix.SO;
+
+    fn check(result: usize) !usize {
+        if (linux.errno(result) != .SUCCESS) return error.SocketOperationFailed;
+        return result;
+    }
+
+    fn close(fd: socket_t) void {
+        _ = linux.close(fd);
+    }
+
+    fn socket(domain: u32, socket_type: u32, protocol: u32) !socket_t {
+        return @intCast(try check(linux.socket(domain, socket_type, protocol)));
+    }
+
+    fn setsockopt(fd: socket_t, level: i32, option: u32, value: []const u8) !void {
+        _ = try check(linux.setsockopt(fd, level, option, value.ptr, @intCast(value.len)));
+    }
+
+    fn bind(fd: socket_t, address: *const sockaddr, length: usize) !void {
+        _ = try check(linux.bind(fd, address, @intCast(length)));
+    }
+
+    fn listen(fd: socket_t, backlog: u32) !void {
+        _ = try check(linux.listen(fd, backlog));
+    }
+
+    fn read(fd: socket_t, buffer: []u8) !usize {
+        return try check(linux.read(fd, buffer.ptr, buffer.len));
+    }
+
+    fn write(fd: socket_t, buffer: []const u8) !usize {
+        return try check(linux.write(fd, buffer.ptr, buffer.len));
+    }
+};
 
 /// Simple WebSocket server for Talkies daemon using posix sockets
 /// Handles text messages only, no binary support needed
@@ -8,7 +52,9 @@ pub const Server = struct {
     allocator: std.mem.Allocator,
     socket_fd: posix.socket_t,
     clients: std.ArrayList(*Client),
+    clients_mutex: std.Io.Mutex = std.Io.Mutex.init,
     running: bool,
+    port: u16 = 0,
 
     pub const Client = struct {
         socket_fd: posix.socket_t,
@@ -30,7 +76,7 @@ pub const Server = struct {
 
         pub fn send(self: *Client, message: []const u8) !void {
             // Simple WebSocket frame: FIN=1, opcode=1 (text), no mask
-            var frame: std.ArrayList(u8) = .{};
+            var frame: std.ArrayList(u8) = .empty;
             defer frame.deinit(self.allocator);
 
             // Frame header
@@ -100,17 +146,13 @@ pub const Server = struct {
         const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM, 0);
         errdefer posix.close(sock);
 
-        // Set SO_REUSEADDR and SO_REUSEPORT for rapid restart
+        // SO_REUSEADDR allows rapid restart. SO_REUSEPORT is deliberately not
+        // set: it would let a second daemon share the port and silently
+        // receive half of the hotkey commands.
         try posix.setsockopt(
             sock,
             posix.SOL.SOCKET,
             posix.SO.REUSEADDR,
-            &std.mem.toBytes(@as(c_int, 1)),
-        );
-        try posix.setsockopt(
-            sock,
-            posix.SOL.SOCKET,
-            posix.SO.REUSEPORT,
             &std.mem.toBytes(@as(c_int, 1)),
         );
 
@@ -119,7 +161,7 @@ pub const Server = struct {
             .family = posix.AF.INET,
             .port = std.mem.nativeToBig(u16, port),
             .addr = 0x0100007F, // 127.0.0.1 in network byte order
-            .zero = [_]u8{0} ** 8,
+            .zero = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
         };
         const sockaddr = @as(*const posix.sockaddr, @ptrCast(&addr));
         try posix.bind(sock, sockaddr, @sizeOf(posix.sockaddr.in));
@@ -130,22 +172,22 @@ pub const Server = struct {
         return Server{
             .allocator = allocator,
             .socket_fd = sock,
-            .clients = .{},
+            .clients = std.ArrayList(*Client).empty,
             .running = false,
+            .port = port,
         };
     }
 
+    /// Client threads own their Client allocations, so only the list and the
+    /// listening socket are released here.
     pub fn deinit(self: *Server) void {
-        for (self.clients.items) |client| {
-            client.deinit();
-        }
         self.clients.deinit(self.allocator);
         posix.close(self.socket_fd);
     }
 
     pub fn start(self: *Server, comptime onMessage: anytype, context: anytype) !void {
         self.running = true;
-        std.debug.print("WebSocket server listening on ws://127.0.0.1:6789\n", .{});
+        std.debug.print("WebSocket server listening on ws://127.0.0.1:{d}\n", .{self.port});
 
         while (self.running) {
             // Accept connection
@@ -154,9 +196,9 @@ pub const Server = struct {
 
             // Use direct syscall to work around error set mismatch
             const rc = linux.accept4(@intCast(self.socket_fd), @ptrCast(&client_addr), &addr_len, 0);
-            const client_sock: posix.socket_t = if (rc < 0) {
-                std.debug.print("Accept error: {d}\n", .{-rc});
-                posix.nanosleep(0, 100 * std.time.ns_per_ms);
+            const client_sock: posix.socket_t = if (linux.errno(rc) != .SUCCESS) {
+                std.debug.print("Accept error: {}\n", .{linux.errno(rc)});
+                utils.sleepNanoseconds(100 * std.time.ns_per_ms);
                 continue;
             } else @intCast(rc);
 
@@ -167,36 +209,59 @@ pub const Server = struct {
                 continue;
             };
 
-            // Add client
             const client = try Client.init(client_sock, self.allocator);
-            try self.clients.append(self.allocator, client);
-            std.debug.print("Client connected (total: {})\n", .{self.clients.items.len});
+            {
+                self.clients_mutex.lockUncancelable(utils.io());
+                defer self.clients_mutex.unlock(utils.io());
+                try self.clients.append(self.allocator, client);
+                std.debug.print("Client connected (total: {})\n", .{self.clients.items.len});
+            }
 
-            // Handle incoming messages in a loop for this client
-            while (true) {
-                var message_buf: [4096]u8 = undefined;
-                const message = client.receive(&message_buf) catch |err| {
-                    std.debug.print("Client disconnected: {}\n", .{err});
-                    // Remove client from list
-                    var i: usize = 0;
-                    while (i < self.clients.items.len) {
-                        if (self.clients.items[i] == client) {
-                            client.deinit();
-                            _ = self.clients.orderedRemove(i);
-                            std.debug.print("Client removed (total: {})\n", .{self.clients.items.len});
-                            break;
-                        }
-                        i += 1;
-                    }
-                    break; // Exit client message loop
-                };
+            // Serve each client on its own thread so a long-lived client
+            // (e.g. the overlay) never blocks short-lived hotkey commands.
+            const thread = std.Thread.spawn(.{}, serveClient, .{ self, client, onMessage, context }) catch |err| {
+                std.debug.print("Failed to spawn client thread: {}\n", .{err});
+                self.removeClient(client);
+                continue;
+            };
+            thread.detach();
+        }
+    }
 
-                // Call message handler
-                onMessage(self.allocator, message, context) catch |err| {
-                    std.debug.print("Message handler error: {}\n", .{err});
-                };
+    fn serveClient(self: *Server, client: *Client, comptime onMessage: anytype, context: anytype) void {
+        while (true) {
+            var message_buf: [4096]u8 = undefined;
+            const message = client.receive(&message_buf) catch |err| {
+                std.debug.print("Client disconnected: {}\n", .{err});
+                self.removeClient(client);
+                return;
+            };
+            onMessage(self.allocator, message, context) catch |err| {
+                std.debug.print("Message handler error: {}\n", .{err});
+            };
+        }
+    }
+
+    /// Called only by the client's own thread, which owns the Client's
+    /// lifetime; `broadcast` merely unlists clients whose send failed.
+    fn removeClient(self: *Server, client: *Client) void {
+        {
+            self.clients_mutex.lockUncancelable(utils.io());
+            defer self.clients_mutex.unlock(utils.io());
+            for (self.clients.items, 0..) |item, i| {
+                if (item == client) {
+                    _ = self.clients.orderedRemove(i);
+                    break;
+                }
             }
         }
+        client.deinit();
+    }
+
+    pub fn clientCount(self: *Server) usize {
+        self.clients_mutex.lockUncancelable(utils.io());
+        defer self.clients_mutex.unlock(utils.io());
+        return self.clients.items.len;
     }
 
     fn handleHandshake(self: *Server, socket_fd: posix.socket_t) !void {
@@ -228,7 +293,8 @@ pub const Server = struct {
 
         // Send handshake response (use stack buffer for fixed-size response)
         var response_buf: [512]u8 = undefined;
-        const response = try std.fmt.bufPrint(&response_buf,
+        const response = try std.fmt.bufPrint(
+            &response_buf,
             "HTTP/1.1 101 Switching Protocols\r\n" ++
                 "Upgrade: websocket\r\n" ++
                 "Connection: Upgrade\r\n" ++
@@ -241,12 +307,13 @@ pub const Server = struct {
     }
 
     pub fn broadcast(self: *Server, message: []const u8) !void {
+        self.clients_mutex.lockUncancelable(utils.io());
+        defer self.clients_mutex.unlock(utils.io());
         var i: usize = 0;
         while (i < self.clients.items.len) {
             const client = self.clients.items[i];
             client.send(message) catch {
-                // Client disconnected, remove it
-                client.deinit();
+                // Unlist only; the client's thread frees it once receive fails.
                 _ = self.clients.orderedRemove(i);
                 std.debug.print("Client disconnected (total: {})\n", .{self.clients.items.len});
                 continue;

@@ -50,22 +50,18 @@ pub const Protocol = enum {
     /// This is the recommended way to determine the protocol at runtime.
     pub fn detect() Protocol {
         // Check WAYLAND_DISPLAY first (most reliable for Wayland)
-        if (std.process.hasEnvVarConstant("WAYLAND_DISPLAY")) {
+        if (utils.getEnv("WAYLAND_DISPLAY") != null) {
             return .wayland;
         }
 
         // Check XDG_SESSION_TYPE (set by display managers)
-        const session_type = std.process.getEnvVarOwned(
-            std.heap.page_allocator,
-            "XDG_SESSION_TYPE",
-        ) catch {
+        const session_type = utils.getEnv("XDG_SESSION_TYPE") orelse {
             // If we can't get XDG_SESSION_TYPE, fall back to checking DISPLAY
-            if (std.process.hasEnvVarConstant("DISPLAY")) {
+            if (utils.getEnv("DISPLAY") != null) {
                 return .x11;
             }
             return .unknown;
         };
-        defer std.heap.page_allocator.free(session_type);
 
         if (std.mem.eql(u8, session_type, "wayland")) {
             return .wayland;
@@ -74,7 +70,7 @@ pub const Protocol = enum {
         }
 
         // Final fallback: check DISPLAY for X11
-        if (std.process.hasEnvVarConstant("DISPLAY")) {
+        if (utils.getEnv("DISPLAY") != null) {
             return .x11;
         }
 

@@ -37,13 +37,8 @@ struct YapWindowGtk {
     void (*clarification_callback)(void*, void*);  // Answer callback
 };
 
-static int gtk_initialized = 0;
-
-void yap_window_gtk_init(void) {
-    if (!gtk_initialized) {
-        gtk_init();
-        gtk_initialized = 1;
-    }
+int yap_window_gtk_init(void) {
+    return gtk_is_initialized() || gtk_init_check();
 }
 
 void yap_window_gtk_process_events(void) {
@@ -55,7 +50,7 @@ void yap_window_gtk_process_events(void) {
 
 YapWindowGtk* yap_window_gtk_new(void) {
     // Ensure GTK is initialized
-    yap_window_gtk_init();
+    if (!yap_window_gtk_init()) return NULL;
 
     YapWindowGtk *win = g_malloc0(sizeof(YapWindowGtk));
 

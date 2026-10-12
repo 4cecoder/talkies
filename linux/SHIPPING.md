@@ -7,11 +7,12 @@ Quick reference for building and distributing Talkies Linux across different pla
 ### Runtime Dependencies (Required)
 1. **PulseAudio** - Audio system (pre-installed on most distros)
 2. **whisper-cpp 1.8.2+** - Speech transcription library
-3. **xclip** (X11) or **wl-clipboard** (Wayland) - Clipboard access
-4. **xdotool** - Text insertion
+3. **llama.cpp** - S1-mini transcript cleanup
+4. **xclip** (X11) or **wl-clipboard** (Wayland) - Clipboard access
+5. **xdotool** - Text insertion
 
 ### Build Dependencies
-1. **Zig 0.16.0+** - Compiler
+1. **Zig master (0.18.0-dev.35+)** - Compiler (release CI tracks master)
 
 ## Quick Install by Distribution
 
@@ -19,6 +20,7 @@ Quick reference for building and distributing Talkies Linux across different pla
 ```bash
 doas emerge -av media-sound/pulseaudio \\
                 app-accessibility/whisper-cpp \\
+                sci-misc/llama-cpp \\
                 x11-misc/xclip \\
                 x11-misc/xdotool
 
@@ -81,6 +83,7 @@ DEPEND="
     >=dev-lang/zig-0.16.0
     media-sound/pulseaudio
     app-accessibility/whisper-cpp
+    sci-misc/llama-cpp
     x11-misc/xclip
     x11-misc/xdotool
 "

@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {
+      "terms": [" Talkies ", "talkies", "Qwen3", "", "  ", "S1-mini"],
+      "expectedPrompt": "Talkies, Qwen3, S1-mini"
+    },
+    {
+      "terms": [],
+      "expectedPrompt": ""
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "transcript": "  um, I think we should send it tomorrow.  \n",
+      "style": "casual",
+      "structure": "prose",
+      "context": "general",
+      "expected": "<|im_start|>system\nYou are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.<|im_end|>\n<|im_start|>user\n[Styling: casual] [Structure: prose] [Context: general]\num, I think we should send it tomorrow.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "transcript": "  send the agenda as bullet points  ",
+      "style": "semi-casual",
+      "structure": "lists",
+      "context": "email",
+      "expected": "<|im_start|>system\nYou are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.<|im_end|>\n<|im_start|>user\n[Styling: semi-casual] [Structure: lists] [Context: email]\nsend the agenda as bullet points<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "transcript": "  confirm the appointment for Friday  ",
+      "style": "semi-formal",
+      "structure": "prose",
+      "context": "email",
+      "expected": "<|im_start|>system\nYou are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.<|im_end|>\n<|im_start|>user\n[Styling: semi-formal] [Structure: prose] [Context: email]\nconfirm the appointment for Friday<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "transcript": "  first item, second item  ",
+      "style": "formal",
+      "structure": "lists",
+      "context": "general",
+      "expected": "<|im_start|>system\nYou are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.<|im_end|>\n<|im_start|>user\n[Styling: formal] [Structure: lists] [Context: general]\nfirst item, second item<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    }
+  ]
+}

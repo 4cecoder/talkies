@@ -1,10 +1,9 @@
 const std = @import("std");
 const daemon_ws = @import("daemon_ws.zig");
+const utils = @import("utils.zig");
 
 // GTK C shim wrapper
-const c = @cImport({
-    @cInclude("daemon_status_gtk.h");
-});
+const c = @import("c_daemon_status");
 
 pub const LogLevel = enum {
     info,
@@ -28,19 +27,14 @@ pub const DaemonStatusWindow = struct {
 
     pub fn create(allocator: std.mem.Allocator) !*DaemonStatusWindow {
         const self = try allocator.create(DaemonStatusWindow);
-        errdefer allocator.destroy(self);
 
-        const gtk_win = c.daemon_status_window_new() orelse {
-            std.log.err("[GTK] Failed to create status window (backend unavailable or widget creation failed)", .{});
-            return error.GtkInitFailed;
-        };
+        const gtk_win = c.daemon_status_window_new() orelse return error.GtkInitFailed;
 
         self.* = .{
             .allocator = allocator,
             .gtk_win = gtk_win,
         };
 
-        std.log.info("[GTK] Status window created successfully", .{});
         return self;
     }
 
@@ -59,19 +53,19 @@ pub const DaemonStatusWindow = struct {
 
     // Status updates
     pub fn setState(self: *DaemonStatusWindow, state: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, state) catch return;
+        const cstr = utils.dupeZ(self.allocator, state) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_set_state(self.gtk_win, cstr.ptr);
     }
 
     pub fn setModel(self: *DaemonStatusWindow, model: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, model) catch return;
+        const cstr = utils.dupeZ(self.allocator, model) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_set_model(self.gtk_win, cstr.ptr);
     }
 
     pub fn setPlatform(self: *DaemonStatusWindow, platform: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, platform) catch return;
+        const cstr = utils.dupeZ(self.allocator, platform) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_set_platform(self.gtk_win, cstr.ptr);
     }
@@ -90,20 +84,20 @@ pub const DaemonStatusWindow = struct {
 
     // Activity updates
     pub fn setActivity(self: *DaemonStatusWindow, activity: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, activity) catch return;
+        const cstr = utils.dupeZ(self.allocator, activity) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_set_activity(self.gtk_win, cstr.ptr);
     }
 
     pub fn setLastTranscription(self: *DaemonStatusWindow, time: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, time) catch return;
+        const cstr = utils.dupeZ(self.allocator, time) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_set_last_transcription(self.gtk_win, cstr.ptr);
     }
 
     // Log management
     pub fn addLog(self: *DaemonStatusWindow, level: LogLevel, message: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, message) catch return;
+        const cstr = utils.dupeZ(self.allocator, message) catch return;
         defer self.allocator.free(cstr);
         c.daemon_status_window_add_log(self.gtk_win, level.toCLevel(), cstr.ptr);
     }
@@ -126,16 +120,22 @@ pub const DaemonStatusWindow = struct {
     pub fn processEvents() void {
         c.daemon_status_gtk_process_events();
     }
-
-    /// Show settings dialog
-    pub fn showSettingsDialog(self: *DaemonStatusWindow, config_path: []const u8) void {
-        const cstr = self.allocator.dupeZ(u8, config_path) catch return;
-        defer self.allocator.free(cstr);
-        c.daemon_status_window_show_settings_dialog(self.gtk_win, cstr.ptr);
-    }
-
-    /// Set settings callback
-    pub fn setSettingsCallback(self: *DaemonStatusWindow, callback: ?*const fn (?*anyopaque) callconv(.c) void, user_data: ?*anyopaque) void {
-        c.daemon_status_window_set_settings_callback(self.gtk_win, callback, user_data);
-    }
 };
+
+test "GTK status window C API tolerates null window pointers" {
+    const win: ?*c.DaemonStatusWindow = null;
+    c.daemon_status_window_show(win);
+    c.daemon_status_window_hide(win);
+    c.daemon_status_window_set_state(win, "idle");
+    c.daemon_status_window_set_model(win, "model");
+    c.daemon_status_window_set_platform(win, "platform");
+    c.daemon_status_window_set_clients(win, 0);
+    c.daemon_status_window_set_yap_enabled(win, 0);
+    c.daemon_status_window_set_ollama_connected(win, 0);
+    c.daemon_status_window_set_activity(win, "idle");
+    c.daemon_status_window_set_last_transcription(win, "never");
+    c.daemon_status_window_add_log(win, c.LOG_LEVEL_INFO, "test");
+    c.daemon_status_window_clear_logs(win);
+    c.daemon_status_window_set_stats(win, 0, 0, 0);
+    c.daemon_status_window_set_settings_callback(win, null, null);
+}

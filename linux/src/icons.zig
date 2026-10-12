@@ -49,10 +49,11 @@ pub const Icons = struct {
         errdefer allocator.free(path);
 
         // Write icon data to temp file (only if it doesn't exist)
-        const file = try std.fs.cwd().createFile(path, .{ .exclusive = false });
-        defer file.close();
+        const file_io = utils.io();
+        const file = try std.Io.Dir.cwd().createFile(file_io, path, .{ .exclusive = false });
+        defer file.close(file_io);
 
-        try file.writeAll(icon_data);
+        try file.writeStreamingAll(file_io, icon_data);
 
         return path;
     }
@@ -70,10 +71,11 @@ pub const Icons = struct {
             );
             defer allocator.free(filename);
 
-            const file = try std.fs.cwd().createFile(filename, .{});
-            defer file.close();
+            const file_io = utils.io();
+            const file = try std.Io.Dir.cwd().createFile(file_io, filename, .{});
+            defer file.close(file_io);
 
-            try file.writeAll(icon_data);
+            try file.writeStreamingAll(file_io, icon_data);
         }
     }
 };

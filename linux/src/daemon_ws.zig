@@ -1,21 +1,26 @@
 const std = @import("std");
 const websocket = @import("websocket.zig");
+const utils = @import("utils.zig");
 
 /// WebSocket message types for Talkies daemon
 pub const MessageType = enum {
     // Commands (client → server)
     start_recording,
     stop_recording,
+    toggle_recording,
+    hotkey_down,
+    hotkey_up,
     get_state,
-    yap_accept,     // Accept current refinement and paste
-    yap_refine,     // Request another refinement (with optional new context)
-    yap_cancel,     // Cancel YAP mode, paste original
+    yap_accept, // Accept current refinement and paste
+    yap_refine, // Request another refinement (with optional new context)
+    yap_cancel, // Cancel YAP mode, paste original
 
     // Events (server → client)
     state_changed,
     audio_level,
+    pipeline_stage,
     transcription_complete,
-    yap_refined,    // New refinement ready
+    yap_refined, // New refinement ready
     @"error",
 };
 
@@ -36,13 +41,22 @@ pub const State = enum {
     }
 };
 
+/// Recording commands from WebSocket clients, consumed by the daemon loop.
+pub const RecordCommand = enum {
+    start, // start_recording (legacy toggle script)
+    stop, // stop_recording (legacy toggle script)
+    toggle, // toggle_recording
+    hotkey_down, // compositor `bind` - press half of push-to-talk / tap
+    hotkey_up, // compositor `bindr` - release half
+};
+
 /// YAP command types for interactive refinement
 pub const YapCommand = enum {
-    accept,  // Accept current refinement and paste
-    refine,  // Request another refinement
-    cancel,  // Cancel YAP mode, paste original
-    append_transcription,  // Append new transcription to sandbox
-    request_clarification,  // Request clarification questions before first refinement
+    accept, // Accept current refinement and paste
+    refine, // Request another refinement
+    cancel, // Cancel YAP mode, paste original
+    append_transcription, // Append new transcription to sandbox
+    request_clarification, // Request clarification questions before first refinement
 
     pub fn toString(self: YapCommand) []const u8 {
         return switch (self) {
@@ -57,9 +71,9 @@ pub const YapCommand = enum {
 
 /// Clarification question with multiple-choice options
 pub const ClarificationQuestion = struct {
-    id: []const u8,         // "q1", "q2", "q3"
-    text: []const u8,       // Question text
-    options: [][]const u8,  // Answer options
+    id: []const u8, // "q1", "q2", "q3"
+    text: []const u8, // Question text
+    options: [][]const u8, // Answer options
 
     pub fn deinit(self: *ClarificationQuestion, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
@@ -87,39 +101,44 @@ pub const DaemonState = struct {
     allocator: std.mem.Allocator,
     ws_server: *websocket.Server,
     current_state: State,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
+
+    // Recording command queue (WebSocket thread -> daemon loop)
+    record_commands: [16]RecordCommand = undefined,
+    record_command_count: usize = 0,
+    record_mutex: std.Io.Mutex = std.Io.Mutex.init,
 
     // YAP command queue (for interactive refinement)
     yap_command: ?YapCommand,
-    yap_refine_context: ?[]const u8,  // Optional context for refine command
-    yap_append_text: ?[]const u8,  // Pending transcription to append
-    yap_mutex: std.Thread.Mutex,
+    yap_refine_context: ?[]const u8, // Optional context for refine command
+    yap_append_text: ?[]const u8, // Pending transcription to append
+    yap_mutex: std.Io.Mutex,
 
     // Clarification phase state
     clarification_questions: ?[]ClarificationQuestion,
     clarification_answers: std.ArrayListUnmanaged(ClarificationAnswer),
-    clarification_mutex: std.Thread.Mutex,
+    clarification_mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, ws_server: *websocket.Server) DaemonState {
         return .{
             .allocator = allocator,
             .ws_server = ws_server,
             .current_state = .idle,
-            .mutex = .{},
+            .mutex = std.Io.Mutex.init,
             .yap_command = null,
             .yap_refine_context = null,
             .yap_append_text = null,
-            .yap_mutex = .{},
+            .yap_mutex = std.Io.Mutex.init,
             .clarification_questions = null,
-            .clarification_answers = .{},
-            .clarification_mutex = .{},
+            .clarification_answers = .empty,
+            .clarification_mutex = std.Io.Mutex.init,
         };
     }
 
     /// Set state and broadcast to all connected clients
     pub fn setState(self: *DaemonState, new_state: State) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lockUncancelable(utils.io());
+        defer self.mutex.unlock(utils.io());
 
         if (self.current_state == new_state) return; // No change
 
@@ -127,8 +146,8 @@ pub const DaemonState = struct {
         std.debug.print("State changed: {s}\n", .{new_state.toString()});
 
         // Broadcast state change
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"state_changed\",\"data\":{{\"state\":\"{s}\",\"timestamp\":{d}}}}}",
@@ -139,10 +158,34 @@ pub const DaemonState = struct {
         try self.ws_server.broadcast(message);
     }
 
+    /// Queue a recording command (thread-safe). Drops commands when the
+    /// queue is full, which only happens if the daemon loop is wedged.
+    pub fn pushRecordCommand(self: *DaemonState, command: RecordCommand) void {
+        self.record_mutex.lockUncancelable(utils.io());
+        defer self.record_mutex.unlock(utils.io());
+        if (self.record_command_count == self.record_commands.len) {
+            utils.logError("Recording command queue full; dropping {s}", .{@tagName(command)});
+            return;
+        }
+        self.record_commands[self.record_command_count] = command;
+        self.record_command_count += 1;
+    }
+
+    /// Pop the oldest queued recording command (thread-safe).
+    pub fn popRecordCommand(self: *DaemonState) ?RecordCommand {
+        self.record_mutex.lockUncancelable(utils.io());
+        defer self.record_mutex.unlock(utils.io());
+        if (self.record_command_count == 0) return null;
+        const command = self.record_commands[0];
+        std.mem.copyForwards(RecordCommand, self.record_commands[0 .. self.record_command_count - 1], self.record_commands[1..self.record_command_count]);
+        self.record_command_count -= 1;
+        return command;
+    }
+
     /// Broadcast audio level to all clients
     pub fn broadcastAudioLevel(self: *DaemonState, level: f32) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"audio_level\",\"data\":{{\"level\":{d:.2},\"timestamp\":{d}}}}}",
@@ -156,7 +199,7 @@ pub const DaemonState = struct {
     /// Broadcast waveform data (array of levels)
     pub fn broadcastWaveform(self: *DaemonState, levels: []const f32) !void {
         // Build JSON array
-        var json: std.ArrayList(u8) = .{};
+        var json: std.ArrayList(u8) = .empty;
         defer json.deinit(self.allocator);
 
         try json.appendSlice(self.allocator, "{\"type\":\"waveform_update\",\"data\":{\"levels\":[");
@@ -166,8 +209,8 @@ pub const DaemonState = struct {
             try json.writer().print("{d:.2}", .{level});
         }
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         try json.writer().print("],\"timestamp\":{d}}}}}", .{timestamp_ms});
 
         try self.ws_server.broadcast(json.items);
@@ -176,7 +219,7 @@ pub const DaemonState = struct {
     /// Broadcast transcription completion
     pub fn broadcastTranscription(self: *DaemonState, text: []const u8, duration_ms: i64) !void {
         // Escape JSON string
-        var escaped: std.ArrayList(u8) = .{};
+        var escaped: std.ArrayList(u8) = .empty;
         defer escaped.deinit(self.allocator);
 
         for (text) |c| {
@@ -190,8 +233,8 @@ pub const DaemonState = struct {
             }
         }
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
         const message = try std.fmt.allocPrint(
             self.allocator,
             "{{\"type\":\"transcription_complete\",\"data\":{{\"text\":\"{s}\",\"duration_ms\":{d},\"timestamp\":{d}}}}}",
@@ -222,7 +265,7 @@ pub const DaemonState = struct {
         original_chars: usize,
     ) !void {
         // Escape JSON string
-        var escaped: std.ArrayList(u8) = .{};
+        var escaped: std.ArrayList(u8) = .empty;
         defer escaped.deinit(self.allocator);
 
         for (text) |c| {
@@ -243,8 +286,8 @@ pub const DaemonState = struct {
         else
             1.0;
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        const timestamp_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+        const ts = std.Io.Timestamp.now(utils.io(), .awake);
+        const timestamp_ms = ts.toMilliseconds();
 
         const message = try std.fmt.allocPrint(
             self.allocator,
@@ -260,15 +303,15 @@ pub const DaemonState = struct {
 
     /// Get current state
     pub fn getState(self: *DaemonState) State {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        self.mutex.lockUncancelable(utils.io());
+        defer self.mutex.unlock(utils.io());
         return self.current_state;
     }
 
     /// Set YAP command (thread-safe)
     pub fn setYapCommand(self: *DaemonState, command: YapCommand, context: ?[]const u8) !void {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
 
         // Clear any existing context
         if (self.yap_refine_context) |old_ctx| {
@@ -289,15 +332,15 @@ pub const DaemonState = struct {
 
     /// Get YAP command (thread-safe, non-blocking)
     pub fn getYapCommand(self: *DaemonState) ?YapCommand {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
         return self.yap_command;
     }
 
     /// Get YAP refine context (thread-safe, caller owns returned memory)
     pub fn getYapRefineContext(self: *DaemonState) ?[]const u8 {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
 
         if (self.yap_refine_context) |ctx| {
             // Return a copy so caller can use it safely
@@ -308,8 +351,8 @@ pub const DaemonState = struct {
 
     /// Get YAP append text (thread-safe, caller owns returned memory)
     pub fn getYapAppendText(self: *DaemonState) ?[]const u8 {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
 
         if (self.yap_append_text) |text| {
             // Return a copy so caller can use it safely
@@ -320,8 +363,8 @@ pub const DaemonState = struct {
 
     /// Set YAP append transcription (thread-safe)
     pub fn setYapAppendText(self: *DaemonState, text: []const u8) !void {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
 
         // Clear any existing append text
         if (self.yap_append_text) |old_text| {
@@ -338,8 +381,8 @@ pub const DaemonState = struct {
 
     /// Clear YAP command (thread-safe)
     pub fn clearYapCommand(self: *DaemonState) void {
-        self.yap_mutex.lock();
-        defer self.yap_mutex.unlock();
+        self.yap_mutex.lockUncancelable(utils.io());
+        defer self.yap_mutex.unlock(utils.io());
 
         self.yap_command = null;
 
@@ -358,8 +401,8 @@ pub const DaemonState = struct {
 
     /// Set clarification questions (thread-safe)
     pub fn setClarificationQuestions(self: *DaemonState, questions: []ClarificationQuestion) !void {
-        self.clarification_mutex.lock();
-        defer self.clarification_mutex.unlock();
+        self.clarification_mutex.lockUncancelable(utils.io());
+        defer self.clarification_mutex.unlock(utils.io());
 
         // Clear any existing questions
         if (self.clarification_questions) |old_questions| {
@@ -376,15 +419,15 @@ pub const DaemonState = struct {
 
     /// Get clarification questions (thread-safe, returns reference)
     pub fn getClarificationQuestions(self: *DaemonState) ?[]const ClarificationQuestion {
-        self.clarification_mutex.lock();
-        defer self.clarification_mutex.unlock();
+        self.clarification_mutex.lockUncancelable(utils.io());
+        defer self.clarification_mutex.unlock(utils.io());
         return self.clarification_questions;
     }
 
     /// Record a clarification answer (thread-safe)
     pub fn setClarificationAnswer(self: *DaemonState, question: []const u8, answer: []const u8) !void {
-        self.clarification_mutex.lock();
-        defer self.clarification_mutex.unlock();
+        self.clarification_mutex.lockUncancelable(utils.io());
+        defer self.clarification_mutex.unlock(utils.io());
 
         const answer_pair = ClarificationAnswer{
             .question = try self.allocator.dupe(u8, question),
@@ -393,16 +436,15 @@ pub const DaemonState = struct {
 
         try self.clarification_answers.append(self.allocator, answer_pair);
         std.debug.print("Recorded answer: {s} = {s} ({d}/{d})\n", .{
-            question, answer,
-            self.clarification_answers.items.len,
-            if (self.clarification_questions) |q| q.len else 0,
+            question,                             answer,
+            self.clarification_answers.items.len, if (self.clarification_questions) |q| q.len else 0,
         });
     }
 
     /// Get all clarification answers (thread-safe, caller must free items)
     pub fn getClarificationAnswers(self: *DaemonState) ![]ClarificationAnswer {
-        self.clarification_mutex.lock();
-        defer self.clarification_mutex.unlock();
+        self.clarification_mutex.lockUncancelable(utils.io());
+        defer self.clarification_mutex.unlock(utils.io());
 
         // Return a copy
         const answers = try self.allocator.alloc(ClarificationAnswer, self.clarification_answers.items.len);
@@ -417,8 +459,8 @@ pub const DaemonState = struct {
 
     /// Clear clarification state (thread-safe)
     pub fn clearClarificationState(self: *DaemonState) void {
-        self.clarification_mutex.lock();
-        defer self.clarification_mutex.unlock();
+        self.clarification_mutex.lockUncancelable(utils.io());
+        defer self.clarification_mutex.unlock(utils.io());
 
         // Free questions
         if (self.clarification_questions) |questions| {
@@ -454,15 +496,19 @@ pub fn handleMessage(
         const after_type = message[type_start + 6 ..]; // Skip "type"
 
         if (std.mem.indexOf(u8, after_type, "\"start_recording\"")) |_| {
-            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-            const ts_ms = @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, std.time.ns_per_ms);
+            const ts = std.Io.Timestamp.now(utils.io(), .awake);
+            const ts_ms = ts.toMilliseconds();
             std.debug.print("[{d}ms] WebSocket: Received start_recording command\n", .{ts_ms});
-            try daemon_state.setState(.recording);
-
+            daemon_state.pushRecordCommand(.start);
         } else if (std.mem.indexOf(u8, after_type, "\"stop_recording\"")) |_| {
             std.debug.print("WebSocket: Received stop_recording command\n", .{});
-            try daemon_state.setState(.processing);
-
+            daemon_state.pushRecordCommand(.stop);
+        } else if (std.mem.indexOf(u8, after_type, "\"toggle_recording\"")) |_| {
+            daemon_state.pushRecordCommand(.toggle);
+        } else if (std.mem.indexOf(u8, after_type, "\"hotkey_down\"")) |_| {
+            daemon_state.pushRecordCommand(.hotkey_down);
+        } else if (std.mem.indexOf(u8, after_type, "\"hotkey_up\"")) |_| {
+            daemon_state.pushRecordCommand(.hotkey_up);
         } else if (std.mem.indexOf(u8, after_type, "\"get_state\"")) |_| {
             std.debug.print("WebSocket: Received get_state command\n", .{});
             const state = daemon_state.getState();
@@ -473,11 +519,9 @@ pub fn handleMessage(
             );
             defer allocator.free(response);
             try daemon_state.ws_server.broadcast(response);
-
         } else if (std.mem.indexOf(u8, after_type, "\"yap_accept\"")) |_| {
             std.debug.print("WebSocket: Received yap_accept command\n", .{});
             try daemon_state.setYapCommand(.accept, null);
-
         } else if (std.mem.indexOf(u8, after_type, "\"yap_refine\"")) |_| {
             std.debug.print("WebSocket: Received yap_refine command\n", .{});
 
@@ -496,13 +540,21 @@ pub fn handleMessage(
             }
 
             try daemon_state.setYapCommand(.refine, context);
-
         } else if (std.mem.indexOf(u8, after_type, "\"yap_cancel\"")) |_| {
             std.debug.print("WebSocket: Received yap_cancel command\n", .{});
             try daemon_state.setYapCommand(.cancel, null);
-
         } else {
             std.debug.print("WebSocket: Unknown message type in: {s}\n", .{message});
         }
     }
+}
+
+test "record command queue is FIFO" {
+    var server: websocket.Server = undefined;
+    var state = DaemonState.init(std.testing.allocator, &server);
+    handleMessage(std.testing.allocator, "{\"type\":\"hotkey_down\"}", &state) catch unreachable;
+    handleMessage(std.testing.allocator, "{\"type\":\"hotkey_up\"}", &state) catch unreachable;
+    try std.testing.expectEqual(RecordCommand.hotkey_down, state.popRecordCommand().?);
+    try std.testing.expectEqual(RecordCommand.hotkey_up, state.popRecordCommand().?);
+    try std.testing.expect(state.popRecordCommand() == null);
 }

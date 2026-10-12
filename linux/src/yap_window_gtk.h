@@ -8,7 +8,8 @@
 typedef struct YapWindowGtk YapWindowGtk;
 
 // GTK initialization (call once at startup)
-void yap_window_gtk_init(void);
+// Returns 0 when no display is available.
+int yap_window_gtk_init(void);
 
 // GTK event loop - process pending events (call in tight loop)
 void yap_window_gtk_process_events(void);

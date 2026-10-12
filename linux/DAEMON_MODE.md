@@ -37,7 +37,6 @@ threads = 4
 
 [output]
 auto_paste = true      # If true: inserts text at cursor, if false: copies to clipboard
-export_format = "txt"
 ```
 
 ## Visual Feedback

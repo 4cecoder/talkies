@@ -4,6 +4,10 @@
 
 set -e  # Exit on error
 
+# Prefer Talkies' pinned ASR/llama runtime pair over similarly named distro
+# libraries. The latter can target a different ggml ABI.
+export LD_LIBRARY_PATH="${PWD}/zig-out/bin/lib:/usr/local/lib/talkies/lib:/usr/local/lib:/usr/local/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -44,9 +48,24 @@ check_deps() {
 
     local missing=()
 
-    # Check PulseAudio
     if ! pkg-config --exists libpulse-simple 2>/dev/null; then
-        missing+=("libpulse-dev (or pulseaudio-libs-devel)")
+        missing+=("PulseAudio development files (libpulse-simple)")
+    fi
+    if ! pkg-config --exists gtk4 glib-2.0 gobject-2.0 2>/dev/null; then
+        missing+=("GTK4/GLib development files")
+    fi
+    if ! pkg-config --exists sqlite3 dbus-1 2>/dev/null; then
+        missing+=("SQLite/D-Bus development files")
+    fi
+
+    if [[ ! -f /usr/include/whisper.h && ! -f /usr/local/include/whisper.h ]] ||
+        ! ldconfig -p 2>/dev/null | grep -q 'libwhisper\.so'; then
+        missing+=("whisper.cpp header/library (whisper.h, libwhisper)")
+    fi
+
+    if [[ ! -f /usr/include/llama.h && ! -f /usr/local/include/llama.h ]] ||
+        ! ldconfig -p 2>/dev/null | grep -q 'libllama\.so'; then
+        missing+=("llama.cpp header/library (llama.h, libllama)")
     fi
 
     # Check clipboard tools
@@ -60,11 +79,9 @@ check_deps() {
     command -v xdotool &>/dev/null || missing+=("xdotool")
 
     if [[ ${#missing[@]} -gt 0 ]]; then
-        print_warning "Missing dependencies: ${missing[*]}"
-        echo "Install with:"
-        echo "  Ubuntu/Debian: sudo apt install ${missing[*]}"
-        echo "  Arch Linux: sudo pacman -S ${missing[*]}"
-        echo "  Fedora: sudo dnf install ${missing[*]}"
+        print_warning "Missing dependencies:"
+        printf '  - %s\n' "${missing[@]}"
+        echo "Install the matching packages for your distribution; see docs/DEPENDENCIES.md."
         return 1
     else
         print_success "All dependencies installed"
@@ -98,7 +115,8 @@ run() {
     shift || true
 
     print_info "Running: talkies $cmd $*"
-    zig build run -- "$cmd" "$@"
+    build
+    ./zig-out/bin/talkies "$cmd" "$@"
 }
 
 # Clean build artifacts

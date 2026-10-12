@@ -4,7 +4,6 @@ const yap_sandbox = @import("yap_sandbox.zig");
 
 /// Terminal UI helpers for YAP mode (fallback when no WebSocket client)
 /// Provides interactive prompts for accepting/refining/canceling YAP sessions
-
 /// Display YAP refinement to user with stats
 pub fn displayRefinement(
     writer: anytype,
@@ -210,6 +209,6 @@ pub fn waitForYapCommand(
         }
 
         // Sleep briefly to avoid busy-wait
-        std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
+        @import("utils.zig").sleepNanoseconds(10 * std.time.ns_per_ms);
     }
 }

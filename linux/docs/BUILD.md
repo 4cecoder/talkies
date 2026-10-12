@@ -15,19 +15,16 @@ Complete guide to building Talkies Linux from source.
 
 #### 1. Zig Compiler
 
-**Version:** 0.16.0 or later
+**Version:** Zig master `0.18.0-dev.35+5e754304d` or later
 
 **Installation:**
 
 ```bash
-# Download from ziglang.org
-wget https://ziglang.org/download/0.16.0/zig-linux-x86_64-0.16.0.tar.xz
-tar -xf zig-linux-x86_64-0.16.0.tar.xz
-sudo mv zig-linux-x86_64-0.16.0 /opt/zig
-sudo ln -s /opt/zig/zig /usr/local/bin/zig
+# Download the Linux x86_64 master snapshot from https://ziglang.org/download/
+# Extract it and put the extracted directory's bin location on PATH.
 
 # Verify installation
-zig version  # Should show: 0.16.0 or later
+zig version  # Should show 0.18.0-dev.35 or newer
 ```
 
 **Alternative (package manager):**
@@ -99,22 +96,9 @@ sudo pacman -S xdotool
 sudo dnf install xdotool
 ```
 
-#### 5. whisper.cpp (Optional)
+#### 5. Inference libraries
 
-The current implementation uses C FFI headers without linking the library. For production use, you should install whisper.cpp:
-
-**Option A: Install from source**
-```bash
-git clone https://github.com/ggml-org/whisper.cpp
-cd whisper.cpp
-make
-sudo cp libwhisper.so /usr/local/lib/
-sudo cp whisper.h /usr/local/include/
-sudo ldconfig
-```
-
-**Option B: Wait for package manager support**
-whisper.cpp packages are not yet widely available. Check your distribution's repository.
+Both whisper.cpp and llama.cpp are required: whisper.cpp transcribes audio, and llama.cpp runs S1-mini cleanup. Use the pinned llama.cpp commit and distribution-specific packages documented in [`DEPENDENCIES.md`](DEPENDENCIES.md). The build also needs GTK4, GLib, SQLite, and D-Bus development files for the status window and session storage.
 
 ## Building
 
@@ -170,13 +154,13 @@ zig build test
 
 **Expected output:**
 ```
-All 10 tests passed.
+All unit tests passed.
 ```
 
 #### 3. Build and Run
 
 ```bash
-zig build run -- help
+./run.sh run help
 ```
 
 #### 4. Clean Build Artifacts
@@ -269,7 +253,7 @@ pkg-config --cflags libpulse-simple
 
 #### Error: "build.zig:XX:XX: error: no field named 'root_source_file'"
 
-**Solution:** Your Zig version is too old. Upgrade to 0.16.0+
+**Solution:** Your Zig version is too old. Upgrade to the latest master snapshot.
 ```bash
 zig version  # Check current version
 # Download latest from ziglang.org
