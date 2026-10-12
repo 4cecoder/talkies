@@ -81,6 +81,10 @@ pub fn build(b: *std.Build) void {
     };
     inline for (layers) |layer| {
         const name, const description, const module = layer;
+        // Test binaries never ship: point them straight at the freshly built
+        // shared libraries (release binaries use $ORIGIN only).
+        module.addRPath(native_lib.getEmittedBinDirectory());
+        module.addRPath(ui_lib.getEmittedBinDirectory());
         const run = b.addRunArtifact(b.addTest(.{ .root_module = module }));
         b.step(name, description).dependOn(&run.step);
         test_step.dependOn(&run.step);
@@ -174,7 +178,7 @@ fn addEngineModule(ctx: Ctx, core: *std.Build.Module, native_lib: *std.Build.Ste
     // libfvad (WebRTC VAD) is vendored and tiny; it stays static.
     module.addObjectFile(b.path("vendor/libfvad/lib/libfvad.a"));
     module.addIncludePath(b.path("vendor/libfvad/include"));
-    module.linkLibrary(native_lib);
+    linkShared(module, native_lib);
     return module;
 }
 
@@ -207,11 +211,18 @@ fn addAppModule(
     module.addAnonymousImport("sound_start", .{ .root_source_file = b.path("assets/start-fast.wav") });
     module.addAnonymousImport("sound_stop", .{ .root_source_file = b.path("assets/stop.wav") });
     module.linkSystemLibrary("sqlite3", .{}); // YAP session history
-    module.linkLibrary(ui_lib);
+    linkShared(module, ui_lib);
     // Installed layout: <app>/talkies + <app>/lib/*.so; zig-out: bin/ + lib/.
     module.addRPathSpecial("$ORIGIN/lib");
     module.addRPathSpecial("$ORIGIN/../lib");
     return module;
+}
+
+/// Link a shared library built here by path. `linkLibrary` would also add
+/// its build-cache directory to RUNPATH: a cwd-relative path that would let
+/// a planted .zig-cache/ directory inject libraries. RUNPATH stays $ORIGIN-only.
+fn linkShared(module: *std.Build.Module, lib: *std.Build.Step.Compile) void {
+    module.addObjectFile(lib.getEmittedBin());
 }
 
 fn addCImport(ctx: Ctx, module: *std.Build.Module, name: []const u8, header: []const u8) void {

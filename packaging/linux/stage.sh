@@ -61,6 +61,23 @@ if [[ "${ALLOW_NATIVE_CPU:-0}" != 1 ]] && command -v objdump >/dev/null; then
     done
 fi
 
+# RUNPATH may only name $ORIGIN-relative directories; anything else (a build
+# cache, a cwd-relative path) would let a planted directory inject libraries.
+if command -v readelf >/dev/null; then
+    for f in "${app}/talkies" "${app}"/lib/*.so*; do
+        [[ -L "${f}" ]] && continue
+        rp="$(readelf -d "${f}" | sed -n 's/.*(RUNPATH).*\[\(.*\)\]/\1/p')"
+        IFS=: read -ra entries <<< "${rp}"
+        for entry in "${entries[@]}"; do
+            # shellcheck disable=SC2016 # literal $ORIGIN, expanded by the loader
+            if [[ "${entry}" != '$ORIGIN'* ]]; then
+                echo "$(basename "${f}") has a non-\$ORIGIN RUNPATH entry: ${entry}" >&2
+                exit 1
+            fi
+        done
+    done
+fi
+
 # Strip debug info from what we ship (sizes drop ~4x); keep symbols for backtraces.
 if [[ "${STRIP_DEBUG:-1}" == 1 ]] && command -v strip >/dev/null; then
     find "${app}" -type f \( -name talkies -o -name '*.so*' \) -exec strip --strip-debug {} +
