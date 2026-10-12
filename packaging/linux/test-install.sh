@@ -9,7 +9,7 @@
 # it tests the portable tarball's installer instead (deps via the distro).
 set -euo pipefail
 
-DIST="${1:?dist dir}"
+DIST="$(cd "${1:?dist dir}" && pwd)" # absolute: apt treats "dir/x.deb" as a release name
 LABEL="${2:?release label}"
 MODE="${3:-native}"
 base="${DIST}/Talkies-Linux-${LABEL}"

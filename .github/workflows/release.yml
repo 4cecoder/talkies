@@ -84,11 +84,11 @@ jobs:
           path: ~/Documents/huggingface
           key: ${{ runner.os }}-whisperkit-tiny-${{ hashFiles('mac/Package.resolved') }}
 
-      - name: Verify cached WhisperKit transcription with downloads disabled
+      - name: Provision WhisperKit tiny and verify transcription
         working-directory: mac
         env:
           TALKIES_RUN_WHISPERKIT_MODEL_TESTS: '1'
-        run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWhenDownloadsAreDisabled
+        run: swift test --filter WhisperKitRecognizerTests/testTranscribesWithCachedModelWithoutResolvingItRemotely
 
       - name: Verify cached ASR, denied-network S1-mini cleanup, and insertion acceptance
         working-directory: mac
