@@ -30,3 +30,7 @@ Platform build guides live here. Small README pointers beside the source link ba
 Use the [contribution guide](../CONTRIBUTING.md) for build, review, and issue-reporting guidance.
 The GitHub [issue tracker](https://github.com/4cecoder/talkies/issues) and its milestones hold the
 current work queue; this documentation does not duplicate that queue.
+
+## Knowledge base
+
+- [Issue-derived knowledge base (beads wiki)](knowledge/index.md)

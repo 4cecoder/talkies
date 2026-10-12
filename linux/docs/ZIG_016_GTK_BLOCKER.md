@@ -1,4 +1,6 @@
-# Zig 0.16.0 GTK Bindings Compatibility Blocker
+# Historical: Zig 0.16.0 GTK Bindings Compatibility Blocker
+
+This note records an earlier blocker. It is resolved for the current Linux build by using GTK's C API through direct C interop; it does not describe a current build limitation.
 
 **Date**: 2025-12-18
 **Status**: **BLOCKED** - Waiting for upstream fix

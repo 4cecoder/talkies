@@ -25,7 +25,7 @@
     .fingerprint = 0x9211474f1c30f485, // Changing this has security and trust implications.
     // Minimum nightly supporting the current package metadata and build APIs.
     // CI/release intentionally follow master so compiler breakages are caught early.
-    .minimum_zig_version = "0.17.0-dev.1778+767d25269",
+    .minimum_zig_version = "0.18.0-dev.35+5e754304d",
     .paths = .{
         "build.zig",
         "build.zig.zon",

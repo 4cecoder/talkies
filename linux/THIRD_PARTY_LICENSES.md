@@ -89,12 +89,12 @@ We are grateful to Mitchell Hashimoto and the Ghostty contributors for releasing
 **Ghostty Website**: https://ghostty.org
 **Author**: Mitchell Hashimoto (@mitchellh)
 
-## zig-gobject (Pre-Built Bindings) - CURRENTLY DISABLED
+## zig-gobject (Pre-Built Bindings) - NOT USED
 
 **Source**: [ghostty-org/zig-gobject](https://github.com/ghostty-org/zig-gobject)
 **Distributed via**: https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst
 
-**Status**: ⚠️ **BLOCKED - Zig 0.16.0 Incompatibility**
+**Status**: Not part of the current Linux build. Talkies uses direct C interop for GTK instead.
 
 The pre-built bindings are built for Zig 0.15.2 and use the `@Type` builtin which was removed in Zig 0.16.0. Talkies Linux currently runs on Zig 0.16.0-dev.1484, making these bindings incompatible.
 
@@ -114,9 +114,9 @@ The pre-built bindings are built for Zig 0.15.2 and use the `@Type` builtin whic
 - Pre-built artifact generation: Mitchell Hashimoto and Ghostty contributors
 - Repository: https://github.com/ghostty-org/zig-gobject
 
-**Resolution Status**: Awaiting Ghostty's Zig 0.16 migration. See `docs/ZIG_016_GTK_BLOCKER.md` for details and workarounds.
+**History**: These bindings were evaluated for the original GTK integration and disabled when their generated code proved incompatible. The current build uses GTK's C API directly; the old blocker note is retained as historical context.
 
-**Impact**: GTK features (settings window, system tray, visual overlay) are temporarily disabled. All core CLI functionality remains fully operational.
+**Impact**: No impact on the current build. This third-party artifact is not bundled or linked.
 
 ---
 

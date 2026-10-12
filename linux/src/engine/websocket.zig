@@ -1,0 +1,351 @@
+const std = @import("std");
+const utils = @import("core").utils;
+const linux = std.os.linux;
+
+/// Small Linux syscall adapter for APIs removed from std.posix in Zig 0.17.
+const posix = struct {
+    const socket_t = std.posix.socket_t;
+    const sockaddr = std.posix.sockaddr;
+    const socklen_t = std.posix.socklen_t;
+    const AF = std.posix.AF;
+    const SOCK = std.posix.SOCK;
+    const SOL = std.posix.SOL;
+    const SO = std.posix.SO;
+
+    fn check(result: usize) !usize {
+        if (linux.errno(result) != .SUCCESS) return error.SocketOperationFailed;
+        return result;
+    }
+
+    fn close(fd: socket_t) void {
+        _ = linux.close(fd);
+    }
+
+    fn socket(domain: u32, socket_type: u32, protocol: u32) !socket_t {
+        return @intCast(try check(linux.socket(domain, socket_type, protocol)));
+    }
+
+    fn setsockopt(fd: socket_t, level: i32, option: u32, value: []const u8) !void {
+        _ = try check(linux.setsockopt(fd, level, option, value.ptr, @intCast(value.len)));
+    }
+
+    fn bind(fd: socket_t, address: *const sockaddr, length: usize) !void {
+        const result = linux.bind(fd, address, @intCast(length));
+        return switch (linux.errno(result)) {
+            .SUCCESS => {},
+            .ADDRINUSE => error.AddressInUse,
+            else => error.SocketOperationFailed,
+        };
+    }
+
+    fn listen(fd: socket_t, backlog: u32) !void {
+        _ = try check(linux.listen(fd, backlog));
+    }
+
+    fn read(fd: socket_t, buffer: []u8) !usize {
+        return try check(linux.read(fd, buffer.ptr, buffer.len));
+    }
+
+    fn write(fd: socket_t, buffer: []const u8) !usize {
+        return try check(linux.write(fd, buffer.ptr, buffer.len));
+    }
+};
+
+/// Simple WebSocket server for Talkies daemon using posix sockets
+/// Handles text messages only, no binary support needed
+pub const Server = struct {
+    allocator: std.mem.Allocator,
+    socket_fd: posix.socket_t,
+    clients: std.ArrayList(*Client),
+    clients_mutex: std.Io.Mutex = std.Io.Mutex.init,
+    running: bool,
+    port: u16 = 0,
+
+    pub const Client = struct {
+        socket_fd: posix.socket_t,
+        allocator: std.mem.Allocator,
+
+        pub fn init(socket_fd: posix.socket_t, allocator: std.mem.Allocator) !*Client {
+            const client = try allocator.create(Client);
+            client.* = .{
+                .socket_fd = socket_fd,
+                .allocator = allocator,
+            };
+            return client;
+        }
+
+        pub fn deinit(self: *Client) void {
+            posix.close(self.socket_fd);
+            self.allocator.destroy(self);
+        }
+
+        pub fn send(self: *Client, message: []const u8) !void {
+            // Simple WebSocket frame: FIN=1, opcode=1 (text), no mask
+            var frame: std.ArrayList(u8) = .empty;
+            defer frame.deinit(self.allocator);
+
+            // Frame header
+            try frame.append(self.allocator, 0x81); // FIN=1, opcode=1 (text)
+
+            // Payload length
+            if (message.len < 126) {
+                try frame.append(self.allocator, @intCast(message.len));
+            } else if (message.len < 65536) {
+                try frame.append(self.allocator, 126);
+                try frame.append(self.allocator, @intCast(message.len >> 8));
+                try frame.append(self.allocator, @intCast(message.len & 0xFF));
+            } else {
+                return error.MessageTooLarge;
+            }
+
+            // Payload
+            try frame.appendSlice(self.allocator, message);
+
+            // Send frame
+            _ = try posix.write(self.socket_fd, frame.items);
+        }
+
+        /// Read exactly `buf.len` bytes; TCP may deliver a frame in pieces.
+        fn readExact(self: *Client, buf: []u8) !void {
+            var filled: usize = 0;
+            while (filled < buf.len) {
+                const n = try posix.read(self.socket_fd, buf[filled..]);
+                if (n == 0) return error.ConnectionClosed;
+                filled += n;
+            }
+        }
+
+        fn sendControl(self: *Client, opcode: u8, payload: []const u8) !void {
+            var frame: [2 + 125]u8 = undefined;
+            const len = @min(payload.len, 125);
+            frame[0] = 0x80 | opcode;
+            frame[1] = @intCast(len);
+            @memcpy(frame[2..][0..len], payload[0..len]);
+            var sent: usize = 0;
+            while (sent < 2 + len) sent += try posix.write(self.socket_fd, frame[sent .. 2 + len]);
+        }
+
+        /// Return the next text message. Answers pings and completes the
+        /// close handshake so clients shut down cleanly.
+        pub fn receive(self: *Client, buffer: []u8) ![]const u8 {
+            while (true) {
+                var header: [2]u8 = undefined;
+                try self.readExact(&header);
+                const opcode = header[0] & 0x0F;
+                const masked = (header[1] & 0x80) != 0;
+
+                var len: usize = header[1] & 0x7F;
+                if (len == 126) {
+                    var len_bytes: [2]u8 = undefined;
+                    try self.readExact(&len_bytes);
+                    len = std.mem.readInt(u16, &len_bytes, .big);
+                } else if (len == 127) {
+                    return error.FrameTooLarge;
+                }
+
+                var mask: [4]u8 = .{ 0, 0, 0, 0 };
+                if (masked) try self.readExact(&mask);
+
+                if (len > buffer.len) return error.BufferTooSmall;
+                const payload = buffer[0..len];
+                try self.readExact(payload);
+                if (masked) {
+                    for (payload, 0..) |*byte, i| byte.* ^= mask[i % 4];
+                }
+
+                switch (opcode) {
+                    0x1, 0x0 => return payload, // text / continuation
+                    0x8 => {
+                        self.sendControl(0x8, payload[0..@min(payload.len, 2)]) catch |err| {
+                            utils.logDebug("close reply: {}", .{err});
+                        };
+                        return error.ConnectionClosed;
+                    },
+                    0x9 => try self.sendControl(0xA, payload), // ping -> pong
+                    else => {}, // pong / binary: ignore
+                }
+            }
+        }
+    };
+
+    pub fn init(allocator: std.mem.Allocator, port: u16) !Server {
+        // Create TCP socket
+        const sock = try posix.socket(posix.AF.INET, posix.SOCK.STREAM, 0);
+        errdefer posix.close(sock);
+
+        // SO_REUSEADDR allows rapid restart. SO_REUSEPORT is deliberately not
+        // set: it would let a second daemon share the port and silently
+        // receive half of the hotkey commands.
+        try posix.setsockopt(
+            sock,
+            posix.SOL.SOCKET,
+            posix.SO.REUSEADDR,
+            &std.mem.toBytes(@as(c_int, 1)),
+        );
+
+        // Bind to address
+        const addr = posix.sockaddr.in{
+            .family = posix.AF.INET,
+            .port = std.mem.nativeToBig(u16, port),
+            .addr = 0x0100007F, // 127.0.0.1 in network byte order
+            .zero = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
+        };
+        const sockaddr = @as(*const posix.sockaddr, @ptrCast(&addr));
+        try posix.bind(sock, sockaddr, @sizeOf(posix.sockaddr.in));
+
+        // Listen
+        try posix.listen(sock, 128);
+
+        return Server{
+            .allocator = allocator,
+            .socket_fd = sock,
+            .clients = std.ArrayList(*Client).empty,
+            .running = false,
+            .port = port,
+        };
+    }
+
+    /// Client threads own their Client allocations, so only the list and the
+    /// listening socket are released here.
+    pub fn deinit(self: *Server) void {
+        self.clients.deinit(self.allocator);
+        posix.close(self.socket_fd);
+    }
+
+    pub fn start(self: *Server, comptime onMessage: anytype, context: anytype) !void {
+        self.running = true;
+        std.debug.print("WebSocket server listening on ws://127.0.0.1:{d}\n", .{self.port});
+
+        while (self.running) {
+            // Accept connection
+            var client_addr: posix.sockaddr.in = undefined;
+            var addr_len: posix.socklen_t = @sizeOf(posix.sockaddr.in);
+
+            // Use direct syscall to work around error set mismatch
+            const rc = linux.accept4(@intCast(self.socket_fd), @ptrCast(&client_addr), &addr_len, 0);
+            const client_sock: posix.socket_t = if (linux.errno(rc) != .SUCCESS) {
+                std.debug.print("Accept error: {}\n", .{linux.errno(rc)});
+                utils.sleepNanoseconds(100 * std.time.ns_per_ms);
+                continue;
+            } else @intCast(rc);
+
+            // Handle WebSocket handshake
+            self.handleHandshake(client_sock) catch |err| {
+                std.debug.print("Handshake error: {}\n", .{err});
+                posix.close(client_sock);
+                continue;
+            };
+
+            const client = try Client.init(client_sock, self.allocator);
+            {
+                self.clients_mutex.lockUncancelable(utils.io());
+                defer self.clients_mutex.unlock(utils.io());
+                try self.clients.append(self.allocator, client);
+                std.debug.print("Client connected (total: {})\n", .{self.clients.items.len});
+            }
+
+            // Serve each client on its own thread so a long-lived client
+            // (e.g. the overlay) never blocks short-lived hotkey commands.
+            const thread = std.Thread.spawn(.{}, serveClient, .{ self, client, onMessage, context }) catch |err| {
+                std.debug.print("Failed to spawn client thread: {}\n", .{err});
+                self.removeClient(client);
+                continue;
+            };
+            thread.detach();
+        }
+    }
+
+    fn serveClient(self: *Server, client: *Client, comptime onMessage: anytype, context: anytype) void {
+        while (true) {
+            var message_buf: [4096]u8 = undefined;
+            const message = client.receive(&message_buf) catch |err| {
+                std.debug.print("Client disconnected: {}\n", .{err});
+                self.removeClient(client);
+                return;
+            };
+            onMessage(self.allocator, message, context) catch |err| {
+                std.debug.print("Message handler error: {}\n", .{err});
+            };
+        }
+    }
+
+    /// Called only by the client's own thread, which owns the Client's
+    /// lifetime; `broadcast` merely unlists clients whose send failed.
+    fn removeClient(self: *Server, client: *Client) void {
+        {
+            self.clients_mutex.lockUncancelable(utils.io());
+            defer self.clients_mutex.unlock(utils.io());
+            for (self.clients.items, 0..) |item, i| {
+                if (item == client) {
+                    _ = self.clients.orderedRemove(i);
+                    break;
+                }
+            }
+        }
+        client.deinit();
+    }
+
+    pub fn clientCount(self: *Server) usize {
+        self.clients_mutex.lockUncancelable(utils.io());
+        defer self.clients_mutex.unlock(utils.io());
+        return self.clients.items.len;
+    }
+
+    fn handleHandshake(self: *Server, socket_fd: posix.socket_t) !void {
+        _ = self;
+        var buffer: [4096]u8 = undefined;
+        const n = try posix.read(socket_fd, &buffer);
+        const request = buffer[0..n];
+
+        // Extract Sec-WebSocket-Key
+        const key_header = "Sec-WebSocket-Key: ";
+        const key_start = std.mem.indexOf(u8, request, key_header) orelse return error.InvalidHandshake;
+        const key_value_start = key_start + key_header.len;
+        const key_end = std.mem.indexOfPos(u8, request, key_value_start, "\r\n") orelse return error.InvalidHandshake;
+        const client_key = request[key_value_start..key_end];
+
+        // Compute accept key
+        const magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        var combined_buf: [256]u8 = undefined;
+        const combined_str = try std.fmt.bufPrint(&combined_buf, "{s}{s}", .{ client_key, magic });
+
+        // SHA1 hash
+        var sha1_digest: [20]u8 = undefined;
+        std.crypto.hash.Sha1.hash(combined_str, &sha1_digest, .{});
+
+        // Base64 encode
+        const base64_encoder = std.base64.standard.Encoder;
+        var accept_key: [29]u8 = undefined;
+        _ = base64_encoder.encode(&accept_key, &sha1_digest);
+
+        // Send handshake response (use stack buffer for fixed-size response)
+        var response_buf: [512]u8 = undefined;
+        const response = try std.fmt.bufPrint(
+            &response_buf,
+            "HTTP/1.1 101 Switching Protocols\r\n" ++
+                "Upgrade: websocket\r\n" ++
+                "Connection: Upgrade\r\n" ++
+                "Sec-WebSocket-Accept: {s}\r\n" ++
+                "\r\n",
+            .{accept_key[0..28]},
+        );
+
+        _ = try posix.write(socket_fd, response);
+    }
+
+    pub fn broadcast(self: *Server, message: []const u8) !void {
+        self.clients_mutex.lockUncancelable(utils.io());
+        defer self.clients_mutex.unlock(utils.io());
+        var i: usize = 0;
+        while (i < self.clients.items.len) {
+            const client = self.clients.items[i];
+            client.send(message) catch {
+                // Unlist only; the client's thread frees it once receive fails.
+                _ = self.clients.orderedRemove(i);
+                std.debug.print("Client disconnected (total: {})\n", .{self.clients.items.len});
+                continue;
+            };
+            i += 1;
+        }
+    }
+};

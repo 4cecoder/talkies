@@ -40,8 +40,10 @@ See `./run.sh help` for all available commands.
 ### Manual Installation
 
 **Requirements:**
-- Zig master (0.17.0-dev+)
+- Zig master (0.18.0-dev.35+)
 - PulseAudio development libraries
+- whisper.cpp and llama.cpp development libraries
+- GTK4, GLib, SQLite, and D-Bus development libraries
 - xclip (for X11) or wl-clipboard (for Wayland)
 - xdotool (for text insertion)
 

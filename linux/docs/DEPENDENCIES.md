@@ -5,7 +5,7 @@ Complete guide for installing all required dependencies across different Linux d
 ## Required Dependencies
 
 ### Core Dependencies (Required)
-1. **Zig master (0.17.0-dev+)** - Compiler; the project uses current build-system C translation APIs
+1. **Zig master (0.18.0-dev.35+)** - Compiler; the project tracks current Zig I/O and build APIs
 2. **PulseAudio development libraries** - Audio recording
 3. **whisper.cpp** - Speech transcription (C library)
 4. **llama.cpp** - CPU-only S1-mini transcript cleanup (C library)
@@ -20,7 +20,7 @@ Complete guide for installing all required dependencies across different Linux d
 
 **All-in-one command:**
 ```bash
-doas emerge -av x11-misc/xclip x11-misc/xdotool app-accessibility/whisper-cpp media-sound/pulseaudio
+doas emerge -av x11-misc/xclip x11-misc/xdotool app-accessibility/whisper-cpp sci-misc/llama-cpp media-sound/pulseaudio x11-libs/gtk+:4 dev-db/sqlite sys-apps/dbus
 ```
 
 **Individual packages:**
@@ -28,6 +28,8 @@ doas emerge -av x11-misc/xclip x11-misc/xdotool app-accessibility/whisper-cpp me
 # Core dependencies
 doas emerge media-sound/pulseaudio           # Audio system
 doas emerge app-accessibility/whisper-cpp    # Speech transcription (1.8.2)
+doas emerge sci-misc/llama-cpp                # S1-mini transcript cleanup
+doas emerge x11-libs/gtk+:4 dev-db/sqlite sys-apps/dbus  # GTK UI, session storage, and D-Bus
 
 # X11 tools
 doas emerge x11-misc/xclip                   # Clipboard (0.13)
@@ -180,7 +182,7 @@ cd /home/fource/talkies/linux
 
 **Expected output when all installed:**
 ```
-✓ Zig 0.16.0-dev.1484+d0ba6642b found
+✓ Zig 0.18.0-dev.35+5e754304d found
 ℹ Checking system dependencies...
 ✓ All dependencies installed
 ```
