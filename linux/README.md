@@ -18,19 +18,43 @@ servers on this machine.
 | **Voice assistant mode** | Speaks the result through `spd-say` or `espeak-ng`, and can optionally insert it too. |
 | **Linux extras** | Silence trimming (WebRTC VAD), YAP refinement window (opt-in), WebSocket API, and TXT/VTT/SRT export from the CLI. |
 
-## Build and run
+## Build, test and install
 
 ```bash
 cd linux
-zig build                 # requires Zig master (0.16+), GTK4, libwhisper, libllama, PulseAudio, dbus
-zig build test
-./zig-out/bin/talkies daemon
+zig build                  # requires Zig master (0.16+), GTK4, libwhisper, libllama, PulseAudio, dbus
+zig build test             # all layers; or test-core (no system deps), test-engine, test-app
+scripts/install.sh --restart   # ReleaseSafe build into /usr/local/lib/talkies, restart the daemon
 ```
+
+`install.sh` replaces only the tiers whose bytes changed (see below), and
+uses doas or sudo when it needs to.
+
+## Layout: split by volatility
+
+The code and the binaries are both grouped by how often they change. Imports
+only point down the stack, and the build graph enforces this: `core` imports
+nothing, `engine` sees only `core`.
+
+| Tier | Change rate | Source | Ships as |
+|---|---|---|---|
+| vendor | lowest | whisper.cpp, ggml, llama.cpp | `lib/libwhisper.so.1`, `libggml*.so.0`, `libllama.so.0` |
+| native | low | `src/native`: S1-mini runtime (C ABI over llama.cpp) | `lib/libtalkies-native.so.1` |
+| core | low | `src/core`: utils, WAV parsing, hints, export, diagnostics. Pure Zig. | linked into `talkies` |
+| engine | low | `src/engine`: PulseAudio, VAD, Whisper, clipboard, uinput, X11 hotkey, WebSocket | linked into `talkies` |
+| ui | medium | `src/ui`: GTK4 HUD, settings, status, YAP windows, D-Bus tray | `lib/libtalkies-ui.so.1` |
+| app | highest | `src/app`: daemon pipeline, config schema, LLM prompts, hotkey policy, YAP, CLI | `talkies` |
+
+The app binary links neither GTK nor llama.cpp directly: those sit behind
+the `ui` and `native` libraries' C ABIs.
 
 Runtime tools:
 - `wl-clipboard` or `xclip`, for the clipboard.
 - Write access to `/dev/uinput`, for pasting. Add a udev rule or join the `input` group.
 - `websocat`, for compositor hotkeys.
+
+Recordings go to a private `$XDG_RUNTIME_DIR/talkies` directory (mode 0700)
+and are deleted after transcription.
 - Optional: `speech-dispatcher` or `espeak-ng`, for voice assistant mode.
 
 ## Hotkeys
