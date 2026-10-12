@@ -13,6 +13,10 @@ static const char *const enhancer_names[] = {"Off", "S1-mini", "Ollama", "LM Stu
 static const char *const paste_keybinds[] = {"ctrl+v", "ctrl+shift+v", "shift+Insert", NULL};
 static const char *const paste_keybind_labels[] = {"Ctrl+V", "Ctrl+Shift+V", "Shift+Insert", NULL};
 static const char *const vad_modes[] = {"Quality", "Low bitrate", "Aggressive", "Very aggressive", NULL};
+// S1-mini pickers, as in the macOS General settings.
+static const char *const cleanup_styles[] = {"Casual", "Semi-Casual", "Semi-Formal", NULL};
+static const char *const cleanup_structures[] = {"Prose", "Lists", NULL};
+static const char *const cleanup_contexts[] = {"General", "Email", NULL};
 
 typedef struct {
     GtkWidget *dropdown;
@@ -34,8 +38,11 @@ struct TalkiesSettingsWindow {
     GtkWidget *health_list;
     GtkWidget *threshold;
     GtkWidget *show_hud;
+    GtkWidget *mini_window;
+    GtkWidget *launch_at_login;
     GtkWidget *voice_assistant;
     GtkWidget *assistant_insert;
+    GtkWidget *assistant_insert_row;
 
     // Transcription
     GtkWidget *audio_device;
@@ -49,6 +56,9 @@ struct TalkiesSettingsWindow {
     GtkWidget *enhancer;
     GtkWidget *enhancer_stack;
 
+    GtkWidget *cleanup_style;
+    GtkWidget *cleanup_structure;
+    GtkWidget *cleanup_context;
     GtkWidget *s1_status;
     GtkWidget *s1_progress;
     GtkWidget *s1_download;
@@ -116,10 +126,47 @@ static double scale_value(GtkWidget *scale) {
     return gtk_range_get_value(GTK_RANGE(scale));
 }
 
+static char *text_view_text(GtkWidget *view) {
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    return gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+}
+
+// Vocabulary is edited one term per line (as on macOS) and stored
+// comma-separated. Blank lines and stray separators are dropped.
+static char *vocabulary_to_config(const char *lines) {
+    GString *out = g_string_new(NULL);
+    char **terms = g_strsplit_set(lines, "\n,", -1);
+    for (char **t = terms; *t; t++) {
+        char *term = g_strstrip(*t);
+        if (!term[0]) continue;
+        if (out->len) g_string_append(out, ", ");
+        g_string_append(out, term);
+    }
+    g_strfreev(terms);
+    return g_string_free(out, FALSE);
+}
+
+static char *vocabulary_to_lines(const char *config) {
+    GString *out = g_string_new(NULL);
+    char **terms = g_strsplit(config, ",", -1);
+    for (char **t = terms; *t; t++) {
+        char *term = g_strstrip(*t);
+        if (!term[0]) continue;
+        if (out->len) g_string_append_c(out, '\n');
+        g_string_append(out, term);
+    }
+    g_strfreev(terms);
+    return g_string_free(out, FALSE);
+}
+
 static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
     memset(d, 0, sizeof *d);
-    d->push_to_talk_threshold = scale_value(win->threshold);
+    d->push_to_talk_threshold = scale_value(win->threshold) / 1000.0;
     d->show_hud = gtk_switch_get_active(GTK_SWITCH(win->show_hud));
+    d->mini_window = gtk_switch_get_active(GTK_SWITCH(win->mini_window));
+    d->launch_at_login = gtk_switch_get_active(GTK_SWITCH(win->launch_at_login));
     d->voice_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->voice_assistant));
     d->insert_text_in_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->assistant_insert));
 
@@ -130,9 +177,16 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
     copy_text(d->audio_device, sizeof d->audio_device, device_name);
     copy_text(d->model, sizeof d->model, choice_value(win->model));
     copy_text(d->language, sizeof d->language, gtk_editable_get_text(GTK_EDITABLE(win->language)));
-    copy_text(d->vocabulary_prompt, sizeof d->vocabulary_prompt, gtk_editable_get_text(GTK_EDITABLE(win->vocabulary)));
+    char *vocabulary_lines = text_view_text(win->vocabulary);
+    char *vocabulary = vocabulary_to_config(vocabulary_lines);
+    copy_text(d->vocabulary_prompt, sizeof d->vocabulary_prompt, vocabulary);
+    g_free(vocabulary);
+    g_free(vocabulary_lines);
 
     d->enhancer = choice_get(win->enhancer);
+    d->cleanup_style = choice_get(win->cleanup_style);
+    d->cleanup_structure = choice_get(win->cleanup_structure);
+    d->cleanup_context = choice_get(win->cleanup_context);
 
     copy_text(d->ollama_host, sizeof d->ollama_host, gtk_editable_get_text(GTK_EDITABLE(win->ollama_models.url_entry)));
     copy_text(d->ollama_model, sizeof d->ollama_model, dropdown_string(win->ollama_models.dropdown));
@@ -144,10 +198,7 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
     d->ollama_context_length = (int)scale_value(win->ollama_context);
     d->ollama_max_tokens = (int)scale_value(win->ollama_max_tokens);
     d->ollama_use_custom_prompt = gtk_switch_get_active(GTK_SWITCH(win->ollama_use_custom));
-    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->ollama_custom_prompt));
-    GtkTextIter start, end;
-    gtk_text_buffer_get_bounds(buffer, &start, &end);
-    char *prompt = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    char *prompt = text_view_text(win->ollama_custom_prompt);
     copy_text(d->ollama_custom_prompt, sizeof d->ollama_custom_prompt, prompt);
     g_free(prompt);
     copy_text(d->ollama_stop_sequences, sizeof d->ollama_stop_sequences, gtk_editable_get_text(GTK_EDITABLE(win->ollama_stop)));
@@ -259,7 +310,7 @@ static void add_note(GtkWidget *box, const char *text) {
     gtk_box_append(GTK_BOX(box), label);
 }
 
-static void add_row(GtkWidget *box, const char *title, const char *subtitle, GtkWidget *control) {
+static GtkWidget *add_row(GtkWidget *box, const char *title, const char *subtitle, GtkWidget *control) {
     GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     GtkWidget *labels = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_set_hexpand(labels, TRUE);
@@ -285,6 +336,7 @@ static void add_row(GtkWidget *box, const char *title, const char *subtitle, Gtk
     gtk_box_append(GTK_BOX(row), labels);
     gtk_box_append(GTK_BOX(row), control);
     gtk_box_append(GTK_BOX(box), row);
+    return row;
 }
 
 static GtkWidget *switch_new(TalkiesSettingsWindow *win) {
@@ -627,6 +679,14 @@ static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     gtk_box_append(GTK_BOX(s1), win->s1_progress);
     add_note(s1, "Pinned superwhisper/s1-mini-GGUF (q4_k_m), SHA-256 verified. Stored in "
                  "~/.local/share/talkies/models.");
+    add_section(s1, "Cleanup Style");
+    win->cleanup_style = choice_new(win, cleanup_styles, NULL, NULL, NULL);
+    add_row(s1, "Writing style", NULL, win->cleanup_style);
+    win->cleanup_structure = choice_new(win, cleanup_structures, NULL, NULL, NULL);
+    add_row(s1, "Structure", NULL, win->cleanup_structure);
+    win->cleanup_context = choice_new(win, cleanup_contexts, NULL, NULL, NULL);
+    add_row(s1, "Context", NULL, win->cleanup_context);
+    add_note(s1, "S1-mini by Superwhisper · English · Apache 2.0 with naming clause");
     gtk_stack_add_named(GTK_STACK(win->enhancer_stack), s1, "s1_mini");
 
     // Ollama
@@ -686,6 +746,20 @@ static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     add_note(lm, "Setup: install LM Studio from lmstudio.ai, load a model, and start the local server "
                  "(Developer tab).");
     gtk_stack_add_named(GTK_STACK(win->enhancer_stack), lm, "lm_studio");
+}
+
+// "Push-to-Talk Threshold: 150ms", as on macOS.
+static char *format_ms(GtkScale *scale, double value, gpointer user_data) {
+    (void)scale;
+    (void)user_data;
+    return g_strdup_printf("%.0fms", value);
+}
+
+// macOS only shows "Also Insert Text" while voice assistant mode is on.
+static void on_voice_assistant_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
+    (void)pspec;
+    TalkiesSettingsWindow *win = user_data;
+    gtk_widget_set_visible(win->assistant_insert_row, gtk_switch_get_active(GTK_SWITCH(object)));
 }
 
 static gboolean on_close_request(GtkWindow *window, gpointer user_data) {
@@ -789,19 +863,28 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     gtk_expander_set_child(GTK_EXPANDER(details), win->health_list);
     gtk_box_append(GTK_BOX(box), details);
 
-    add_section(box, "Hotkey");
-    win->threshold = scale_new(win, 0.05, 0.5, 0.05, 2);
-    add_row(box, "Push-to-talk threshold (s)",
-            "Hold the hotkey longer than this to record while held; a quicker tap toggles recording",
-            win->threshold);
-    add_section(box, "Display");
+    // Section order follows the macOS General settings.
+    add_section(box, "Dictation Window");
     win->show_hud = switch_new(win);
-    add_row(box, "Floating dictation window", "Live waveform and pipeline status while dictating", win->show_hud);
+    add_row(box, "Show dictation window", "Waveform pill at the top of the screen; opens while you dictate",
+            win->show_hud);
+    win->mini_window = switch_new(win);
+    add_row(box, "Use mini window", "Turn this off to use the larger transcript panel.", win->mini_window);
     add_section(box, "Voice Assistant Mode");
     win->voice_assistant = switch_new(win);
+    g_signal_connect(win->voice_assistant, "notify::active", G_CALLBACK(on_voice_assistant_changed), win);
     add_row(box, "Enable Voice Assistant", "Speak the result aloud (spd-say / espeak-ng)", win->voice_assistant);
     win->assistant_insert = switch_new(win);
-    add_row(box, "Also Insert Text", NULL, win->assistant_insert);
+    win->assistant_insert_row = add_row(box, "Also Insert Text", NULL, win->assistant_insert);
+    add_section(box, "Startup");
+    win->launch_at_login = switch_new(win);
+    add_row(box, "Launch at Login", "Start Talkies when you log in", win->launch_at_login);
+    add_section(box, "Intelligent Detection");
+    win->threshold = scale_new(win, 50, 500, 50, 0);
+    gtk_scale_set_format_value_func(GTK_SCALE(win->threshold), format_ms, NULL, NULL);
+    add_row(box, "Push-to-Talk Threshold",
+            "Hold the hotkey longer than this to record while held; a quicker tap toggles recording",
+            win->threshold);
 
     // Transcription
     page_new(stack, "transcription", "Transcription", &box);
@@ -816,8 +899,25 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     add_row(box, "Model", "Larger models are more accurate but slower", win->model);
     win->language = entry_new(win, "en", 80);
     add_row(box, "Language", "ISO code, e.g. en, de, es", win->language);
-    win->vocabulary = entry_new(win, "Talkies, Hyprland, ...", 280);
-    add_row(box, "Recognition hints", "Comma-separated names and uncommon words", win->vocabulary);
+    add_section(box, "Personal Vocabulary");
+    add_note(box, "Names and uncommon words Whisper should recognise, one per line.");
+    win->vocabulary = gtk_text_view_new();
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(win->vocabulary), TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(win->vocabulary), GTK_WRAP_WORD_CHAR);
+    gtk_text_view_set_top_margin(GTK_TEXT_VIEW(win->vocabulary), 6);
+    gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(win->vocabulary), 6);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(win->vocabulary), 6);
+    gtk_accessible_update_property(GTK_ACCESSIBLE(win->vocabulary), GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                   "Personal vocabulary", -1);
+    g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->vocabulary)), "changed",
+                     G_CALLBACK(on_signal_changed), win);
+    GtkWidget *vocabulary_scroller = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(vocabulary_scroller), win->vocabulary);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(vocabulary_scroller), 88);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(vocabulary_scroller), 140);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(vocabulary_scroller), TRUE);
+    gtk_widget_add_css_class(vocabulary_scroller, "frame");
+    gtk_box_append(GTK_BOX(box), vocabulary_scroller);
 
     // Enhancement
     page_new(stack, "enhancement", "Enhancement", &box);
@@ -915,17 +1015,25 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     if (!win || !d) return;
     win->populating = TRUE;
 
-    gtk_range_set_value(GTK_RANGE(win->threshold), d->push_to_talk_threshold);
+    gtk_range_set_value(GTK_RANGE(win->threshold), d->push_to_talk_threshold * 1000.0);
     gtk_switch_set_active(GTK_SWITCH(win->show_hud), d->show_hud);
+    gtk_switch_set_active(GTK_SWITCH(win->mini_window), d->mini_window);
+    gtk_switch_set_active(GTK_SWITCH(win->launch_at_login), d->launch_at_login);
     gtk_switch_set_active(GTK_SWITCH(win->voice_assistant), d->voice_assistant_mode);
     gtk_switch_set_active(GTK_SWITCH(win->assistant_insert), d->insert_text_in_assistant_mode);
+    gtk_widget_set_visible(win->assistant_insert_row, d->voice_assistant_mode);
 
     select_audio_device(win, d->audio_device);
     choice_set_value(win->model, d->model);
     gtk_editable_set_text(GTK_EDITABLE(win->language), d->language);
-    gtk_editable_set_text(GTK_EDITABLE(win->vocabulary), d->vocabulary_prompt);
+    char *vocabulary = vocabulary_to_lines(d->vocabulary_prompt);
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->vocabulary)), vocabulary, -1);
+    g_free(vocabulary);
 
     choice_set(win->enhancer, d->enhancer);
+    choice_set(win->cleanup_style, d->cleanup_style);
+    choice_set(win->cleanup_structure, d->cleanup_structure);
+    choice_set(win->cleanup_context, d->cleanup_context);
     on_enhancer_changed(win);
 
     gtk_editable_set_text(GTK_EDITABLE(win->ollama_models.url_entry), d->ollama_host);

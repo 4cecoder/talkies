@@ -38,6 +38,7 @@ const c_tray = @import("c_tray");
 const c_loop = @import("c_loop");
 const evdev_hotkey = @import("engine").evdev_hotkey;
 const sounds = @import("sounds.zig");
+const autostart = @import("autostart.zig");
 const app_state = @import("state.zig");
 const Phase = app_state.Phase;
 const health = @import("health.zig");
@@ -1173,6 +1174,7 @@ pub const Daemon = struct {
 
         var data: c_settings.TalkiesSettingsData = std.mem.zeroes(c_settings.TalkiesSettingsData);
         settingsFromConfig(self.pending_cfg orelse self.cfg, &data);
+        data.launch_at_login = @intFromBool(autostart.isEnabled(self.allocator));
         c_settings.talkies_settings_window_present(win, &data);
         self.refreshS1State();
         self.refreshHealth();
@@ -1242,6 +1244,9 @@ pub const Daemon = struct {
         try copyConfig(&next, self.pending_cfg orelse self.cfg);
         try configFromSettings(&next, data);
         try next.save();
+        autostart.setEnabled(self.allocator, data.launch_at_login != 0) catch |err| {
+            self.log(.err, "Could not update Launch at Login: {}", .{err});
+        };
 
         // Picking S1-mini without the model starts the download right away.
         if (next.enhancer == .s1_mini and !self.s1Ready()) self.startS1Download();
@@ -1561,6 +1566,7 @@ fn modeTag(index: c_int) []const u8 {
 pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData) void {
     d.push_to_talk_threshold = cfg.push_to_talk_threshold;
     d.show_hud = @intFromBool(cfg.show_hud);
+    d.mini_window = @intFromBool(cfg.mini_window);
     d.voice_assistant_mode = @intFromBool(cfg.voice_assistant_mode);
     d.insert_text_in_assistant_mode = @intFromBool(cfg.insert_text_in_assistant_mode);
     putString(&d.audio_device, cfg.audio_device);
@@ -1568,6 +1574,9 @@ pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData
     putString(&d.language, cfg.language);
     putString(&d.vocabulary_prompt, cfg.vocabulary_prompt);
     d.enhancer = @intCast(@intFromEnum(cfg.enhancer));
+    d.cleanup_style = @intCast(@intFromEnum(cfg.cleanup_style));
+    d.cleanup_structure = @intCast(@intFromEnum(cfg.cleanup_structure));
+    d.cleanup_context = @intCast(@intFromEnum(cfg.cleanup_context));
 
     putString(&d.ollama_host, cfg.ollama_host);
     putString(&d.ollama_model, cfg.ollama_selected_model);
@@ -1602,8 +1611,9 @@ fn toU32(value: c_int) u32 {
 }
 
 pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSettingsData) !void {
-    cfg.push_to_talk_threshold = d.push_to_talk_threshold;
+    cfg.push_to_talk_threshold = std.math.clamp(d.push_to_talk_threshold, 0.05, 0.5);
     cfg.show_hud = d.show_hud != 0;
+    cfg.mini_window = d.mini_window != 0;
     cfg.voice_assistant_mode = d.voice_assistant_mode != 0;
     cfg.insert_text_in_assistant_mode = d.insert_text_in_assistant_mode != 0;
     try cfg.setString("audio_device", getString(&d.audio_device));
@@ -1612,6 +1622,9 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     try cfg.setString("vocabulary_prompt", getString(&d.vocabulary_prompt));
     cfg.enhancer = std.enums.fromInt(config.EnhancerProvider, d.enhancer) orelse .none;
     cfg.enhancer_explicit = true;
+    cfg.cleanup_style = std.enums.fromInt(config.CleanupStyle, d.cleanup_style) orelse .semi_formal;
+    cfg.cleanup_structure = std.enums.fromInt(config.CleanupStructure, d.cleanup_structure) orelse .prose;
+    cfg.cleanup_context = std.enums.fromInt(config.CleanupContext, d.cleanup_context) orelse .general;
 
     try cfg.setString("ollama_host", getString(&d.ollama_host));
     if (getString(&d.ollama_model).len > 0) try cfg.setString("ollama_selected_model", getString(&d.ollama_model));
@@ -1933,6 +1946,10 @@ test "level normalization matches the macOS dB meter" {
     try std.testing.expectEqual(@as(f32, 0), normalizeLevel(0.0000001));
 }
 
+test {
+    _ = autostart;
+}
+
 test "settings round trip through the C struct" {
     const allocator = std.testing.allocator;
     var original = config.Config.init(allocator);
@@ -1941,6 +1958,11 @@ test "settings round trip through the C struct" {
     original.ollama_top_k = 17;
     try original.setString("ollama_enhancement_mode", "Concise & Professional");
     try original.setString("audio_device", "alsa_input.usb-mic");
+    original.mini_window = true;
+    original.cleanup_style = .casual;
+    original.cleanup_structure = .lists;
+    original.cleanup_context = .email;
+    original.push_to_talk_threshold = 0.3;
 
     var data = std.mem.zeroes(c_settings.TalkiesSettingsData);
     settingsFromConfig(original, &data);
@@ -1953,6 +1975,23 @@ test "settings round trip through the C struct" {
     try std.testing.expectEqual(@as(u32, 17), restored.ollama_top_k);
     try std.testing.expectEqualStrings("concise", restored.ollama_enhancement_mode);
     try std.testing.expectEqualStrings("alsa_input.usb-mic", restored.audio_device);
+    try std.testing.expect(restored.mini_window);
+    try std.testing.expectEqual(config.CleanupStyle.casual, restored.cleanup_style);
+    try std.testing.expectEqual(config.CleanupStructure.lists, restored.cleanup_structure);
+    try std.testing.expectEqual(config.CleanupContext.email, restored.cleanup_context);
+    try std.testing.expectEqual(@as(f64, 0.3), restored.push_to_talk_threshold);
+}
+
+test "cleanup options follow the configured S1-mini style" {
+    var cfg = config.Config.init(std.testing.allocator);
+    defer cfg.deinit();
+    cfg.cleanup_style = .semi_casual;
+    cfg.cleanup_structure = .lists;
+    cfg.cleanup_context = .email;
+    const options = cleanupOptions(&cfg);
+    try std.testing.expectEqual(cleanup.Style.semi_casual, options.style);
+    try std.testing.expectEqual(cleanup.Structure.lists, options.structure);
+    try std.testing.expectEqual(cleanup.Context.email, options.context);
 }
 
 test "pactl source parsing skips monitors" {

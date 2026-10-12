@@ -12,8 +12,10 @@ typedef struct TalkiesSettingsWindow TalkiesSettingsWindow;
 // Keep in sync with SettingsData in src/settings_window.zig.
 typedef struct {
     // General
-    double push_to_talk_threshold;
+    double push_to_talk_threshold; // seconds
     int show_hud;
+    int mini_window;
+    int launch_at_login;
     int voice_assistant_mode;
     int insert_text_in_assistant_mode;
 
@@ -21,10 +23,15 @@ typedef struct {
     char audio_device[256];
     char model[32];
     char language[16];
-    char vocabulary_prompt[512];
+    char vocabulary_prompt[512]; // comma-separated (one term per line in the UI)
 
     // Enhancement: 0=none 1=s1_mini 2=ollama 3=lm_studio
     int enhancer;
+    // S1-mini output: style 0=casual 1=semi_casual 2=semi_formal,
+    // structure 0=prose 1=lists, context 0=general 1=email
+    int cleanup_style;
+    int cleanup_structure;
+    int cleanup_context;
 
     char ollama_host[256];
     char ollama_model[256];
