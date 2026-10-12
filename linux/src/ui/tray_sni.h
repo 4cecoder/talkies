@@ -26,6 +26,8 @@ void talkies_tray_destroy(TalkiesTray *tray);
 
 // Dispatch pending D-Bus messages without blocking.
 void talkies_tray_process(TalkiesTray *tray);
+// Socket to watch for readability; call talkies_tray_process when it fires.
+int talkies_tray_get_fd(TalkiesTray *tray);
 
 // Reflect recording state in icon, tooltip and menu label.
 void talkies_tray_set_recording(TalkiesTray *tray, int recording);

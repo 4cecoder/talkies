@@ -114,6 +114,7 @@ fn addUiLib(ctx: Ctx) *std.Build.Step.Compile {
         "src/ui/tray_sni.c",
         "src/ui/daemon_status_gtk.c",
         "src/ui/yap_window_gtk.c",
+        "src/ui/loop_glib.c",
     };
     for (sources) |source| module.addCSourceFile(.{ .file = b.path(source), .flags = cFlags(ctx) });
     module.addIncludePath(b.path("src/ui"));
@@ -187,11 +188,14 @@ fn addAppModule(
 
     addCImport(ctx, module, "c_daemon_status", "daemon_status.h");
     addCImport(ctx, module, "c_hud", "hud.h");
+    addCImport(ctx, module, "c_loop", "loop.h");
     addCImport(ctx, module, "c_settings", "settings.h");
     addCImport(ctx, module, "c_tray", "tray.h");
     addCImport(ctx, module, "c_yap_window", "yap_window.h");
     addCImport(ctx, module, "c_sqlite3", "sqlite3.h");
 
+    module.addAnonymousImport("sound_start", .{ .root_source_file = b.path("assets/start-fast.wav") });
+    module.addAnonymousImport("sound_stop", .{ .root_source_file = b.path("assets/stop.wav") });
     module.linkSystemLibrary("sqlite3", .{}); // YAP session history
     module.linkLibrary(ui_lib);
     // Installed layout: <app>/talkies + <app>/lib/*.so; zig-out: bin/ + lib/.

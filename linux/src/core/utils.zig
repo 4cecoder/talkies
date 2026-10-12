@@ -113,18 +113,6 @@ pub fn ensureDir(path: []const u8) !void {
     };
 }
 
-/// Play a sound effect asynchronously (non-blocking)
-/// Uses aplay for WAV playback (part of alsa-utils, should already be installed)
-pub fn playSound(sound_file: []const u8) void {
-    // Spawn process in background - don't wait for it to complete
-    const argv = &[_][]const u8{ "aplay", "-q", sound_file };
-    _ = std.process.spawn(io(), .{ .argv = argv, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch {
-        // Silently fail if aplay not installed or sound file missing
-        return;
-    };
-    // Don't wait - let it play in background
-}
-
 /// Run a command and capture its stdout. Fails if it exits unsuccessfully.
 /// Caller owns returned memory.
 pub fn runCapture(allocator: std.mem.Allocator, argv: []const []const u8) ![]u8 {

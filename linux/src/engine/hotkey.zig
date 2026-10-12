@@ -16,6 +16,11 @@ pub const HotkeyListener = struct {
     root_window: c.Window = 0,
     running: bool = false,
 
+    /// X connection socket, for event-loop readiness watching.
+    pub fn fd(self: *HotkeyListener) std.posix.fd_t {
+        return c.XConnectionNumber(self.display.?);
+    }
+
     /// Check if there are pending X events (non-blocking)
     pub fn hasPendingEvents(self: *HotkeyListener) bool {
         if (self.display) |display| {

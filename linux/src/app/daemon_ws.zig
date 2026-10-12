@@ -103,6 +103,10 @@ pub const DaemonState = struct {
     current_state: State,
     mutex: std.Io.Mutex,
 
+    // Wakes the daemon's event loop after a command is queued.
+    wake_fn: ?*const fn (*anyopaque) void = null,
+    wake_ctx: ?*anyopaque = null,
+
     // Recording command queue (WebSocket thread -> daemon loop)
     record_commands: [16]RecordCommand = undefined,
     record_command_count: usize = 0,
@@ -169,6 +173,7 @@ pub const DaemonState = struct {
         }
         self.record_commands[self.record_command_count] = command;
         self.record_command_count += 1;
+        if (self.wake_fn) |wake| wake(self.wake_ctx.?);
     }
 
     /// Pop the oldest queued recording command (thread-safe).

@@ -37,6 +37,7 @@ pub const Config = struct {
     push_to_talk_threshold: f64 = 0.15, // seconds a hotkey must be held to count as push-to-talk
     show_hud: bool = true,
     show_status_gui: bool = false,
+    sounds: bool = false, // start/stop beeps
     voice_assistant_mode: bool = false,
     insert_text_in_assistant_mode: bool = false,
     debug_mode: bool = false,
@@ -51,7 +52,8 @@ pub const Config = struct {
     vocabulary_prompt: []const u8 = "",
 
     // [enhancement]
-    enhancer: EnhancerProvider = .s1_mini,
+    /// Off by default, like macOS: dictation is inserted as transcribed.
+    enhancer: EnhancerProvider = .none,
 
     // [ollama]
     ollama_selected_model: []const u8 = "llama3.2:3b",
@@ -365,6 +367,7 @@ const field_specs = [_]FieldSpec{
     .{ .section = "general", .key = "push_to_talk_threshold", .field = "push_to_talk_threshold", .comment = "Hold the hotkey longer than this (seconds) for push-to-talk; a quicker tap toggles recording" },
     .{ .section = "general", .key = "show_hud", .field = "show_hud", .comment = "Floating dictation window with live waveform and pipeline status" },
     .{ .section = "general", .key = "show_status_gui", .field = "show_status_gui", .comment = "Developer status monitor with live logs" },
+    .{ .section = "general", .key = "sounds", .field = "sounds", .comment = "Play a short sound when recording starts and stops" },
     .{ .section = "general", .key = "voice_assistant_mode", .field = "voice_assistant_mode", .comment = "Speak the result aloud (spd-say / espeak-ng) instead of inserting it" },
     .{ .section = "general", .key = "insert_text_in_assistant_mode", .field = "insert_text_in_assistant_mode" },
     .{ .section = "general", .key = "debug_mode", .field = "debug_mode" },
@@ -521,7 +524,8 @@ test "config initialization matches macOS defaults" {
     try std.testing.expectEqual(@as(u32, 500), cfg.ollama_max_tokens);
     try std.testing.expectEqualStrings("http://127.0.0.1:1234", cfg.lm_studio_endpoint);
     try std.testing.expectEqual(@as(u32, 4096), cfg.lm_studio_max_tokens);
-    try std.testing.expect(cfg.s1CleanupEnabled());
+    try std.testing.expectEqual(EnhancerProvider.none, cfg.enhancer);
+    try std.testing.expect(!cfg.sounds);
 }
 
 test "parse string value" {

@@ -35,6 +35,9 @@ const build_options = @import("build_options");
 const c_hud = @import("c_hud");
 const c_settings = @import("c_settings");
 const c_tray = @import("c_tray");
+const c_loop = @import("c_loop");
+const evdev_hotkey = @import("engine").evdev_hotkey;
+const sounds = @import("sounds.zig");
 const c_gtk = @import("c_daemon_status");
 
 const default_ws_port: u16 = 6789;
@@ -48,12 +51,13 @@ fn wsPort() u16 {
     };
 }
 /// Keep recording briefly after stop so trailing words aren't clipped.
-const tail_ms: i64 = 350;
+const tail_ms: c_uint = 350;
 /// macOS hides the window 1.5s after "Done!".
-const hide_after_complete_ms: i64 = 1500;
-const hide_after_error_ms: i64 = 3000;
+const hide_after_complete_ms: c_uint = 1500;
+const hide_after_error_ms: c_uint = 3000;
 const level_broadcast_interval_ms: i64 = 50;
-const chunks_per_iteration = 5; // 5 x 4ms PulseAudio reads per loop pass
+/// HUD waveform refresh while recording (~30 fps).
+const level_interval_ms: c_uint = 33;
 
 /// Mirrors TalkiesHudStage in hud_gtk.h and PipelineStage on macOS.
 pub const Stage = enum(u8) {
@@ -111,10 +115,13 @@ const Job = struct {
     duration_ms: i64 = 0,
     /// Snapshot of YAP routing at spawn time (main thread owns yap state).
     route_to_yap: bool = false,
+    /// S1-mini weights present; otherwise cleanup is skipped, never fetched.
+    s1_ready: bool = false,
     thread: std.Thread = undefined,
 
     fn setStage(self: *Job, stage: Stage) void {
         self.stage.store(@intFromEnum(stage), .release);
+        self.daemon.wake();
     }
 
     fn fail(self: *Job, comptime fmt: []const u8, args: anytype) void {
@@ -132,6 +139,7 @@ const Job = struct {
         self.process();
         self.duration_ms = utils.monotonicMilliseconds() - started;
         self.done.store(true, .release);
+        self.daemon.wake();
     }
 
     fn process(self: *Job) void {
@@ -197,6 +205,10 @@ const Job = struct {
         switch (cfg.enhancer) {
             .none => return d.allocator.dupe(u8, raw),
             .s1_mini => {
+                if (!self.s1_ready) {
+                    utils.log("S1-mini not installed (Settings > Enhancement); inserting raw transcript", .{});
+                    return d.allocator.dupe(u8, raw);
+                }
                 self.setStage(.cleaning);
                 return d.cleanup_service.clean(raw, .{}) catch |err| {
                     utils.logError("S1-mini cleanup failed; keeping raw transcript: {}", .{err});
@@ -253,6 +265,57 @@ fn speak(text: []const u8) void {
     };
 }
 
+/// Audio capture on its own thread so blocking PulseAudio reads never stall
+/// the UI. The main thread only reads `level` and the completion flags.
+const Capture = struct {
+    daemon: *Daemon,
+    thread: std.Thread = undefined,
+    stop_requested: std.atomic.Value(bool) = .init(false),
+    finished: std.atomic.Value(bool) = .init(false),
+    failed: std.atomic.Value(bool) = .init(false),
+    /// Latest peak RMS as f32 bits.
+    level_bits: std.atomic.Value(u32) = .init(0),
+
+    fn level(self: *const Capture) f32 {
+        return @bitCast(self.level_bits.load(.monotonic));
+    }
+
+    fn run(self: *Capture) void {
+        defer {
+            self.finished.store(true, .release);
+            self.daemon.wake();
+        }
+        const d = self.daemon;
+        const device: ?[]const u8 = if (d.cfg.audio_device.len > 0) d.cfg.audio_device else null;
+        d.recorder.startRecording(d.recording_path, device) catch |err| {
+            utils.logError("Could not start recording: {}", .{err});
+            self.failed.store(true, .release);
+            return;
+        };
+        var peak: f32 = 0;
+        var chunks: usize = 0;
+        while (!self.stop_requested.load(.acquire)) {
+            _ = d.recorder.recordChunk() catch |err| {
+                utils.logError("Recording failed: {}", .{err});
+                self.failed.store(true, .release);
+                break;
+            };
+            peak = @max(peak, d.recorder.getAudioLevel());
+            chunks += 1;
+            if (chunks % 5 == 0) { // ~20ms windows
+                self.level_bits.store(@bitCast(peak), .monotonic);
+                peak = 0;
+            }
+        }
+        d.recorder.stopRecording() catch |err| {
+            utils.logError("Could not finalize recording: {}", .{err});
+            self.failed.store(true, .release);
+        };
+    }
+};
+
+const S1State = enum(u8) { missing, downloading, ready, failed };
+
 pub const Daemon = struct {
     allocator: std.mem.Allocator,
     cfg: config.Config,
@@ -269,7 +332,10 @@ pub const Daemon = struct {
 
     ws_server: *websocket.Server,
     state: *daemon_ws.DaemonState,
+    /// eventfd that worker/capture/WebSocket threads write to wake the loop.
+    wake_fd: std.posix.fd_t,
     hotkey_listener: ?hotkey.HotkeyListener = null,
+    evdev: evdev_hotkey.Listener = .{},
     hotkey_name: [:0]const u8,
 
     hud: ?*c_hud.TalkiesHud = null,
@@ -278,17 +344,23 @@ pub const Daemon = struct {
     tray: ?*c_tray.TalkiesTray = null,
 
     trigger: trigger_mod.Trigger,
-    recording: bool = false,
+    capture: ?*Capture = null,
+    stopping: bool = false,
     record_start_ms: i64 = 0,
-    stop_deadline_ms: ?i64 = null,
     last_level_broadcast_ms: i64 = 0,
+    level_timer: c_uint = 0,
+    stop_timer: c_uint = 0,
+    hide_timer: c_uint = 0,
 
     job: ?*Job = null,
     shown_stage: Stage = .idle,
-    hide_at_ms: ?i64 = null,
     last_transcript: ?[:0]u8 = null,
 
-    // UI requests raised from GTK / D-Bus callbacks, handled in the loop.
+    s1_state: std.atomic.Value(u8) = .init(@intFromEnum(S1State.missing)),
+    s1_thread: ?std.Thread = null,
+    s1_timer: c_uint = 0,
+
+    // UI requests raised from GTK / D-Bus callbacks, handled in tick().
     request_toggle: bool = false,
     request_toggle_hud: bool = false,
     request_settings: bool = false,
@@ -306,17 +378,23 @@ pub const Daemon = struct {
     // -----------------------------------------------------------------
 
     fn deinit(self: *Daemon) void {
+        if (self.capture) |cap| {
+            cap.stop_requested.store(true, .release);
+            cap.thread.join();
+            self.allocator.destroy(cap);
+        }
         if (self.job) |job| {
             job.thread.join();
             self.freeJob(job);
         }
+        if (self.s1_thread) |t| t.join();
         self.endYapSession();
-        if (self.recording) self.recorder.stopRecording() catch |err| utils.logError("stop recording: {}", .{err});
         if (self.tray) |t| c_tray.talkies_tray_destroy(t);
         if (self.settings_win) |w| c_settings.talkies_settings_window_destroy(w);
         if (self.hud) |h| c_hud.talkies_hud_destroy(h);
         if (self.status_win) |w| w.destroy();
         if (self.hotkey_listener) |*l| l.deinit();
+        self.evdev.deinit();
         if (self.last_transcript) |t| self.allocator.free(t);
         if (self.pending_cfg) |*p| p.deinit();
         self.recorder.deinit();
@@ -326,6 +404,22 @@ pub const Daemon = struct {
         self.cfg.deinit();
         self.allocator.free(self.recording_path);
         self.allocator.free(self.vad_path);
+        _ = std.os.linux.close(self.wake_fd);
+    }
+
+    fn wakeOpaque(ctx: *anyopaque) void {
+        const self: *Daemon = @ptrCast(@alignCast(ctx));
+        self.wake();
+    }
+
+    /// Wake the main loop from any thread.
+    pub fn wake(self: *Daemon) void {
+        const one: u64 = 1;
+        const rc = std.os.linux.write(self.wake_fd, std.mem.asBytes(&one).ptr, @sizeOf(u64));
+        // EAGAIN means the counter is already non-zero: the loop will wake.
+        if (std.os.linux.errno(rc) != .SUCCESS and std.os.linux.errno(rc) != .AGAIN) {
+            utils.logError("wake failed: {}", .{std.os.linux.errno(rc)});
+        }
     }
 
     fn log(self: *Daemon, level: daemon_status_window.LogLevel, comptime fmt: []const u8, args: anytype) void {
@@ -369,14 +463,42 @@ pub const Daemon = struct {
     }
 
     fn showHud(self: *Daemon) void {
+        self.cancelHide();
         if (!self.cfg.show_hud) return;
         if (self.hud) |hud| c_hud.talkies_hud_show(hud);
-        self.hide_at_ms = null;
     }
 
     fn hideHud(self: *Daemon) void {
+        self.cancelHide();
         if (self.hud) |hud| c_hud.talkies_hud_hide(hud);
-        self.hide_at_ms = null;
+    }
+
+    fn cancelHide(self: *Daemon) void {
+        c_loop.talkies_loop_remove(self.hide_timer);
+        self.hide_timer = 0;
+    }
+
+    /// Hide the HUD after `ms` unless something new starts first.
+    fn scheduleHide(self: *Daemon, ms: c_uint) void {
+        self.cancelHide();
+        self.hide_timer = c_loop.talkies_loop_timeout(ms, onHideTimer, self);
+    }
+
+    fn onHideTimer(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.hide_timer = 0;
+        if (self.capture == null and self.job == null) {
+            if (self.hud) |hud| c_hud.talkies_hud_hide(hud);
+            self.setStage(.idle, null);
+        }
+        return 0;
+    }
+
+    fn showError(self: *Daemon, message: []const u8) void {
+        self.showHud();
+        self.setStage(.@"error", message);
+        self.scheduleHide(hide_after_error_ms);
+        self.setWsState(.idle);
     }
 
     // -----------------------------------------------------------------
@@ -391,59 +513,60 @@ pub const Daemon = struct {
         }
     }
 
+    /// True while audio is being captured and no stop is pending.
     fn isRecording(self: *const Daemon) bool {
-        return self.recording and self.stop_deadline_ms == null;
+        return self.capture != null and !self.stopping;
     }
 
     fn startRecording(self: *Daemon) void {
-        if (self.recording) return;
+        if (self.capture != null) return;
         if (self.job != null) {
             self.log(.warn, "Still processing the previous recording; ignoring start", .{});
             return;
         }
-        const device: ?[]const u8 = if (self.cfg.audio_device.len > 0) self.cfg.audio_device else null;
-        self.recorder.startRecording(self.recording_path, device) catch |err| {
-            self.log(.err, "Could not start recording: {}", .{err});
-            self.showHud();
-            self.setStage(.@"error", "Microphone unavailable");
-            self.hide_at_ms = utils.monotonicMilliseconds() + hide_after_error_ms;
-            self.state.broadcastError("Failed to start recording", "RECORDING_ERROR") catch |e| utils.logError("broadcast: {}", .{e});
+        const cap = self.allocator.create(Capture) catch {
+            self.showError("Out of memory");
             return;
         };
-        self.recording = true;
-        self.stop_deadline_ms = null;
+        cap.* = .{ .daemon = self };
+        cap.thread = std.Thread.spawn(.{}, Capture.run, .{cap}) catch |err| {
+            self.allocator.destroy(cap);
+            self.log(.err, "Could not start capture thread: {}", .{err});
+            self.showError("Could not start recording");
+            return;
+        };
+        self.capture = cap;
+        self.stopping = false;
         self.record_start_ms = utils.monotonicMilliseconds();
-        utils.playSound("assets/start-fast.wav");
+        // UI responds immediately; PulseAudio opens on the capture thread.
         self.showHud();
         self.setStage(.recording, null);
         self.setWsState(.recording);
-        self.log(.info, "Recording started", .{});
+        self.level_timer = c_loop.talkies_loop_timeout(level_interval_ms, onLevelTimer, self);
+        if (self.cfg.sounds) sounds.play(.start);
     }
 
     fn requestStop(self: *Daemon) void {
-        if (!self.recording or self.stop_deadline_ms != null) return;
-        self.stop_deadline_ms = utils.monotonicMilliseconds() + tail_ms;
+        if (self.capture == null or self.stopping) return;
+        self.stopping = true;
+        // Keep recording briefly so trailing words aren't clipped.
+        self.stop_timer = c_loop.talkies_loop_timeout(tail_ms, onStopTimer, self);
     }
 
-    /// Read a few PulseAudio chunks and publish the level. Blocking reads
-    /// pace the main loop at ~20ms while recording.
-    fn captureAudio(self: *Daemon) void {
-        var peak: f32 = 0;
-        for (0..chunks_per_iteration) |_| {
-            _ = self.recorder.recordChunk() catch |err| {
-                self.log(.err, "Recording failed: {}", .{err});
-                self.recorder.stopRecording() catch |e| utils.logError("stop recording: {}", .{e});
-                self.recording = false;
-                self.stop_deadline_ms = null;
-                self.setStage(.@"error", "Recording failed");
-                self.hide_at_ms = utils.monotonicMilliseconds() + hide_after_error_ms;
-                self.setWsState(.idle);
-                return;
-            };
-            peak = @max(peak, self.recorder.getAudioLevel());
-        }
+    fn onStopTimer(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.stop_timer = 0;
+        if (self.capture) |cap| cap.stop_requested.store(true, .release);
+        return 0;
+    }
 
-        const level = normalizeLevel(peak);
+    fn onLevelTimer(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        const cap = self.capture orelse {
+            self.level_timer = 0;
+            return 0;
+        };
+        const level = normalizeLevel(cap.level());
         const now = utils.monotonicMilliseconds();
         if (self.hud) |hud| {
             c_hud.talkies_hud_set_level(hud, level);
@@ -453,37 +576,45 @@ pub const Daemon = struct {
             self.last_level_broadcast_ms = now;
             self.state.broadcastAudioLevel(level) catch |err| utils.logError("broadcast level: {}", .{err});
         }
-
-        if (self.stop_deadline_ms) |deadline| {
-            if (now >= deadline) self.finishRecording();
-        }
+        return 1;
     }
 
-    fn finishRecording(self: *Daemon) void {
-        self.recording = false;
-        self.stop_deadline_ms = null;
-        self.recorder.stopRecording() catch |err| {
-            self.log(.err, "Could not finalize recording: {}", .{err});
-            self.setStage(.@"error", "Could not save recording");
-            self.hide_at_ms = utils.monotonicMilliseconds() + hide_after_error_ms;
-            self.setWsState(.idle);
+    /// Capture thread ended (stop requested or device failure).
+    fn collectCapture(self: *Daemon) void {
+        const cap = self.capture orelse return;
+        if (!cap.finished.load(.acquire)) return;
+        cap.thread.join();
+        const failed = cap.failed.load(.acquire);
+        self.allocator.destroy(cap);
+        self.capture = null;
+        self.stopping = false;
+        c_loop.talkies_loop_remove(self.level_timer);
+        c_loop.talkies_loop_remove(self.stop_timer);
+        self.level_timer = 0;
+        self.stop_timer = 0;
+
+        if (failed) {
+            self.state.broadcastError("Recording failed", "RECORDING_ERROR") catch |err| utils.logError("broadcast: {}", .{err});
+            self.showError("Microphone unavailable");
             return;
-        };
-        utils.playSound("assets/stop.wav");
+        }
+        if (self.cfg.sounds) sounds.play(.stop);
         self.setStage(.transcribing, null);
         self.setWsState(.processing);
         self.spawnJob() catch |err| {
             self.log(.err, "Could not start processing: {}", .{err});
-            self.setStage(.@"error", "Could not start processing");
-            self.hide_at_ms = utils.monotonicMilliseconds() + hide_after_error_ms;
-            self.setWsState(.idle);
+            self.showError("Could not start processing");
         };
     }
 
     fn spawnJob(self: *Daemon) !void {
         const job = try self.allocator.create(Job);
         errdefer self.allocator.destroy(job);
-        job.* = .{ .daemon = self, .route_to_yap = self.yap_active or self.cfg.yap_mode_enabled };
+        job.* = .{
+            .daemon = self,
+            .route_to_yap = self.yap_active or self.cfg.yap_mode_enabled,
+            .s1_ready = self.s1Ready(),
+        };
         job.thread = try std.Thread.spawn(.{}, Job.run, .{job});
         self.job = job;
     }
@@ -507,14 +638,13 @@ pub const Daemon = struct {
         std.Io.Dir.deleteFileAbsolute(utils.io(), self.recording_path) catch |err| utils.logDebug("cleanup recording: {}", .{err});
         std.Io.Dir.deleteFileAbsolute(utils.io(), self.vad_path) catch |err| utils.logDebug("cleanup vad: {}", .{err});
 
-        const now = utils.monotonicMilliseconds();
         switch (job.outcome) {
             .delivered => {
                 const text = job.text orelse "";
                 self.rememberTranscript(text);
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.setStage(.complete, null);
-                self.hide_at_ms = now + hide_after_complete_ms;
+                self.scheduleHide(hide_after_complete_ms);
                 self.log(.info, "Delivered {d} chars in {d}ms", .{ text.len, job.duration_ms });
                 if (self.status_win) |win| win.setLastTranscription(text);
                 self.setWsState(.idle);
@@ -527,10 +657,8 @@ pub const Daemon = struct {
             },
             .failed => {
                 self.log(.err, "{s}", .{job.errorMessage()});
-                self.setStage(.@"error", job.errorMessage());
-                self.hide_at_ms = now + hide_after_error_ms;
                 self.state.broadcastError(job.errorMessage(), "PIPELINE_ERROR") catch |err| utils.logError("broadcast: {}", .{err});
-                self.setWsState(.idle);
+                self.showError(job.errorMessage());
             },
             .yap => {
                 const text = job.text orelse "";
@@ -552,19 +680,49 @@ pub const Daemon = struct {
     }
 
     // -----------------------------------------------------------------
-    // Input sources
+    // Input sources (each fires from the event loop; no polling)
     // -----------------------------------------------------------------
 
-    fn pollHotkey(self: *Daemon) !void {
-        const listener = if (self.hotkey_listener) |*l| l else return;
+    fn handleKey(self: *Daemon, pressed: bool) void {
+        const now = utils.monotonicMilliseconds();
+        self.applyAction(if (pressed)
+            self.trigger.press(now, self.isRecording())
+        else
+            self.trigger.release(now, self.isRecording()));
+    }
+
+    fn onX11Readable(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        const listener = if (self.hotkey_listener) |*l| l else return 0;
         while (listener.hasPendingEvents()) {
-            const event = try listener.poll() orelse continue;
-            const now = utils.monotonicMilliseconds();
-            self.applyAction(switch (event) {
-                .press => self.trigger.press(now, self.isRecording()),
-                .release => self.trigger.release(now, self.isRecording()),
-            });
+            const event = (listener.poll() catch |err| {
+                utils.logError("X11 hotkey: {}", .{err});
+                return 1;
+            }) orelse continue;
+            self.handleKey(event == .press);
         }
+        return 1;
+    }
+
+    fn onEvdevReadable(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        for (self.evdev.devices()) |fd| {
+            if (evdev_hotkey.Listener.read(fd)) |event| self.handleKey(event == .press);
+        }
+        return 1;
+    }
+
+    fn onWake(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        var counter: u64 = 0;
+        _ = std.os.linux.read(self.wake_fd, std.mem.asBytes(&counter).ptr, @sizeOf(u64));
+        return 1; // tick() runs after every loop iteration
+    }
+
+    fn onTrayReadable(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        if (self.tray) |t| c_tray.talkies_tray_process(t);
+        return 1;
     }
 
     fn pollCommands(self: *Daemon) void {
@@ -590,8 +748,8 @@ pub const Daemon = struct {
             self.request_toggle_hud = false;
             if (self.hud) |hud| {
                 if (c_hud.talkies_hud_is_visible(hud) != 0) self.hideHud() else {
+                    self.cancelHide();
                     c_hud.talkies_hud_show(hud);
-                    self.hide_at_ms = null;
                 }
             }
         }
@@ -623,6 +781,97 @@ pub const Daemon = struct {
     }
 
     // -----------------------------------------------------------------
+    // S1-mini model management
+    // -----------------------------------------------------------------
+
+    fn s1Store(self: *Daemon) cleanup.ModelStore {
+        return .{ .allocator = self.allocator, .quiet = true };
+    }
+
+    fn s1Ready(self: *Daemon) bool {
+        return @as(S1State, @enumFromInt(self.s1_state.load(.acquire))) == .ready;
+    }
+
+    fn refreshS1State(self: *Daemon) void {
+        if (self.s1_thread != null) return;
+        const state: S1State = if (self.s1Store().isInstalled()) .ready else .missing;
+        self.s1_state.store(@intFromEnum(state), .release);
+        self.pushS1State();
+    }
+
+    fn pushS1State(self: *Daemon) void {
+        const win = self.settings_win orelse return;
+        const state: S1State = @enumFromInt(self.s1_state.load(.acquire));
+        const fraction: f64 = if (state == .downloading)
+            @as(f64, @floatFromInt(self.s1Store().downloadedBytes())) / @as(f64, @floatFromInt(cleanup.model_size))
+        else
+            0;
+        c_settings.talkies_settings_window_set_s1_state(win, @intFromEnum(state), std.math.clamp(fraction, 0, 1), null);
+    }
+
+    fn startS1Download(self: *Daemon) void {
+        if (self.s1_thread != null) return;
+        self.s1_state.store(@intFromEnum(S1State.downloading), .release);
+        self.s1_thread = std.Thread.spawn(.{}, s1DownloadThread, .{self}) catch |err| {
+            self.log(.err, "Could not start S1-mini download: {}", .{err});
+            self.s1_state.store(@intFromEnum(S1State.failed), .release);
+            self.pushS1State();
+            return;
+        };
+        self.log(.info, "Downloading S1-mini model...", .{});
+        self.pushS1State();
+        self.s1_timer = c_loop.talkies_loop_timeout(400, onS1Progress, self);
+    }
+
+    fn s1DownloadThread(self: *Daemon) void {
+        const path = self.s1Store().ensureAvailable() catch |err| {
+            utils.logError("S1-mini download failed: {}", .{err});
+            self.s1_state.store(@intFromEnum(S1State.failed), .release);
+            self.wake();
+            return;
+        };
+        self.allocator.free(path);
+        self.s1_state.store(@intFromEnum(S1State.ready), .release);
+        self.wake();
+    }
+
+    fn onS1Progress(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.pushS1State();
+        if (self.s1_thread == null) {
+            self.s1_timer = 0;
+            return 0;
+        }
+        return 1;
+    }
+
+    fn collectS1Download(self: *Daemon) void {
+        const thread = self.s1_thread orelse return;
+        const state: S1State = @enumFromInt(self.s1_state.load(.acquire));
+        if (state == .downloading) return;
+        thread.join();
+        self.s1_thread = null;
+        c_loop.talkies_loop_remove(self.s1_timer);
+        self.s1_timer = 0;
+        self.log(if (state == .ready) .info else .err, "S1-mini download {s}", .{if (state == .ready) "complete" else "failed"});
+        self.pushS1State();
+    }
+
+    fn onS1Download(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startS1Download();
+    }
+
+    fn onS1Remove(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        if (self.job != null or self.s1_thread != null) return;
+        // Release the loaded weights before deleting them.
+        self.cleanup_service.deinit();
+        self.s1Store().remove() catch |err| self.log(.err, "Could not remove S1-mini: {}", .{err});
+        self.refreshS1State();
+    }
+
+    // -----------------------------------------------------------------
     // Settings
     // -----------------------------------------------------------------
 
@@ -635,6 +884,7 @@ pub const Daemon = struct {
             self.settings_win = c_settings.talkies_settings_window_new(&mode_names, &mode_descriptions, path_z.ptr) orelse
                 return error.SettingsWindowFailed;
             c_settings.talkies_settings_window_set_callbacks(self.settings_win, onSettingsSave, onSettingsRefresh, self);
+            c_settings.talkies_settings_window_set_s1_callbacks(self.settings_win, onS1Download, onS1Remove);
         }
         const win = self.settings_win.?;
         self.loadAudioDevices(win);
@@ -642,6 +892,7 @@ pub const Daemon = struct {
         var data: c_settings.TalkiesSettingsData = std.mem.zeroes(c_settings.TalkiesSettingsData);
         settingsFromConfig(self.pending_cfg orelse self.cfg, &data);
         c_settings.talkies_settings_window_present(win, &data);
+        self.refreshS1State();
 
         // Like macOS, check the selected server as the settings open.
         switch ((self.pending_cfg orelse self.cfg).enhancer) {
@@ -709,6 +960,9 @@ pub const Daemon = struct {
         try configFromSettings(&next, data);
         try next.save();
 
+        // Picking S1-mini without the model starts the download right away.
+        if (next.enhancer == .s1_mini and !self.s1Ready()) self.startS1Download();
+
         if (self.pending_cfg) |*old| old.deinit();
         self.pending_cfg = next;
         try self.applyPendingConfig();
@@ -716,7 +970,7 @@ pub const Daemon = struct {
 
     /// Swap in saved settings once no worker reads the config.
     fn applyPendingConfig(self: *Daemon) !void {
-        if (self.job != null or self.recording) return;
+        if (self.job != null or self.capture != null) return;
         const next = self.pending_cfg orelse return;
         self.pending_cfg = null;
 
@@ -743,7 +997,7 @@ pub const Daemon = struct {
         self.whisper_service.loadModel(self.cfg.model) catch |err| {
             self.log(.err, "Could not load model '{s}': {}", .{ self.cfg.model, err });
             self.setStage(.@"error", "Could not load Whisper model");
-            self.hide_at_ms = utils.monotonicMilliseconds() + hide_after_error_ms;
+            self.scheduleHide(hide_after_error_ms);
             return err;
         };
         self.log(.info, "Model '{s}' loaded", .{self.cfg.model});
@@ -957,29 +1211,23 @@ pub const Daemon = struct {
     // Main loop
     // -----------------------------------------------------------------
 
+    /// Everything that can change after an event: drained after every loop
+    /// iteration, so state is reconciled exactly when something happened.
+    fn tick(self: *Daemon) !void {
+        self.pollCommands();
+        try self.pollUiRequests();
+        self.collectCapture();
+        try self.pollJob();
+        self.collectS1Download();
+        if (self.yap_win != null) try self.pollYap();
+    }
+
+    /// Blocks in the GLib main loop until an fd, timer or GTK event fires.
+    /// Idle CPU use is zero: there is no polling interval.
     fn loop(self: *Daemon) !void {
         while (!self.quit) {
-            pumpGtk();
-            if (self.tray) |t| c_tray.talkies_tray_process(t);
-            try self.pollHotkey();
-            self.pollCommands();
-            try self.pollUiRequests();
-
-            if (self.recording) {
-                self.captureAudio();
-            } else {
-                utils.sleepNanoseconds(8 * std.time.ns_per_ms);
-            }
-
-            try self.pollJob();
-            if (self.yap_win != null) try self.pollYap();
-
-            if (self.hide_at_ms) |deadline| {
-                if (utils.monotonicMilliseconds() >= deadline and !self.recording and self.job == null) {
-                    self.hideHud();
-                    self.setStage(.idle, null);
-                }
-            }
+            c_loop.talkies_loop_iterate(1);
+            try self.tick();
         }
         self.log(.info, "Daemon shutting down", .{});
     }
@@ -1202,6 +1450,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
     defer ws_server.deinit();
     var state = daemon_ws.DaemonState.init(allocator, &ws_server);
 
+    const efd_rc = std.os.linux.eventfd(0, std.os.linux.EFD.NONBLOCK | std.os.linux.EFD.CLOEXEC);
+    if (std.os.linux.errno(efd_rc) != .SUCCESS) return error.EventFdFailed;
+
     var daemon = Daemon{
         .allocator = allocator,
         .cfg = config.Config.init(allocator),
@@ -1213,6 +1464,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
         .recorder = audio.AudioRecorder.init(allocator),
         .ws_server = &ws_server,
         .state = &state,
+        .wake_fd = @intCast(efd_rc),
         .trigger = undefined,
         .hotkey_name = "Right Alt",
     };
@@ -1224,7 +1476,24 @@ pub fn run(allocator: std.mem.Allocator) !void {
     daemon.trigger = trigger_mod.Trigger.init(daemon.cfg.push_to_talk_threshold);
     const platform = daemon.cfg.getEffectivePlatform();
     const is_wayland = std.mem.eql(u8, platform, "wayland");
-    if (is_wayland) daemon.hotkey_name = "your Talkies hotkey";
+
+    // Hotkey sources. Wayland forbids global grabs, so read Right Alt from
+    // the keyboards directly when permitted (input group); compositor
+    // bindings over WebSocket keep working either way.
+    if (is_wayland) {
+        daemon.evdev = evdev_hotkey.Listener.open();
+        if (daemon.evdev.count == 0) {
+            daemon.hotkey_name = "your Talkies hotkey";
+            utils.log("Right Alt unavailable on Wayland without /dev/input access; use scripts/talkies-hotkey.sh", .{});
+        }
+    } else {
+        daemon.hotkey_listener = hotkey.HotkeyListener.init(allocator);
+        daemon.hotkey_listener.?.start() catch |err| {
+            utils.logError("X11 hotkey unavailable: {}", .{err});
+            daemon.hotkey_listener.?.deinit();
+            daemon.hotkey_listener = null;
+        };
+    }
 
     // UI (all optional: the daemon keeps working headless)
     applyCompositorRules();
@@ -1248,15 +1517,19 @@ pub fn run(allocator: std.mem.Allocator) !void {
     daemon.tray = c_tray.talkies_tray_new(Daemon.onTray, &daemon);
     if (daemon.tray == null) utils.log("System tray unavailable (no session bus)", .{});
 
-    // Input
-    if (!is_wayland) {
-        daemon.hotkey_listener = hotkey.HotkeyListener.init(allocator);
-        daemon.hotkey_listener.?.start() catch |err| {
-            utils.logError("X11 hotkey unavailable: {}", .{err});
-            daemon.hotkey_listener.?.deinit();
-            daemon.hotkey_listener = null;
-        };
+    // Event sources for the blocking main loop.
+    state.wake_fn = Daemon.wakeOpaque;
+    state.wake_ctx = &daemon;
+    _ = c_loop.talkies_loop_watch_fd(daemon.wake_fd, Daemon.onWake, &daemon);
+    if (daemon.hotkey_listener) |*listener| {
+        _ = c_loop.talkies_loop_watch_fd(listener.fd(), Daemon.onX11Readable, &daemon);
     }
+    for (daemon.evdev.devices()) |fd| _ = c_loop.talkies_loop_watch_fd(fd, Daemon.onEvdevReadable, &daemon);
+    if (daemon.tray) |t| {
+        const fd = c_tray.talkies_tray_get_fd(t);
+        if (fd >= 0) _ = c_loop.talkies_loop_watch_fd(fd, Daemon.onTrayReadable, &daemon);
+    }
+    daemon.refreshS1State();
 
     const ws_thread = try std.Thread.spawn(.{}, struct {
         fn serve(server: *websocket.Server, st: *daemon_ws.DaemonState) void {
@@ -1282,7 +1555,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
         \\
     , .{
         platform,
-        if (is_wayland) "compositor binding -> scripts/talkies-hotkey.sh down|up" else "Right Alt (hold = push-to-talk, tap = toggle)",
+        if (daemon.hotkey_listener != null or daemon.evdev.count > 0) "Right Alt (hold = push-to-talk, tap = toggle)" else "compositor binding -> scripts/talkies-hotkey.sh down|up",
         daemon.cfg.enhancer.displayName(),
         ws_port,
     });

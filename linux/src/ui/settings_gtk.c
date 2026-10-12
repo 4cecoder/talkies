@@ -42,6 +42,13 @@ struct TalkiesSettingsWindow {
     GtkWidget *enhancer;
     GtkWidget *enhancer_stack;
 
+    GtkWidget *s1_status;
+    GtkWidget *s1_progress;
+    GtkWidget *s1_download;
+    GtkWidget *s1_remove;
+    TalkiesSettingsActionFn on_s1_download;
+    TalkiesSettingsActionFn on_s1_remove;
+
     ModelPicker ollama_models;
     GtkWidget *ollama_mode;
     GtkWidget *ollama_mode_desc;
@@ -411,6 +418,18 @@ static void on_lm_reset(GtkButton *button, gpointer user_data) {
     gtk_range_set_value(GTK_RANGE(win->lm_max_tokens), 4096);
 }
 
+static void on_s1_download_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_s1_download) win->on_s1_download(win->user_data);
+}
+
+static void on_s1_remove_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_s1_remove) win->on_s1_remove(win->user_data);
+}
+
 static GtkWidget *provider_page(void) {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     return box;
@@ -431,8 +450,30 @@ static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     gtk_stack_add_named(GTK_STACK(win->enhancer_stack), none, "none");
 
     GtkWidget *s1 = provider_page();
-    add_note(s1, "S1-mini runs fully on-device (llama.cpp, ~484 MB, downloaded on first use) and "
-                 "fixes punctuation, capitalization and filler words.");
+    add_note(s1, "S1-mini runs fully on-device (llama.cpp on the CPU) and fixes punctuation, "
+                 "capitalization and filler words. Until the model is installed, transcripts are "
+                 "inserted unchanged.");
+    add_section(s1, "Model");
+    win->s1_status = gtk_label_new("Checking...");
+    gtk_label_set_xalign(GTK_LABEL(win->s1_status), 0);
+    gtk_label_set_wrap(GTK_LABEL(win->s1_status), TRUE);
+    gtk_widget_set_hexpand(win->s1_status, TRUE);
+    win->s1_download = gtk_button_new_with_label("Download (484 MB)");
+    gtk_widget_add_css_class(win->s1_download, "suggested-action");
+    g_signal_connect(win->s1_download, "clicked", G_CALLBACK(on_s1_download_clicked), win);
+    win->s1_remove = gtk_button_new_with_label("Remove");
+    gtk_widget_add_css_class(win->s1_remove, "destructive-action");
+    g_signal_connect(win->s1_remove, "clicked", G_CALLBACK(on_s1_remove_clicked), win);
+    GtkWidget *s1_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_append(GTK_BOX(s1_row), win->s1_status);
+    gtk_box_append(GTK_BOX(s1_row), win->s1_download);
+    gtk_box_append(GTK_BOX(s1_row), win->s1_remove);
+    gtk_box_append(GTK_BOX(s1), s1_row);
+    win->s1_progress = gtk_progress_bar_new();
+    gtk_widget_set_visible(win->s1_progress, FALSE);
+    gtk_box_append(GTK_BOX(s1), win->s1_progress);
+    add_note(s1, "Pinned superwhisper/s1-mini-GGUF (q4_k_m), SHA-256 verified. Stored in "
+                 "~/.local/share/talkies/models.");
     gtk_stack_add_named(GTK_STACK(win->enhancer_stack), s1, "s1_mini");
 
     // Ollama
@@ -721,6 +762,36 @@ void talkies_settings_window_set_audio_devices(TalkiesSettingsWindow *win, const
         g_ptr_array_add(win->audio_device_names, g_strdup(names[i]));
     }
     win->populating = was_populating;
+}
+
+void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,
+                                              TalkiesSettingsActionFn on_remove) {
+    if (!win) return;
+    win->on_s1_download = on_download;
+    win->on_s1_remove = on_remove;
+}
+
+void talkies_settings_window_set_s1_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
+                                          const char *detail) {
+    if (!win) return;
+    char text[256];
+    switch (state) {
+    case TALKIES_S1_READY: g_snprintf(text, sizeof text, "Installed and ready"); break;
+    case TALKIES_S1_DOWNLOADING:
+        g_snprintf(text, sizeof text, "Downloading... %d%%", (int)(fraction * 100.0 + 0.5));
+        break;
+    case TALKIES_S1_FAILED:
+        g_snprintf(text, sizeof text, "Download failed%s%s", detail ? ": " : "", detail ? detail : "");
+        break;
+    case TALKIES_S1_MISSING:
+    default: g_snprintf(text, sizeof text, "Not installed"); break;
+    }
+    gtk_label_set_text(GTK_LABEL(win->s1_status), text);
+    gtk_widget_set_visible(win->s1_progress, state == TALKIES_S1_DOWNLOADING);
+    gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(win->s1_progress), fraction);
+    gtk_widget_set_visible(win->s1_download, state == TALKIES_S1_MISSING || state == TALKIES_S1_FAILED);
+    gtk_button_set_label(GTK_BUTTON(win->s1_download), state == TALKIES_S1_FAILED ? "Retry" : "Download (484 MB)");
+    gtk_widget_set_visible(win->s1_remove, state == TALKIES_S1_READY);
 }
 
 void talkies_settings_window_set_models(TalkiesSettingsWindow *win, TalkiesServer server,

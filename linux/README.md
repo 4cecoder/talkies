@@ -11,9 +11,9 @@ servers on this machine.
 |---|---|
 | **Floating dictation window** | 520×140 pill with an animated gradient, a live 60-bar waveform, a status dot, and pipeline stages (Recording → Transcribing → Enhancing → Inserting → Done!). It never takes keyboard focus and hides 1.5 s after finishing. |
 | **Hotkey** | Right Alt. Hold it longer than `push_to_talk_threshold` (0.15 s) for push-to-talk, or tap it to start and stop. |
-| **Enhancement** | Off, **S1-mini** (on-device), **Ollama**, or **LM Studio**. Ollama and LM Studio use the five macOS presets: Grammar & Clarity, Technical Writing, Concise & Professional, Creative Enhancement, AI Companion. They also support the same tuning parameters, and Ollama accepts a custom system prompt and stop sequences. |
+| **Enhancement** | Off by default. Choose **S1-mini** (on-device: download, progress and removal in Settings), **Ollama**, or **LM Studio**. Ollama and LM Studio use the five macOS presets: Grammar & Clarity, Technical Writing, Concise & Professional, Creative Enhancement, AI Companion. They also support the same tuning parameters, and Ollama accepts a custom system prompt and stop sequences. |
 | **Text insertion** | Clipboard plus a paste keystroke through a built-in uinput keyboard. Your previous clipboard is restored afterwards. |
-| **Tray icon** | Click to show or hide the window. The menu has Open Talkies, Start/Stop Recording, Settings…, and Quit Talkies. |
+| **Tray icon** | The one Talkies control in your bar, like the macOS menu-bar item. Click to show or hide the window. The menu has Open Talkies, Start/Stop Recording, Settings…, and Quit Talkies. Works with any StatusNotifierItem host (AGS, waybar, KDE). |
 | **Settings window** | General, Transcription, Enhancement, Output and Advanced pages. Changes save automatically after 0.5 s. |
 | **Voice assistant mode** | Speaks the result through `spd-say` or `espeak-ng`, and can optionally insert it too. |
 | **Linux extras** | Silence trimming (WebRTC VAD), YAP refinement window (opt-in), WebSocket API, and TXT/VTT/SRT export from the CLI. |
@@ -57,13 +57,28 @@ Recordings go to a private `$XDG_RUNTIME_DIR/talkies` directory (mode 0700)
 and are deleted after transcription.
 - Optional: `speech-dispatcher` or `espeak-ng`, for voice assistant mode.
 
+## What runs by default
+
+Only the daemon and a tray icon. The dictation window appears while you
+dictate and hides 1.5 s after "Done!". Settings are built the first time you
+open them. The status monitor, YAP window, enhancement and sounds are all
+off until you enable them.
+
+The daemon is event-driven: it blocks on its hotkey, D-Bus and wake file
+descriptors, so it uses no CPU while idle. Audio capture and transcription
+run on their own threads, so the window never stalls.
+
 ## Hotkeys
 
-**X11:** Right Alt works out of the box through a global grab.
+Right Alt everywhere: hold it for push-to-talk, or tap it to toggle.
 
-**Wayland:** global key grabs aren't allowed, so bind the key in your
-compositor and forward it with `scripts/talkies-hotkey.sh`. Hyprland example
-(see `hyprland-overlay-rules.conf`):
+- **X11:** a global grab.
+- **Wayland:** read directly from the keyboard devices when you are in the
+  `input` group. Only the Right Alt key code is inspected.
+
+Without `/dev/input` access, bind a key in your compositor and forward it
+with `scripts/talkies-hotkey.sh`. Hyprland example (see
+`hyprland-overlay-rules.conf`):
 
 ```ini
 bind  = ,    Alt_R, exec, ~/talkies/linux/scripts/talkies-hotkey.sh down

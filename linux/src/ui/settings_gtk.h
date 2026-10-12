@@ -85,4 +85,20 @@ void talkies_settings_window_set_audio_devices(TalkiesSettingsWindow *win, const
 void talkies_settings_window_set_models(TalkiesSettingsWindow *win, TalkiesServer server,
                                         const char *const *models, int count, const char *status);
 
+// S1-mini on-device model management (Enhancement > S1-mini page).
+typedef enum {
+    TALKIES_S1_MISSING = 0,
+    TALKIES_S1_DOWNLOADING = 1,
+    TALKIES_S1_READY = 2,
+    TALKIES_S1_FAILED = 3,
+} TalkiesS1State;
+
+typedef void (*TalkiesSettingsActionFn)(void *user_data);
+
+void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,
+                                              TalkiesSettingsActionFn on_remove);
+// fraction: 0..1 while downloading. detail: optional extra text (errors).
+void talkies_settings_window_set_s1_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
+                                          const char *detail);
+
 #endif

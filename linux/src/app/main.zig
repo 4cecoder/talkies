@@ -49,9 +49,13 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = std.heap.smp_allocator;
     utils.setIoAllocator(allocator);
 
-    run(init, allocator) catch |err| {
-        local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
-        return err;
+    run(init, allocator) catch |err| switch (err) {
+        // Expected, already explained to the user: not a crash.
+        error.AlreadyRunning, error.MissingArgument => std.process.exit(1),
+        else => {
+            local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
+            return err;
+        },
     };
 }
 

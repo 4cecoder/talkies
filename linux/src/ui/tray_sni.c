@@ -88,7 +88,7 @@ static void append_dict_bool(DBusMessageIter *dict, const char *key, dbus_bool_t
 // ---------------------------------------------------------------------------
 
 static const char *icon_name(TalkiesTray *tray) {
-    return tray->recording ? "media-record" : "audio-input-microphone";
+    return tray->recording ? "media-record-symbolic" : "audio-input-microphone-symbolic";
 }
 
 static const char *status_text(TalkiesTray *tray) {
@@ -119,7 +119,7 @@ static int append_item_property(TalkiesTray *tray, DBusMessageIter *iter, const 
     else if (!strcmp(name, "Title")) append_variant_string(iter, "Talkies");
     else if (!strcmp(name, "Status")) append_variant_string(iter, tray->recording ? "NeedsAttention" : "Active");
     else if (!strcmp(name, "IconName")) append_variant_string(iter, icon_name(tray));
-    else if (!strcmp(name, "AttentionIconName")) append_variant_string(iter, "media-record");
+    else if (!strcmp(name, "AttentionIconName")) append_variant_string(iter, "media-record-symbolic");
     else if (!strcmp(name, "OverlayIconName")) append_variant_string(iter, "");
     else if (!strcmp(name, "IconThemePath")) append_variant_string(iter, "");
     else if (!strcmp(name, "ToolTip")) append_tooltip_variant(tray, iter);
@@ -560,6 +560,14 @@ void talkies_tray_process(TalkiesTray *tray) {
     dbus_connection_read_write(tray->conn, 0);
     while (dbus_connection_dispatch(tray->conn) == DBUS_DISPATCH_DATA_REMAINS) {
     }
+    // Replies queued by the handlers above must leave now, not on the next event.
+    dbus_connection_flush(tray->conn);
+}
+
+int talkies_tray_get_fd(TalkiesTray *tray) {
+    int fd = -1;
+    if (!tray || !dbus_connection_get_unix_fd(tray->conn, &fd)) return -1;
+    return fd;
 }
 
 void talkies_tray_set_recording(TalkiesTray *tray, int recording) {

@@ -53,11 +53,56 @@ pub fn cleanedOrOriginal(allocator: std.mem.Allocator, original: []const u8, cle
 /// the required upstream license notices beside the weights.
 pub const ModelStore = struct {
     allocator: std.mem.Allocator,
+    /// Suppress curl's progress bar (GUI downloads report progress via
+    /// `downloadedBytes` instead).
+    quiet: bool = false,
 
-    pub fn ensureAvailable(self: ModelStore) ![]u8 {
+    /// Caller owns the returned path.
+    pub fn modelDir(self: ModelStore) ![]u8 {
         const data_dir = try utils.getDataDir(self.allocator);
         defer self.allocator.free(data_dir);
-        const model_dir = try std.fmt.allocPrint(self.allocator, "{s}/models/s1-mini-{s}", .{ data_dir, model_revision });
+        return std.fmt.allocPrint(self.allocator, "{s}/models/s1-mini-{s}", .{ data_dir, model_revision });
+    }
+
+    /// Cheap readiness check (exact size). The SHA-256 was verified when
+    /// the file was downloaded, before it was renamed into place.
+    pub fn isInstalled(self: ModelStore) bool {
+        const path = self.filePath(model_filename) catch return false;
+        defer self.allocator.free(path);
+        const file = std.Io.Dir.openFileAbsolute(utils.io(), path, .{}) catch return false;
+        defer file.close(utils.io());
+        const stat = file.stat(utils.io()) catch return false;
+        return stat.size == model_size;
+    }
+
+    /// Bytes fetched so far by an in-progress download.
+    pub fn downloadedBytes(self: ModelStore) u64 {
+        const name = std.fmt.allocPrint(self.allocator, "{s}.partial", .{model_filename}) catch return 0;
+        defer self.allocator.free(name);
+        const path = self.filePath(name) catch return 0;
+        defer self.allocator.free(path);
+        const file = std.Io.Dir.openFileAbsolute(utils.io(), path, .{}) catch return 0;
+        defer file.close(utils.io());
+        const stat = file.stat(utils.io()) catch return 0;
+        return stat.size;
+    }
+
+    /// Delete the weights and notices to free disk space.
+    pub fn remove(self: ModelStore) !void {
+        const dir = try self.modelDir();
+        defer self.allocator.free(dir);
+        // deleteTree already treats a missing directory as success.
+        try std.Io.Dir.cwd().deleteTree(utils.io(), dir);
+    }
+
+    fn filePath(self: ModelStore, name: []const u8) ![]u8 {
+        const dir = try self.modelDir();
+        defer self.allocator.free(dir);
+        return std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ dir, name });
+    }
+
+    pub fn ensureAvailable(self: ModelStore) ![]u8 {
+        const model_dir = try self.modelDir();
         defer self.allocator.free(model_dir);
         try std.Io.Dir.cwd().createDirPath(utils.io(), model_dir);
 
@@ -80,15 +125,19 @@ pub const ModelStore = struct {
 
         const partial = try std.fmt.allocPrint(self.allocator, "{s}.partial", .{destination});
         defer self.allocator.free(partial);
-        errdefer std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch {};
-        std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch {};
+        errdefer std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch |err| utils.logDebug("remove partial: {}", .{err});
+        std.Io.Dir.deleteFileAbsolute(utils.io(), partial) catch |err| switch (err) {
+            error.FileNotFound => {},
+            else => return err,
+        };
         const url = try std.fmt.allocPrint(
             self.allocator,
             "https://huggingface.co/{s}/resolve/{s}/{s}?download=true",
             .{ model_repository, model_revision, name },
         );
         defer self.allocator.free(url);
-        const argv = &[_][]const u8{ "curl", "--fail", "--location", "--retry", "3", "--progress-bar", "--output", partial, url };
+        const progress: []const u8 = if (self.quiet) "--silent" else "--progress-bar";
+        const argv = &[_][]const u8{ "curl", "--fail", "--location", "--retry", "3", "--show-error", progress, "--output", partial, url };
         var child = try std.process.spawn(utils.io(), .{ .argv = argv });
         const term = try child.wait(utils.io());
         if (!term.success()) return error.ModelDownloadFailed;

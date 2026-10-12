@@ -13,6 +13,7 @@ pub const cleanup = @import("cleanup.zig");
 pub const input = @import("input.zig");
 pub const clipboard = @import("clipboard.zig");
 pub const hotkey = @import("hotkey.zig");
+pub const evdev_hotkey = @import("evdev_hotkey.zig");
 pub const websocket = @import("websocket.zig");
 
 test {

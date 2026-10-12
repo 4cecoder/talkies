@@ -105,44 +105,66 @@ pub const Server = struct {
             _ = try posix.write(self.socket_fd, frame.items);
         }
 
+        /// Read exactly `buf.len` bytes; TCP may deliver a frame in pieces.
+        fn readExact(self: *Client, buf: []u8) !void {
+            var filled: usize = 0;
+            while (filled < buf.len) {
+                const n = try posix.read(self.socket_fd, buf[filled..]);
+                if (n == 0) return error.ConnectionClosed;
+                filled += n;
+            }
+        }
+
+        fn sendControl(self: *Client, opcode: u8, payload: []const u8) !void {
+            var frame: [2 + 125]u8 = undefined;
+            const len = @min(payload.len, 125);
+            frame[0] = 0x80 | opcode;
+            frame[1] = @intCast(len);
+            @memcpy(frame[2..][0..len], payload[0..len]);
+            var sent: usize = 0;
+            while (sent < 2 + len) sent += try posix.write(self.socket_fd, frame[sent .. 2 + len]);
+        }
+
+        /// Return the next text message. Answers pings and completes the
+        /// close handshake so clients shut down cleanly.
         pub fn receive(self: *Client, buffer: []u8) ![]const u8 {
-            // Read frame header
-            var header: [2]u8 = undefined;
-            const n = try posix.read(self.socket_fd, &header);
-            if (n < 2) return error.ConnectionClosed;
+            while (true) {
+                var header: [2]u8 = undefined;
+                try self.readExact(&header);
+                const opcode = header[0] & 0x0F;
+                const masked = (header[1] & 0x80) != 0;
 
-            const opcode = header[0] & 0x0F;
-            if (opcode == 0x08) return error.ConnectionClosed; // Close frame
+                var len: usize = header[1] & 0x7F;
+                if (len == 126) {
+                    var len_bytes: [2]u8 = undefined;
+                    try self.readExact(&len_bytes);
+                    len = std.mem.readInt(u16, &len_bytes, .big);
+                } else if (len == 127) {
+                    return error.FrameTooLarge;
+                }
 
-            var len: usize = header[1] & 0x7F;
-            const masked = (header[1] & 0x80) != 0;
+                var mask: [4]u8 = .{ 0, 0, 0, 0 };
+                if (masked) try self.readExact(&mask);
 
-            // Extended payload length
-            if (len == 126) {
-                var len_bytes: [2]u8 = undefined;
-                _ = try posix.read(self.socket_fd, &len_bytes);
-                len = (@as(usize, len_bytes[0]) << 8) | @as(usize, len_bytes[1]);
-            }
+                if (len > buffer.len) return error.BufferTooSmall;
+                const payload = buffer[0..len];
+                try self.readExact(payload);
+                if (masked) {
+                    for (payload, 0..) |*byte, i| byte.* ^= mask[i % 4];
+                }
 
-            // Masking key (clients always mask)
-            var mask: [4]u8 = undefined;
-            if (masked) {
-                _ = try posix.read(self.socket_fd, &mask);
-            }
-
-            // Payload
-            if (len > buffer.len) return error.BufferTooSmall;
-            const payload = buffer[0..len];
-            _ = try posix.read(self.socket_fd, payload);
-
-            // Unmask
-            if (masked) {
-                for (payload, 0..) |*byte, i| {
-                    byte.* ^= mask[i % 4];
+                switch (opcode) {
+                    0x1, 0x0 => return payload, // text / continuation
+                    0x8 => {
+                        self.sendControl(0x8, payload[0..@min(payload.len, 2)]) catch |err| {
+                            utils.logDebug("close reply: {}", .{err});
+                        };
+                        return error.ConnectionClosed;
+                    },
+                    0x9 => try self.sendControl(0xA, payload), // ping -> pong
+                    else => {}, // pong / binary: ignore
                 }
             }
-
-            return payload;
         }
     };
 
