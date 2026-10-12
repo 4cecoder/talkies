@@ -45,6 +45,19 @@ if [[ "${BUNDLE_NATIVE}" == 1 ]]; then
     cp -P "${native[@]}" "${app}/lib/"
 fi
 
+# Talkies' own code must target a portable CPU (zig build -Dcpu=x86_64_v2):
+# AVX/AVX-512 registers mean it was built for the build machine and would die
+# with SIGILL on older CPUs. (ggml checks its own CPU features at runtime.)
+if [[ "${ALLOW_NATIVE_CPU:-0}" != 1 ]] && command -v objdump >/dev/null; then
+    for f in "${app}/talkies" "${app}"/lib/libtalkies-*.so.*.*; do
+        # grep reads everything (no -q): an early exit would SIGPIPE objdump under pipefail.
+        if objdump -d "${f}" | grep -E '%[yz]mm' >/dev/null; then
+            echo "$(basename "${f}") uses AVX instructions; rebuild with -Dcpu=x86_64_v2 (or set ALLOW_NATIVE_CPU=1 for a local build)." >&2
+            exit 1
+        fi
+    done
+fi
+
 # Strip debug info from what we ship (sizes drop ~4x); keep symbols for backtraces.
 if command -v strip >/dev/null; then
     find "${app}" -type f \( -name talkies -o -name '*.so*' \) -exec strip --strip-debug {} +

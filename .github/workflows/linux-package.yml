@@ -105,7 +105,9 @@ jobs:
 
       - name: Build release binaries
         working-directory: linux
-        run: zig build -Doptimize=ReleaseSafe -Dversion="${APP_VERSION}"
+        # Never -Dcpu=native here: runners have newer CPUs than users (SIGILL).
+        # x86_64_v2 covers every x86-64 CPU since ~2009; ggml sets its own AVX2 floor.
+        run: zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion="${APP_VERSION}"
 
       - name: Build packages (tar.gz, deb, rpm, Arch) and distro recipes
         env:

@@ -85,7 +85,7 @@ zig build test                                 # unit tests by layer
 scripts/install.sh --restart                   # developer install + restart the daemon
 ```
 
-To produce the release packages locally: `zig build -Doptimize=ReleaseSafe -Dversion=X.Y.Z`, then
+To produce the release packages locally: `zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z`, then
 `VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh` (writes `linux/dist/`).
 
 Whisper models are pinned to a [specific upstream revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1), checked against exact size and SHA-256, and installed from a temporary file. Talkies verifies the cached model before each load; verified models work offline.
