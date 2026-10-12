@@ -518,7 +518,7 @@ pub const Daemon = struct {
             win.setActivity(stage.text());
         }
         if (self.tray) |t| {
-            c_tray.talkies_tray_set_recording(t, @intFromBool(stage == .recording));
+            c_tray.talkies_tray_set_state(t, self.trayState(stage));
             var tip_buf: [256]u8 = undefined;
             var summary_buf: [256]u8 = undefined;
             const text = if (detail) |dtl| dtl else if (stage == .idle) self.idleSummary(&summary_buf) else stage.text();
@@ -526,6 +526,27 @@ pub const Daemon = struct {
             c_tray.talkies_tray_set_status_text(t, tip.ptr);
         }
         self.broadcastStage(stage);
+    }
+
+    /// MenuBarStatusIcon.state on macOS; a failing setup check also asks for
+    /// attention while idle.
+    fn trayState(self: *Daemon, stage: Stage) c_tray.TalkiesTrayState {
+        return switch (stage) {
+            .idle => if (self.hasFailingCheck()) c_tray.TALKIES_TRAY_ATTENTION else c_tray.TALKIES_TRAY_READY,
+            .loading_model => c_tray.TALKIES_TRAY_LOADING,
+            .recording => c_tray.TALKIES_TRAY_RECORDING,
+            .transcribing, .enhancing_ollama, .enhancing_lm_studio => c_tray.TALKIES_TRAY_RECOGNIZING,
+            .cleaning => c_tray.TALKIES_TRAY_POLISHING,
+            .inserting => c_tray.TALKIES_TRAY_INSERTING,
+            .complete => c_tray.TALKIES_TRAY_COMPLETED,
+            .@"error", .no_speech, .cleanup_fallback, .clipboard_fallback => c_tray.TALKIES_TRAY_ATTENTION,
+        };
+    }
+
+    fn hasFailingCheck(self: *Daemon) bool {
+        const report = if (self.health_report) |*r| r else return false;
+        for (report.checks.items) |check| if (check.level == .fail) return true;
+        return false;
     }
 
     fn idleSummary(self: *Daemon, buf: []u8) []const u8 {

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- macOS: arrow.down.circle (loading the model). KDE recolors .ColorScheme-Text to the panel's text color; GTK recolors -symbolic icons. -->
+  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color:#232629; }</style>
+  <g class="ColorScheme-Text" style="fill:currentColor;fill-rule:evenodd">
+    <path d="M8 0.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 1 1 0-15z M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z"/>
+    <path d="M7.3 4h1.4v4.6l1.8-1.8l1 1l-3.5 3.5l-3.5-3.5l1-1l1.8 1.8z"/>
+  </g>
+</svg>

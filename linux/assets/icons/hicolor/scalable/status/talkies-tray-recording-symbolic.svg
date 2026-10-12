@@ -1,11 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color:#232629; } .ColorScheme-NegativeText { color:#da4453; }</style>
-  <g class="ColorScheme-Text" style="fill:currentColor">
-    <rect x="3.5" y="2" width="5" height="8.5" rx="2.5"/>
-    <path d="M1 8.5a5 5 0 0 0 10 0h-1.4a3.6 3.6 0 0 1-7.2 0z"/>
-    <rect x="5.3" y="12.8" width="1.4" height="1.6"/>
-    <rect x="3" y="13.8" width="6" height="1.4" rx="0.7"/>
+  <!-- macOS: waveform.circle.fill (recording). KDE recolors .ColorScheme-Text to the panel's text color; GTK recolors -symbolic icons. -->
+  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color:#232629; }</style>
+  <g class="ColorScheme-Text" style="fill:currentColor;fill-rule:evenodd">
+    <path d="M8 0.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 1 1 0-15z
+             M4.25 6.5h1.5v3h-1.5z M7.25 3.75h1.5v8.5h-1.5z M10.25 5.5h1.5v5h-1.5z"/>
   </g>
-  <!-- Recording dot: "error" for GTK, NegativeText for KDE. -->
-  <circle class="error ColorScheme-NegativeText" style="fill:currentColor" cx="12.8" cy="3.4" r="2.6"/>
 </svg>

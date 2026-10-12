@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- macOS: checkmark.circle.fill (finished). KDE recolors .ColorScheme-Text to the panel's text color; GTK recolors -symbolic icons. -->
+  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color:#232629; }</style>
+  <g class="ColorScheme-Text" style="fill:currentColor;fill-rule:evenodd">
+    <path d="M8 0.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 1 1 0-15z M4.2 8.3l1-1l1.9 1.9l3.8-3.8l1 1l-4.8 4.8z"/>
+  </g>
+</svg>

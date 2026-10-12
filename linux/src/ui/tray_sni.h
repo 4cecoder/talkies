@@ -4,25 +4,38 @@
 // System tray icon via the freedesktop StatusNotifierItem protocol plus a
 // com.canonical.dbusmenu menu (KDE, waybar, GNOME with AppIndicator ext,
 // Hyprland bars...). The Linux counterpart of the macOS menu bar item:
-// left click toggles the dictation window, the menu offers Open / Record /
-// Settings / Quit. Non-blocking: call talkies_tray_process() from the main loop.
+// left click opens or puts away the dictation panel, middle click toggles
+// recording, and the menu offers Open Talkies / Settings... / Quit Talkies.
+// Non-blocking: call talkies_tray_process() from the main loop.
 
 typedef struct TalkiesTray TalkiesTray;
 
 typedef enum {
     TALKIES_TRAY_ACTIVATE = 0,   // primary click
     TALKIES_TRAY_OPEN,           // "Open Talkies"
-    TALKIES_TRAY_TOGGLE_RECORD,  // "Start/Stop Recording"
+    TALKIES_TRAY_TOGGLE_RECORD,  // middle click
     TALKIES_TRAY_SETTINGS,       // "Settings..."
     TALKIES_TRAY_QUIT,           // "Quit Talkies"
 } TalkiesTrayAction;
+
+// What the icon shows; mirrors MenuBarIconState on macOS.
+typedef enum {
+    TALKIES_TRAY_READY = 0,     // waveform
+    TALKIES_TRAY_LOADING,       // arrow.down.circle
+    TALKIES_TRAY_RECORDING,     // waveform.circle.fill
+    TALKIES_TRAY_RECOGNIZING,   // waveform.path
+    TALKIES_TRAY_POLISHING,     // sparkles
+    TALKIES_TRAY_INSERTING,     // text.cursor
+    TALKIES_TRAY_COMPLETED,     // checkmark.circle.fill
+    TALKIES_TRAY_ATTENTION,     // exclamationmark.bubble.fill
+} TalkiesTrayState;
 
 typedef void (*TalkiesTrayCallback)(TalkiesTrayAction action, void *user_data);
 
 // Returns NULL if the session bus is unavailable. A missing tray host is not
 // an error: the item registers automatically once a watcher appears.
 // icon_theme_path: directory containing hicolor/scalable/status/
-// talkies-tray{,-recording}-symbolic.svg (may be NULL to use stock icons).
+// talkies-tray-*-symbolic.svg (may be NULL to use stock icons).
 TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data, const char *icon_theme_path);
 void talkies_tray_destroy(TalkiesTray *tray);
 
@@ -31,8 +44,9 @@ void talkies_tray_process(TalkiesTray *tray);
 // Socket to watch for readability; call talkies_tray_process when it fires.
 int talkies_tray_get_fd(TalkiesTray *tray);
 
-// Reflect recording state in icon, tooltip and menu label.
-void talkies_tray_set_recording(TalkiesTray *tray, int recording);
+// Icon and tooltip title ("Talkies is recording", ...).
+void talkies_tray_set_state(TalkiesTray *tray, TalkiesTrayState state);
+// Tooltip body: setup problems, the last error, or how to start.
 void talkies_tray_set_status_text(TalkiesTray *tray, const char *text);
 
 // Whether a tray host (StatusNotifierWatcher) is running on the session bus.

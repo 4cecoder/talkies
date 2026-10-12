@@ -16,14 +16,15 @@
 #define PROPS_IFACE "org.freedesktop.DBus.Properties"
 #define G_PI_LIKE 3.14159265358979323846
 
-enum { MENU_ROOT = 0, MENU_OPEN = 1, MENU_RECORD = 2, MENU_SEP1 = 3, MENU_SETTINGS = 4, MENU_SEP2 = 5, MENU_QUIT = 6 };
-static const int menu_children[] = {MENU_OPEN, MENU_RECORD, MENU_SEP1, MENU_SETTINGS, MENU_SEP2, MENU_QUIT};
+enum { MENU_ROOT = 0, MENU_OPEN = 1, MENU_SEP1 = 2, MENU_SETTINGS = 3, MENU_SEP2 = 4, MENU_QUIT = 5 };
+// The macOS status menu: Open Talkies / Settings... / Quit Talkies.
+static const int menu_children[] = {MENU_OPEN, MENU_SEP1, MENU_SETTINGS, MENU_SEP2, MENU_QUIT};
 #define MENU_CHILD_COUNT (int)(sizeof menu_children / sizeof menu_children[0])
 
 struct TalkiesTray {
     DBusConnection *conn;
     char bus_name[96];
-    int recording;
+    TalkiesTrayState state;
     char status_text[256];
     char icon_theme_path[1024];
     unsigned int menu_revision;
@@ -91,50 +92,157 @@ static void append_dict_bool(DBusMessageIter *dict, const char *key, dbus_bool_t
 // StatusNotifierItem properties
 // ---------------------------------------------------------------------------
 
+typedef struct {
+    const char *theme_icon; // shipped glyph (IconThemePath)
+    const char *stock_icon; // freedesktop fallback
+    const char *label;      // tooltip title, as on macOS
+} StateInfo;
+
+static const StateInfo states[] = {
+    [TALKIES_TRAY_READY] = {"talkies-tray-symbolic", "audio-input-microphone-symbolic", "Talkies ready"},
+    [TALKIES_TRAY_LOADING] = {"talkies-tray-loading-symbolic", "folder-download-symbolic",
+                              "Talkies is loading the speech model"},
+    [TALKIES_TRAY_RECORDING] = {"talkies-tray-recording-symbolic", "media-record-symbolic", "Talkies is recording"},
+    [TALKIES_TRAY_RECOGNIZING] = {"talkies-tray-recognizing-symbolic", "audio-x-generic-symbolic",
+                                  "Talkies is transcribing"},
+    [TALKIES_TRAY_POLISHING] = {"talkies-tray-polishing-symbolic", "starred-symbolic",
+                                "Talkies is polishing your transcript"},
+    [TALKIES_TRAY_INSERTING] = {"talkies-tray-inserting-symbolic", "insert-text-symbolic", "Talkies is inserting text"},
+    [TALKIES_TRAY_COMPLETED] = {"talkies-tray-completed-symbolic", "object-select-symbolic", "Talkies finished"},
+    [TALKIES_TRAY_ATTENTION] = {"talkies-tray-attention-symbolic", "dialog-warning-symbolic",
+                                "Talkies needs your attention"},
+};
+
+static const StateInfo *state_info(TalkiesTrayState state) {
+    if ((unsigned)state >= sizeof states / sizeof states[0]) state = TALKIES_TRAY_READY;
+    return &states[state];
+}
+
 static const char *icon_name(TalkiesTray *tray) {
-    if (tray->icon_theme_path[0]) {
-        return tray->recording ? "talkies-tray-recording-symbolic" : "talkies-tray-symbolic";
-    }
-    return tray->recording ? "media-record-symbolic" : "audio-input-microphone-symbolic";
+    const StateInfo *info = state_info(tray->state);
+    return tray->icon_theme_path[0] ? info->theme_icon : info->stock_icon;
 }
 
 static const char *attention_icon_name(TalkiesTray *tray) {
-    return tray->icon_theme_path[0] ? "talkies-tray-recording-symbolic" : "media-record-symbolic";
+    const StateInfo *info = state_info(TALKIES_TRAY_RECORDING);
+    return tray->icon_theme_path[0] ? info->theme_icon : info->stock_icon;
 }
 
 // ---------------------------------------------------------------------------
-// Pixmap fallback (hosts that cannot resolve IconName): the same microphone
-// glyph as the SVGs, rendered with cairo as ARGB32 in network byte order.
+// Pixmap fallback (hosts that cannot resolve IconName): the same glyphs as
+// the SVGs in assets/icons, drawn with cairo in a 16x16 space and sent as
+// ARGB32 in network byte order.
 // ---------------------------------------------------------------------------
 
-static void draw_mic(cairo_t *cr, double size, int recording) {
-    cairo_scale(cr, size / 16.0, size / 16.0);
-    double dx = recording ? -2.0 : 0.0, dy = recording ? 1.0 : 0.0;
-    cairo_set_source_rgb(cr, 0.62, 0.64, 0.67); // neutral on light and dark panels
-    // capsule
-    double x = 5.5 + dx, y = 1 + dy, w = 5, h = 8.5, r = 2.5;
+static void path_round_rect(cairo_t *cr, double x, double y, double w, double h, double r) {
     cairo_new_sub_path(cr);
-    cairo_arc(cr, x + r, y + r, r, G_PI_LIKE, 1.5 * G_PI_LIKE);
-    cairo_arc(cr, x + w - r, y + r, r, 1.5 * G_PI_LIKE, 2 * G_PI_LIKE);
+    cairo_arc(cr, x + w - r, y + r, r, -0.5 * G_PI_LIKE, 0);
     cairo_arc(cr, x + w - r, y + h - r, r, 0, 0.5 * G_PI_LIKE);
     cairo_arc(cr, x + r, y + h - r, r, 0.5 * G_PI_LIKE, G_PI_LIKE);
+    cairo_arc(cr, x + r, y + r, r, G_PI_LIKE, 1.5 * G_PI_LIKE);
     cairo_close_path(cr);
-    cairo_fill(cr);
-    // stand
-    cairo_set_line_width(cr, 1.4);
-    cairo_arc_negative(cr, 8 + dx, 7.5 + dy, 4.3, G_PI_LIKE, 0);
-    cairo_stroke(cr);
-    cairo_rectangle(cr, 7.3 + dx, 12.3 + dy, 1.4, 2);
-    cairo_rectangle(cr, 5 + dx, 13.8, 6, 1.4); // base stays on the baseline
-    cairo_fill(cr);
-    if (recording) {
-        cairo_set_source_rgb(cr, 0.855, 0.267, 0.325);
-        cairo_arc(cr, 12.8, 3.4, 2.6, 0, 2 * G_PI_LIKE);
+}
+
+static void path_circle(cairo_t *cr, double cx, double cy, double r) {
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, cx, cy, r, 0, 2 * G_PI_LIKE);
+    cairo_close_path(cr);
+}
+
+static void path_poly(cairo_t *cr, const double *xy, int points) {
+    cairo_move_to(cr, xy[0], xy[1]);
+    for (int i = 1; i < points; i++) cairo_line_to(cr, xy[2 * i], xy[2 * i + 1]);
+    cairo_close_path(cr);
+}
+
+// Four-point sparkle centred on (cx, cy) with half-size r.
+static void path_sparkle(cairo_t *cr, double cx, double cy, double r) {
+    double k = r * 0.18;
+    cairo_move_to(cr, cx, cy - r);
+    cairo_curve_to(cr, cx + k, cy - k * 1.6, cx + k * 1.6, cy - k, cx + r, cy);
+    cairo_curve_to(cr, cx + k * 1.6, cy + k, cx + k, cy + k * 1.6, cx, cy + r);
+    cairo_curve_to(cr, cx - k, cy + k * 1.6, cx - k * 1.6, cy + k, cx - r, cy);
+    cairo_curve_to(cr, cx - k * 1.6, cy - k, cx - k, cy - k * 1.6, cx, cy - r);
+    cairo_close_path(cr);
+}
+
+static void draw_glyph(cairo_t *cr, double size, TalkiesTrayState state) {
+    cairo_scale(cr, size / 16.0, size / 16.0);
+    cairo_set_source_rgb(cr, 0.62, 0.64, 0.67); // neutral on light and dark panels
+    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
+    switch (state) {
+    case TALKIES_TRAY_LOADING: {
+        path_circle(cr, 8, 8, 7.5);
+        path_circle(cr, 8, 8, 6);
         cairo_fill(cr);
+        static const double arrow[] = {7.3, 4, 8.7, 4, 8.7, 8.6, 10.5, 6.8, 11.5, 7.8, 8, 11.3, 4.5, 7.8, 5.5, 6.8, 7.3, 8.6};
+        path_poly(cr, arrow, 9);
+        cairo_fill(cr);
+        break;
+    }
+    case TALKIES_TRAY_RECORDING:
+        path_circle(cr, 8, 8, 7.5);
+        cairo_rectangle(cr, 4.25, 6.5, 1.5, 3);
+        cairo_rectangle(cr, 7.25, 3.75, 1.5, 8.5);
+        cairo_rectangle(cr, 10.25, 5.5, 1.5, 5);
+        cairo_fill(cr);
+        break;
+    case TALKIES_TRAY_RECOGNIZING: {
+        static const double wave[] = {1, 8, 2.6, 8, 4.2, 4.5, 6.2, 12, 8.2, 2, 10.2, 13, 12, 5.5, 13.4, 8, 15, 8};
+        cairo_set_line_width(cr, 1.4);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        cairo_move_to(cr, wave[0], wave[1]);
+        for (int i = 1; i < 9; i++) cairo_line_to(cr, wave[2 * i], wave[2 * i + 1]);
+        cairo_stroke(cr);
+        break;
+    }
+    case TALKIES_TRAY_POLISHING:
+        path_sparkle(cr, 6.5, 9.5, 6);
+        cairo_fill(cr);
+        path_sparkle(cr, 12.5, 3.5, 3);
+        cairo_fill(cr);
+        break;
+    case TALKIES_TRAY_INSERTING:
+        path_round_rect(cr, 4.5, 1, 7, 1.4, 0.7);
+        cairo_fill(cr);
+        cairo_rectangle(cr, 7.3, 1.5, 1.4, 13);
+        cairo_fill(cr);
+        path_round_rect(cr, 4.5, 13.6, 7, 1.4, 0.7);
+        cairo_fill(cr);
+        break;
+    case TALKIES_TRAY_COMPLETED: {
+        static const double check[] = {4.2, 8.3, 5.2, 7.3, 7.1, 9.2, 10.9, 5.4, 11.9, 6.4, 7.1, 11.2};
+        path_circle(cr, 8, 8, 7.5);
+        path_poly(cr, check, 6);
+        cairo_fill(cr);
+        break;
+    }
+    case TALKIES_TRAY_ATTENTION: {
+        static const double tail[] = {4, 11.9, 8, 11.9, 4, 15.5};
+        path_round_rect(cr, 1, 1.5, 14, 10.5, 3);
+        cairo_fill(cr);
+        path_poly(cr, tail, 3);
+        cairo_fill(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR); // knock out the "!"
+        cairo_rectangle(cr, 7.25, 3.6, 1.5, 4.6);
+        path_circle(cr, 8, 10.1, 0.9);
+        cairo_fill(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        break;
+    }
+    case TALKIES_TRAY_READY:
+    default: {
+        static const double bars[][2] = {{6, 4}, {3.5, 9}, {1, 14}, {4, 8}, {6.5, 3}};
+        for (int i = 0; i < 5; i++) path_round_rect(cr, 1.2 + 3 * i, bars[i][0], 1.6, bars[i][1], 0.8);
+        cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING);
+        cairo_fill(cr);
+        break;
+    }
     }
 }
 
-static void append_pixmaps_value(DBusMessageIter *iter, int recording) {
+static void append_pixmaps_value(DBusMessageIter *iter, TalkiesTrayState state) {
     static const int sizes[] = {22, 32, 48};
     DBusMessageIter arr;
     dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY, "(iiay)", &arr);
@@ -142,7 +250,7 @@ static void append_pixmaps_value(DBusMessageIter *iter, int recording) {
         int size = sizes[i];
         cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
         cairo_t *cr = cairo_create(surface);
-        draw_mic(cr, size, recording);
+        draw_glyph(cr, size, state);
         cairo_destroy(cr);
         cairo_surface_flush(surface);
 
@@ -180,7 +288,7 @@ static void append_pixmaps_value(DBusMessageIter *iter, int recording) {
     dbus_message_iter_close_container(iter, &arr);
 }
 
-static void append_variant_pixmaps(DBusMessageIter *iter, int recording, int empty) {
+static void append_variant_pixmaps(DBusMessageIter *iter, TalkiesTrayState state, int empty) {
     DBusMessageIter v;
     dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, "a(iiay)", &v);
     if (empty) {
@@ -188,7 +296,7 @@ static void append_variant_pixmaps(DBusMessageIter *iter, int recording, int emp
         dbus_message_iter_open_container(&v, DBUS_TYPE_ARRAY, "(iiay)", &arr);
         dbus_message_iter_close_container(&v, &arr);
     } else {
-        append_pixmaps_value(&v, recording);
+        append_pixmaps_value(&v, state);
     }
     dbus_message_iter_close_container(iter, &v);
 }
@@ -200,16 +308,15 @@ static void append_variant_int(DBusMessageIter *iter, dbus_int32_t value) {
     dbus_message_iter_close_container(iter, &v);
 }
 
-static const char *status_text(TalkiesTray *tray) {
-    if (tray->status_text[0]) return tray->status_text;
-    return tray->recording ? "Recording..." : "Ready";
+static int is_recording(const TalkiesTray *tray) {
+    return tray->state == TALKIES_TRAY_RECORDING;
 }
 
 static void append_tooltip_variant(TalkiesTray *tray, DBusMessageIter *iter) {
     DBusMessageIter v, st, pixmaps;
     const char *icon = icon_name(tray);
-    const char *title = "Talkies";
-    const char *body = status_text(tray);
+    const char *title = state_info(tray->state)->label;
+    const char *body = tray->status_text;
     dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, "(sa(iiay)ss)", &v);
     dbus_message_iter_open_container(&v, DBUS_TYPE_STRUCT, NULL, &st);
     dbus_message_iter_append_basic(&st, DBUS_TYPE_STRING, &icon);
@@ -226,15 +333,15 @@ static int append_item_property(TalkiesTray *tray, DBusMessageIter *iter, const 
     if (!strcmp(name, "Category")) append_variant_string(iter, "ApplicationStatus");
     else if (!strcmp(name, "Id")) append_variant_string(iter, "talkies");
     else if (!strcmp(name, "Title")) append_variant_string(iter, "Talkies");
-    else if (!strcmp(name, "Status")) append_variant_string(iter, tray->recording ? "NeedsAttention" : "Active");
+    else if (!strcmp(name, "Status")) append_variant_string(iter, is_recording(tray) ? "NeedsAttention" : "Active");
     else if (!strcmp(name, "WindowId")) append_variant_int(iter, 0);
     else if (!strcmp(name, "IconName")) append_variant_string(iter, icon_name(tray));
-    else if (!strcmp(name, "IconPixmap")) append_variant_pixmaps(iter, tray->recording, 0);
+    else if (!strcmp(name, "IconPixmap")) append_variant_pixmaps(iter, tray->state, 0);
     else if (!strcmp(name, "AttentionIconName")) append_variant_string(iter, attention_icon_name(tray));
-    else if (!strcmp(name, "AttentionIconPixmap")) append_variant_pixmaps(iter, 1, 0);
+    else if (!strcmp(name, "AttentionIconPixmap")) append_variant_pixmaps(iter, TALKIES_TRAY_RECORDING, 0);
     else if (!strcmp(name, "AttentionMovieName")) append_variant_string(iter, "");
     else if (!strcmp(name, "OverlayIconName")) append_variant_string(iter, "");
-    else if (!strcmp(name, "OverlayIconPixmap")) append_variant_pixmaps(iter, 0, 1);
+    else if (!strcmp(name, "OverlayIconPixmap")) append_variant_pixmaps(iter, TALKIES_TRAY_READY, 1);
     else if (!strcmp(name, "IconThemePath")) append_variant_string(iter, tray->icon_theme_path);
     else if (!strcmp(name, "ToolTip")) append_tooltip_variant(tray, iter);
     else if (!strcmp(name, "ItemIsMenu")) append_variant_bool(iter, FALSE);
@@ -372,13 +479,10 @@ static DBusHandlerResult item_handler(DBusConnection *conn, DBusMessage *msg, vo
 // ---------------------------------------------------------------------------
 
 static void append_menu_item_props(TalkiesTray *tray, DBusMessageIter *dict, int id) {
+    (void)tray;
     switch (id) {
     case MENU_ROOT: append_dict_string(dict, "children-display", "submenu"); break;
     case MENU_OPEN: append_dict_string(dict, "label", "Open Talkies"); break;
-    case MENU_RECORD:
-        append_dict_string(dict, "label", tray->recording ? "Stop Recording" : "Start Recording");
-        append_dict_string(dict, "icon-name", tray->recording ? "media-playback-stop" : "media-record");
-        break;
     case MENU_SETTINGS: append_dict_string(dict, "label", "Settings..."); break;
     case MENU_QUIT: append_dict_string(dict, "label", "Quit Talkies"); break;
     case MENU_SEP1:
@@ -416,7 +520,6 @@ static void handle_menu_event(TalkiesTray *tray, int id, const char *event_id) {
     if (strcmp(event_id, "clicked") != 0) return;
     switch (id) {
     case MENU_OPEN: emit_click(tray, TALKIES_TRAY_OPEN); break;
-    case MENU_RECORD: emit_click(tray, TALKIES_TRAY_TOGGLE_RECORD); break;
     case MENU_SETTINGS: emit_click(tray, TALKIES_TRAY_SETTINGS); break;
     case MENU_QUIT: emit_click(tray, TALKIES_TRAY_QUIT); break;
     default: break;
@@ -567,26 +670,17 @@ static DBusHandlerResult menu_handler(DBusConnection *conn, DBusMessage *msg, vo
         DBusMessage *reply = dbus_message_new_method_return(msg);
         DBusMessageIter iter;
         dbus_message_iter_init_append(reply, &iter);
-        append_variant_string(&iter, !strcmp(name, "label") && id == MENU_RECORD
-                                         ? (tray->recording ? "Stop Recording" : "Start Recording")
-                                         : "");
+        const char *label = "";
+        if (!strcmp(name, "label")) {
+            label = id == MENU_OPEN ? "Open Talkies" : id == MENU_SETTINGS ? "Settings..." : id == MENU_QUIT ? "Quit Talkies" : "";
+        }
+        append_variant_string(&iter, label);
         dbus_connection_send(tray->conn, reply, NULL);
         dbus_message_unref(reply);
         return DBUS_HANDLER_RESULT_HANDLED;
     }
 
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-}
-
-static void emit_layout_updated(TalkiesTray *tray) {
-    tray->menu_revision++;
-    DBusMessage *sig = dbus_message_new_signal(MENU_PATH, MENU_IFACE, "LayoutUpdated");
-    if (!sig) return;
-    dbus_uint32_t revision = tray->menu_revision;
-    dbus_int32_t parent = 0;
-    dbus_message_append_args(sig, DBUS_TYPE_UINT32, &revision, DBUS_TYPE_INT32, &parent, DBUS_TYPE_INVALID);
-    dbus_connection_send(tray->conn, sig, NULL);
-    dbus_message_unref(sig);
 }
 
 // ---------------------------------------------------------------------------
@@ -713,14 +807,16 @@ int talkies_tray_get_fd(TalkiesTray *tray) {
     return fd;
 }
 
-void talkies_tray_set_recording(TalkiesTray *tray, int recording) {
-    if (!tray || tray->recording == !!recording) return;
-    tray->recording = !!recording;
+void talkies_tray_set_state(TalkiesTray *tray, TalkiesTrayState state) {
+    if (!tray || tray->state == state) return;
+    int was_recording = is_recording(tray);
+    tray->state = state;
     emit_item_signal(tray, "NewIcon", NULL);
-    emit_item_signal(tray, "NewAttentionIcon", NULL);
     emit_item_signal(tray, "NewToolTip", NULL);
-    emit_item_signal(tray, "NewStatus", tray->recording ? "NeedsAttention" : "Active");
-    emit_layout_updated(tray);
+    if (was_recording != is_recording(tray)) {
+        emit_item_signal(tray, "NewAttentionIcon", NULL);
+        emit_item_signal(tray, "NewStatus", is_recording(tray) ? "NeedsAttention" : "Active");
+    }
     dbus_connection_flush(tray->conn);
 }
 
