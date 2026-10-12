@@ -2,6 +2,13 @@
 
 #include <glib-unix.h>
 #include <glib.h>
+#include <gtk/gtk.h>
+
+int talkies_ui_init(void) {
+    if (gtk_is_initialized()) return 1;
+    gdk_set_allowed_backends("x11,*");
+    return gtk_init_check();
+}
 
 typedef struct {
     TalkiesLoopFn fn;

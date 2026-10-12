@@ -52,7 +52,7 @@ install_if_changed() { # tier src dest
         printf '  %-7s unchanged  %s\n' "$tier" "${dest#"$app_dir"/}"
         return
     fi
-    as_root install -D -m 755 "$src" "$dest"
+    as_root install -D -m "${mode:-755}" "$src" "$dest"
     printf '  %-7s UPDATED    %s\n' "$tier" "${dest#"$app_dir"/}"
     updated+=("$tier")
 }
@@ -74,6 +74,16 @@ while read -r soname path; do
 done < <(LD_LIBRARY_PATH="$app_dir/lib:$out/lib" ldd "$out/bin/talkies" "$out/lib/libtalkies-native.so" \
     | awk '$1 ~ /^lib(whisper|llama|ggml)/ && $3 ~ /^\// {print $1, $3}' | sort -u)
 
+# Tray icons belong to the ui tier. Installed twice: beside the app (for
+# IconThemePath, which KDE honours) and in the XDG icon path, so hosts that
+# only look up named icons in themes (AGS, some waybar setups) find them too.
+for icon in "$out"/share/icons/hicolor/scalable/status/*.svg; do
+    name="$(basename "$icon")"
+    mode=644 install_if_changed ui "$icon" "$app_dir/share/icons/hicolor/scalable/status/$name"
+    if [[ ! -f "$prefix/share/icons/hicolor/scalable/status/$name" ]] || ! cmp -s "$icon" "$prefix/share/icons/hicolor/scalable/status/$name"; then
+        as_root install -D -m 644 "$icon" "$prefix/share/icons/hicolor/scalable/status/$name"
+    fi
+done
 as_root install -D -m 755 "$root/scripts/talkies-hotkey.sh" "$app_dir/scripts/talkies-hotkey.sh"
 wrapper="$(mktemp)"
 cat > "$wrapper" <<EOF
@@ -91,8 +101,10 @@ if [[ ${#updated[@]} -eq 0 ]]; then
 fi
 echo "Updated tiers: ${updated[*]}"
 
-if [[ $restart -eq 1 ]] && pgrep -f "$app_dir/talkies daemon" >/dev/null; then
-    pkill -f "$app_dir/talkies daemon" || true
+# Match the process name exactly: `-f` patterns also match any shell whose
+# command line merely mentions the daemon path.
+if [[ $restart -eq 1 ]] && pgrep -x talkies >/dev/null; then
+    pkill -x talkies || true
     sleep 1
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
         hyprctl dispatch exec "$prefix/bin/talkies daemon" >/dev/null

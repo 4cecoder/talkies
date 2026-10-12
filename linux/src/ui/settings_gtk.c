@@ -1,4 +1,5 @@
 #include "settings_gtk.h"
+#include "loop_glib.h"
 
 #include <gtk/gtk.h>
 #include <string.h>
@@ -27,6 +28,10 @@ struct TalkiesSettingsWindow {
     const char *const *mode_descriptions;
 
     // General
+    GtkWidget *health_icon;
+    GtkWidget *health_title;
+    GtkWidget *health_fix;
+    GtkWidget *health_list;
     GtkWidget *threshold;
     GtkWidget *show_hud;
     GtkWidget *voice_assistant;
@@ -700,7 +705,7 @@ static void on_open_config_dir(GtkButton *button, gpointer user_data) {
 TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names,
                                                    const char *const *mode_descriptions,
                                                    const char *config_path) {
-    if (!gtk_is_initialized() && !gtk_init_check()) return NULL;
+    if (!talkies_ui_init()) return NULL;
 
     TalkiesSettingsWindow *win = g_new0(TalkiesSettingsWindow, 1);
     win->mode_names = mode_names;
@@ -726,7 +731,10 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     gtk_css_provider_load_from_string(css,
         ".talkies-sidebar { padding: 10px 8px; background: alpha(currentColor, 0.04); }"
         ".talkies-sidebar button { border-radius: 8px; padding: 6px 10px; }"
-        ".talkies-sidebar button:checked { background: alpha(#3584e4, 0.18); }");
+        ".talkies-sidebar button:checked { background: alpha(#3584e4, 0.18); }"
+        ".talkies-status { padding: 10px 12px; border-radius: 10px; background: alpha(currentColor, 0.05); }"
+        ".talkies-health-ok { color: #26a269; } .talkies-health-warn { color: #c88800; }"
+        ".talkies-health-fail { color: #c01c28; }");
     gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
@@ -744,13 +752,41 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
 
     // General
     page_new(stack, "general", "General", &box);
+    // Status: one line when everything works; problems (with their fix)
+    // only when something needs attention; full detail behind an expander.
+    GtkWidget *status_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_add_css_class(status_row, "talkies-status");
+    win->health_icon = gtk_image_new_from_icon_name("object-select-symbolic");
+    gtk_image_set_pixel_size(GTK_IMAGE(win->health_icon), 20);
+    gtk_widget_set_valign(win->health_icon, GTK_ALIGN_START);
+    GtkWidget *status_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    win->health_title = gtk_label_new("Checking your system...");
+    gtk_widget_add_css_class(win->health_title, "heading");
+    gtk_label_set_xalign(GTK_LABEL(win->health_title), 0);
+    gtk_label_set_wrap(GTK_LABEL(win->health_title), TRUE);
+    win->health_fix = gtk_label_new("");
+    gtk_widget_add_css_class(win->health_fix, "dim-label");
+    gtk_label_set_xalign(GTK_LABEL(win->health_fix), 0);
+    gtk_label_set_wrap(GTK_LABEL(win->health_fix), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(win->health_fix), TRUE);
+    gtk_widget_set_visible(win->health_fix, FALSE);
+    gtk_box_append(GTK_BOX(status_text), win->health_title);
+    gtk_box_append(GTK_BOX(status_text), win->health_fix);
+    gtk_box_append(GTK_BOX(status_row), win->health_icon);
+    gtk_box_append(GTK_BOX(status_row), status_text);
+    gtk_box_append(GTK_BOX(box), status_row);
+    GtkWidget *details = gtk_expander_new("Details");
+    win->health_list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_widget_set_margin_start(win->health_list, 6);
+    gtk_widget_set_margin_top(win->health_list, 4);
+    gtk_expander_set_child(GTK_EXPANDER(details), win->health_list);
+    gtk_box_append(GTK_BOX(box), details);
+
     add_section(box, "Hotkey");
     win->threshold = scale_new(win, 0.05, 0.5, 0.05, 2);
     add_row(box, "Push-to-talk threshold (s)",
             "Hold the hotkey longer than this to record while held; a quicker tap toggles recording",
             win->threshold);
-    add_note(box, "Hotkey: Right Alt. On Wayland this needs membership in the input group; otherwise bind "
-                  "scripts/talkies-hotkey.sh down/up in your compositor.");
     add_section(box, "Display");
     win->show_hud = switch_new(win);
     add_row(box, "Floating dictation window", "Live waveform and pipeline status while dictating", win->show_hud);
@@ -939,6 +975,79 @@ void talkies_settings_window_set_audio_devices(TalkiesSettingsWindow *win, const
         g_ptr_array_add(win->audio_device_names, g_strdup(names[i]));
     }
     win->populating = was_populating;
+}
+
+static const char *health_icon_name(TalkiesHealthLevel level) {
+    switch (level) {
+    case TALKIES_HEALTH_FAIL: return "dialog-error-symbolic";
+    case TALKIES_HEALTH_WARN: return "dialog-warning-symbolic";
+    case TALKIES_HEALTH_OK:
+    default: return "object-select-symbolic";
+    }
+}
+
+static const char *health_css(TalkiesHealthLevel level) {
+    switch (level) {
+    case TALKIES_HEALTH_FAIL: return "talkies-health-fail";
+    case TALKIES_HEALTH_WARN: return "talkies-health-warn";
+    case TALKIES_HEALTH_OK:
+    default: return "talkies-health-ok";
+    }
+}
+
+static void set_level_class(GtkWidget *widget, TalkiesHealthLevel level) {
+    gtk_widget_remove_css_class(widget, "talkies-health-ok");
+    gtk_widget_remove_css_class(widget, "talkies-health-warn");
+    gtk_widget_remove_css_class(widget, "talkies-health-fail");
+    gtk_widget_add_css_class(widget, health_css(level));
+}
+
+void talkies_settings_window_set_health(TalkiesSettingsWindow *win, const TalkiesHealthItem *items, int count) {
+    if (!win) return;
+    const TalkiesHealthItem *worst = NULL;
+    int problems = 0;
+    for (int i = 0; i < count; i++) {
+        if (items[i].level != TALKIES_HEALTH_OK) problems++;
+        if (!worst || items[i].level > worst->level) worst = &items[i];
+    }
+
+    TalkiesHealthLevel level = worst ? worst->level : TALKIES_HEALTH_OK;
+    gtk_image_set_from_icon_name(GTK_IMAGE(win->health_icon), health_icon_name(level));
+    set_level_class(win->health_icon, level);
+    if (level == TALKIES_HEALTH_OK) {
+        gtk_label_set_text(GTK_LABEL(win->health_title), "Ready to dictate");
+        gtk_widget_set_visible(win->health_fix, FALSE);
+    } else {
+        char title[256];
+        if (problems > 1) {
+            g_snprintf(title, sizeof title, "%s: %s (+%d more)", worst->title, worst->detail, problems - 1);
+        } else {
+            g_snprintf(title, sizeof title, "%s: %s", worst->title, worst->detail);
+        }
+        gtk_label_set_text(GTK_LABEL(win->health_title), title);
+        gtk_label_set_text(GTK_LABEL(win->health_fix), worst->fix ? worst->fix : "");
+        gtk_widget_set_visible(win->health_fix, worst->fix && worst->fix[0]);
+    }
+
+    GtkWidget *child;
+    while ((child = gtk_widget_get_first_child(win->health_list))) gtk_box_remove(GTK_BOX(win->health_list), child);
+    for (int i = 0; i < count; i++) {
+        GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+        GtkWidget *icon = gtk_image_new_from_icon_name(health_icon_name(items[i].level));
+        set_level_class(icon, items[i].level);
+        gtk_widget_set_valign(icon, GTK_ALIGN_START);
+        char *text = items[i].level != TALKIES_HEALTH_OK && items[i].fix && items[i].fix[0]
+                         ? g_strdup_printf("%s: %s. %s", items[i].title, items[i].detail, items[i].fix)
+                         : g_strdup_printf("%s: %s", items[i].title, items[i].detail);
+        GtkWidget *label = gtk_label_new(text);
+        g_free(text);
+        gtk_label_set_xalign(GTK_LABEL(label), 0);
+        gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+        gtk_label_set_selectable(GTK_LABEL(label), TRUE);
+        gtk_box_append(GTK_BOX(row), icon);
+        gtk_box_append(GTK_BOX(row), label);
+        gtk_box_append(GTK_BOX(win->health_list), row);
+    }
 }
 
 void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,

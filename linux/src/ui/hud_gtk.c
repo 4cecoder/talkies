@@ -1,4 +1,5 @@
 #include "hud_gtk.h"
+#include "loop_glib.h"
 
 #include <gtk/gtk.h>
 #include <math.h>
@@ -331,10 +332,26 @@ static void apply_x11_hints(TalkiesHud *hud) {
     };
     XChangeProperty(xdpy, xid, state, XA_ATOM, 32, PropModeReplace, (unsigned char *)states, 3);
 
-    // Centered horizontally, 100px above the vertical center (as on macOS).
-    int screen = DefaultScreen(xdpy);
-    int sw = DisplayWidth(xdpy, screen), sh = DisplayHeight(xdpy, screen);
-    XMoveWindow(xdpy, xid, (sw - HUD_WIDTH) / 2, (sh - HUD_HEIGHT) / 2 - 100);
+    // Centered on the monitor under the pointer, 100px above its vertical
+    // center (as on macOS). DisplayWidth would span all monitors.
+    GdkRectangle area = {0, 0, DisplayWidth(xdpy, DefaultScreen(xdpy)), DisplayHeight(xdpy, DefaultScreen(xdpy))};
+    Window root_ret, child_ret;
+    int px = 0, py = 0, wx, wy;
+    unsigned int mask;
+    XQueryPointer(xdpy, DefaultRootWindow(xdpy), &root_ret, &child_ret, &px, &py, &wx, &wy, &mask);
+    GListModel *monitors = gdk_display_get_monitors(display);
+    for (guint i = 0; i < g_list_model_get_n_items(monitors); i++) {
+        GdkMonitor *monitor = g_list_model_get_item(monitors, i);
+        GdkRectangle geometry;
+        gdk_monitor_get_geometry(monitor, &geometry);
+        g_object_unref(monitor);
+        if (i == 0 || (px >= geometry.x && px < geometry.x + geometry.width && py >= geometry.y &&
+                       py < geometry.y + geometry.height)) {
+            area = geometry;
+            if (i != 0) break;
+        }
+    }
+    XMoveWindow(xdpy, xid, area.x + (area.width - HUD_WIDTH) / 2, area.y + (area.height - HUD_HEIGHT) / 2 - 100);
     XFlush(xdpy);
 }
 #endif
@@ -361,7 +378,7 @@ static const char *hud_css =
     "  border-color: rgba(255,255,255,0.4); }";
 
 TalkiesHud *talkies_hud_new(void) {
-    if (!gtk_is_initialized() && !gtk_init_check()) return NULL;
+    if (!talkies_ui_init()) return NULL;
 
     TalkiesHud *hud = g_malloc0(sizeof *hud);
     hud->start_us = g_get_monotonic_time();

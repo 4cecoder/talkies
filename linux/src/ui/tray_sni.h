@@ -21,7 +21,9 @@ typedef void (*TalkiesTrayCallback)(TalkiesTrayAction action, void *user_data);
 
 // Returns NULL if the session bus is unavailable. A missing tray host is not
 // an error: the item registers automatically once a watcher appears.
-TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data);
+// icon_theme_path: directory containing hicolor/scalable/status/
+// talkies-tray{,-recording}-symbolic.svg (may be NULL to use stock icons).
+TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data, const char *icon_theme_path);
 void talkies_tray_destroy(TalkiesTray *tray);
 
 // Dispatch pending D-Bus messages without blocking.
@@ -32,5 +34,9 @@ int talkies_tray_get_fd(TalkiesTray *tray);
 // Reflect recording state in icon, tooltip and menu label.
 void talkies_tray_set_recording(TalkiesTray *tray, int recording);
 void talkies_tray_set_status_text(TalkiesTray *tray, const char *text);
+
+// Whether a tray host (StatusNotifierWatcher) is running on the session bus.
+// Usable without creating a tray item (e.g. from `talkies doctor`).
+int talkies_tray_host_available(void);
 
 #endif

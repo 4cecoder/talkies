@@ -20,6 +20,9 @@ const input = engine.input;
 const config = @import("config.zig");
 const daemon = @import("daemon.zig");
 const offline_acceptance = @import("offline_acceptance.zig");
+const health = @import("health.zig");
+const evdev_hotkey = engine.evdev_hotkey;
+const c_tray = @import("c_tray");
 
 test {
     _ = config;
@@ -27,6 +30,8 @@ test {
     _ = offline_acceptance;
     _ = @import("enhance.zig");
     _ = @import("trigger.zig");
+    _ = @import("state.zig");
+    _ = health;
     _ = @import("daemon_ws.zig");
     _ = @import("daemon_status_window.zig");
     _ = @import("ollama.zig");
@@ -42,6 +47,7 @@ const Command = enum {
     audio_set,
     transcribe_test,
     daemon,
+    doctor,
     help,
 };
 
@@ -89,6 +95,7 @@ fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
         .audio_set => try runAudioSet(allocator, arguments),
         .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
+        .doctor => try runDoctor(allocator),
         .help => try printHelp(),
     }
 }
@@ -104,6 +111,7 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "audio-set", .audio_set },
         .{ "transcribe", .transcribe_test },
         .{ "daemon", .daemon },
+        .{ "doctor", .doctor },
         .{ "help", .help },
         .{ "--help", .help },
         .{ "-h", .help },
@@ -506,6 +514,40 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
     }
 }
 
+/// Print what Talkies detected about this system and how to fix problems.
+fn runDoctor(allocator: std.mem.Allocator) !void {
+    var cfg = config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.load();
+
+    const wayland = std.mem.eql(u8, cfg.getEffectivePlatform(), "wayland");
+    var listener = evdev_hotkey.Listener.open();
+    defer listener.deinit();
+    const probe: health.Probe = .{
+        .hotkey = if (!wayland) .x11_grab else if (listener.count > 0) .evdev else .compositor_only,
+        .tray_host = c_tray.talkies_tray_host_available() != 0,
+        .model = cfg.model,
+    };
+    var report = try health.run(allocator, &cfg, probe);
+    defer report.deinit();
+
+    std.debug.print("\nTalkies system check\n\n", .{});
+    for (report.checks.items) |check| {
+        const mark = switch (check.level) {
+            .ok => "ok  ",
+            .warn => "warn",
+            .fail => "FAIL",
+        };
+        std.debug.print("  [{s}] {s}: {s}\n", .{ mark, check.title, check.detail });
+        if (check.level != .ok and check.fix.len > 0) std.debug.print("         -> {s}\n", .{check.fix});
+    }
+    std.debug.print("\n{s}\n", .{switch (report.worst()) {
+        .ok => "Everything looks good.",
+        .warn => "Talkies works, with the limitations above.",
+        .fail => "Fix the FAIL items above for dictation to work.",
+    }});
+}
+
 fn runDaemon(allocator: std.mem.Allocator) !void {
     try daemon.run(allocator);
 }
@@ -519,6 +561,7 @@ fn printHelp() !void {
         \\
         \\Commands:
         \\  daemon             Run the dictation daemon (HUD, tray, Right Alt / compositor hotkey)
+        \\  doctor             Check this system (audio, hotkey, paste, tray) and suggest fixes
         \\  quick              Record, transcribe, and paste in one step
         \\  record             Record audio only
         \\  models             Download whisper models

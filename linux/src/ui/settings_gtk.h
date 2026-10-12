@@ -101,4 +101,16 @@ void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, Talkie
 void talkies_settings_window_set_s1_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
                                           const char *detail);
 
+// System status (General page): one summary line, details on demand.
+typedef enum { TALKIES_HEALTH_OK = 0, TALKIES_HEALTH_WARN = 1, TALKIES_HEALTH_FAIL = 2 } TalkiesHealthLevel;
+
+typedef struct {
+    TalkiesHealthLevel level;
+    const char *title;
+    const char *detail;
+    const char *fix; // may be empty
+} TalkiesHealthItem;
+
+void talkies_settings_window_set_health(TalkiesSettingsWindow *win, const TalkiesHealthItem *items, int count);
+
 #endif

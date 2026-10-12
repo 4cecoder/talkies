@@ -38,6 +38,9 @@ const c_tray = @import("c_tray");
 const c_loop = @import("c_loop");
 const evdev_hotkey = @import("engine").evdev_hotkey;
 const sounds = @import("sounds.zig");
+const app_state = @import("state.zig");
+const Phase = app_state.Phase;
+const health = @import("health.zig");
 const c_gtk = @import("c_daemon_status");
 
 const default_ws_port: u16 = 6789;
@@ -344,8 +347,9 @@ pub const Daemon = struct {
     tray: ?*c_tray.TalkiesTray = null,
 
     trigger: trigger_mod.Trigger,
+    /// Single source of truth for what the daemon is doing (see state.zig).
+    phase: Phase = .starting,
     capture: ?*Capture = null,
-    stopping: bool = false,
     record_start_ms: i64 = 0,
     last_level_broadcast_ms: i64 = 0,
     level_timer: c_uint = 0,
@@ -354,6 +358,8 @@ pub const Daemon = struct {
 
     job: ?*Job = null,
     shown_stage: Stage = .idle,
+    /// Latest system check; drives the tray tooltip and Settings status.
+    health_report: ?health.Report = null,
     last_transcript: ?[:0]u8 = null,
 
     s1_state: std.atomic.Value(u8) = .init(@intFromEnum(S1State.missing)),
@@ -367,7 +373,6 @@ pub const Daemon = struct {
     quit: bool = false,
 
     // YAP interactive refinement (opt-in, Linux-only)
-    yap_active: bool = false,
     yap_win: ?*yap_window.YapWindow = null,
     yap_sb: ?*yap_sandbox.Sandbox = null,
     yap_session_manager: ?*yap_sessions.SessionManager = null,
@@ -396,6 +401,7 @@ pub const Daemon = struct {
         if (self.hotkey_listener) |*l| l.deinit();
         self.evdev.deinit();
         if (self.last_transcript) |t| self.allocator.free(t);
+        if (self.health_report) |*r| r.deinit();
         if (self.pending_cfg) |*p| p.deinit();
         self.recorder.deinit();
         self.inserter.deinit();
@@ -446,10 +452,64 @@ pub const Daemon = struct {
         if (self.tray) |t| {
             c_tray.talkies_tray_set_recording(t, @intFromBool(stage == .recording));
             var tip_buf: [256]u8 = undefined;
-            const tip = bufPrintZ(&tip_buf, "{s}", .{if (detail) |dtl| dtl else stage.text()}) catch @as([:0]const u8, "Talkies");
+            var summary_buf: [256]u8 = undefined;
+            const text = if (detail) |dtl| dtl else if (stage == .idle) self.idleSummary(&summary_buf) else stage.text();
+            const tip = bufPrintZ(&tip_buf, "{s}", .{text}) catch @as([:0]const u8, "Talkies");
             c_tray.talkies_tray_set_status_text(t, tip.ptr);
         }
         self.broadcastStage(stage);
+    }
+
+    fn idleSummary(self: *Daemon, buf: []u8) []const u8 {
+        const report = if (self.health_report) |*r| r else return "Ready";
+        return report.summary(buf, self.hotkey_name);
+    }
+
+    /// Re-detect the system (cheap: a couple of pactl calls) and publish it.
+    fn refreshHealth(self: *Daemon) void {
+        const probe: health.Probe = .{
+            .hotkey = if (self.hotkey_listener != null) .x11_grab else if (self.evdev.count > 0) .evdev else .compositor_only,
+            .tray_host = self.tray != null and c_tray.talkies_tray_host_available() != 0,
+            .model = self.cfg.model,
+        };
+        const report = health.run(self.allocator, &self.cfg, probe) catch |err| {
+            utils.logError("System check failed: {}", .{err});
+            return;
+        };
+        if (self.health_report) |*old| old.deinit();
+        self.health_report = report;
+        self.pushHealth();
+        if (self.phase == .idle) self.setStage(.idle, null); // refresh tooltip
+    }
+
+    fn pushHealth(self: *Daemon) void {
+        const win = self.settings_win orelse return;
+        const report = if (self.health_report) |*r| r else return;
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const items = a.alloc(c_settings.TalkiesHealthItem, report.checks.items.len) catch return;
+        for (report.checks.items, items) |check, *item| {
+            item.* = .{
+                .level = @intFromEnum(check.level),
+                .title = (utils.dupeZ(a, check.title) catch return).ptr,
+                .detail = (utils.dupeZ(a, check.detail) catch return).ptr,
+                .fix = (utils.dupeZ(a, check.fix) catch return).ptr,
+            };
+        }
+        c_settings.talkies_settings_window_set_health(win, items.ptr, @intCast(items.len));
+    }
+
+    /// Name the actual cause when the microphone could not be opened.
+    fn captureFailureMessage(self: *Daemon) []const u8 {
+        self.refreshHealth();
+        const report = if (self.health_report) |*r| r else return "Microphone unavailable";
+        for ([_]health.Id{ .audio, .microphone }) |id| {
+            if (report.get(id)) |check| {
+                if (check.level == .fail) return check.detail;
+            }
+        }
+        return "Microphone unavailable";
     }
 
     fn broadcastStage(self: *Daemon, stage: Stage) void {
@@ -460,6 +520,44 @@ pub const Daemon = struct {
 
     fn setWsState(self: *Daemon, state: daemon_ws.State) void {
         self.state.setState(state) catch |err| utils.logError("broadcast state: {}", .{err});
+    }
+
+    /// The only way to change phase. Every surface (window, tray, WebSocket,
+    /// status monitor) is updated here so they can never disagree.
+    fn enter(self: *Daemon, next: Phase, detail: ?[]const u8) void {
+        if (!app_state.allowed(self.phase, next)) {
+            utils.logError("Ignoring invalid transition {s} -> {s}", .{ @tagName(self.phase), @tagName(next) });
+            return;
+        }
+        self.phase = next;
+        switch (next) {
+            .starting => self.setStage(.loading_model, null),
+            .idle => {
+                self.hideHud();
+                self.setStage(.idle, null);
+            },
+            .recording => {
+                self.showHud();
+                self.setStage(.recording, null);
+            },
+            .stopping => {}, // still shows Recording while the tail is captured
+            .processing => self.setStage(.transcribing, null),
+            .yap => {
+                self.hideHud();
+                self.setStage(.idle, null);
+            },
+            .complete => {
+                self.setStage(.complete, null);
+                self.scheduleHide(hide_after_complete_ms);
+            },
+            .failed => {
+                self.showHud();
+                self.setStage(.@"error", detail);
+                self.scheduleHide(hide_after_error_ms);
+            },
+        }
+        // publicState() is the one mapping to the WebSocket contract.
+        self.setWsState(std.meta.stringToEnum(daemon_ws.State, next.publicState()).?);
     }
 
     fn showHud(self: *Daemon) void {
@@ -487,18 +585,12 @@ pub const Daemon = struct {
     fn onHideTimer(user_data: ?*anyopaque) callconv(.c) c_int {
         const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
         self.hide_timer = 0;
-        if (self.capture == null and self.job == null) {
-            if (self.hud) |hud| c_hud.talkies_hud_hide(hud);
-            self.setStage(.idle, null);
-        }
+        if (self.phase == .complete or self.phase == .failed) self.enter(.idle, null);
         return 0;
     }
 
     fn showError(self: *Daemon, message: []const u8) void {
-        self.showHud();
-        self.setStage(.@"error", message);
-        self.scheduleHide(hide_after_error_ms);
-        self.setWsState(.idle);
+        self.enter(.failed, message);
     }
 
     // -----------------------------------------------------------------
@@ -515,13 +607,12 @@ pub const Daemon = struct {
 
     /// True while audio is being captured and no stop is pending.
     fn isRecording(self: *const Daemon) bool {
-        return self.capture != null and !self.stopping;
+        return self.phase == .recording;
     }
 
     fn startRecording(self: *Daemon) void {
-        if (self.capture != null) return;
-        if (self.job != null) {
-            self.log(.warn, "Still processing the previous recording; ignoring start", .{});
+        if (!self.phase.canStartRecording() or self.capture != null or self.job != null) {
+            self.log(.warn, "Busy ({s}); ignoring start", .{@tagName(self.phase)});
             return;
         }
         const cap = self.allocator.create(Capture) catch {
@@ -536,19 +627,16 @@ pub const Daemon = struct {
             return;
         };
         self.capture = cap;
-        self.stopping = false;
         self.record_start_ms = utils.monotonicMilliseconds();
         // UI responds immediately; PulseAudio opens on the capture thread.
-        self.showHud();
-        self.setStage(.recording, null);
-        self.setWsState(.recording);
+        self.enter(.recording, null);
         self.level_timer = c_loop.talkies_loop_timeout(level_interval_ms, onLevelTimer, self);
         if (self.cfg.sounds) sounds.play(.start);
     }
 
     fn requestStop(self: *Daemon) void {
-        if (self.capture == null or self.stopping) return;
-        self.stopping = true;
+        if (self.phase != .recording) return;
+        self.enter(.stopping, null);
         // Keep recording briefly so trailing words aren't clipped.
         self.stop_timer = c_loop.talkies_loop_timeout(tail_ms, onStopTimer, self);
     }
@@ -587,7 +675,6 @@ pub const Daemon = struct {
         const failed = cap.failed.load(.acquire);
         self.allocator.destroy(cap);
         self.capture = null;
-        self.stopping = false;
         c_loop.talkies_loop_remove(self.level_timer);
         c_loop.talkies_loop_remove(self.stop_timer);
         self.level_timer = 0;
@@ -595,12 +682,11 @@ pub const Daemon = struct {
 
         if (failed) {
             self.state.broadcastError("Recording failed", "RECORDING_ERROR") catch |err| utils.logError("broadcast: {}", .{err});
-            self.showError("Microphone unavailable");
+            self.showError(self.captureFailureMessage());
             return;
         }
         if (self.cfg.sounds) sounds.play(.stop);
-        self.setStage(.transcribing, null);
-        self.setWsState(.processing);
+        self.enter(.processing, null);
         self.spawnJob() catch |err| {
             self.log(.err, "Could not start processing: {}", .{err});
             self.showError("Could not start processing");
@@ -612,7 +698,7 @@ pub const Daemon = struct {
         errdefer self.allocator.destroy(job);
         job.* = .{
             .daemon = self,
-            .route_to_yap = self.yap_active or self.cfg.yap_mode_enabled,
+            .route_to_yap = self.yap_win != null or self.cfg.yap_mode_enabled,
             .s1_ready = self.s1Ready(),
         };
         job.thread = try std.Thread.spawn(.{}, Job.run, .{job});
@@ -643,17 +729,13 @@ pub const Daemon = struct {
                 const text = job.text orelse "";
                 self.rememberTranscript(text);
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
-                self.setStage(.complete, null);
-                self.scheduleHide(hide_after_complete_ms);
                 self.log(.info, "Delivered {d} chars in {d}ms", .{ text.len, job.duration_ms });
                 if (self.status_win) |win| win.setLastTranscription(text);
-                self.setWsState(.idle);
+                self.enter(.complete, null);
             },
             .no_voice => {
                 self.log(.warn, "No speech detected", .{});
-                self.setStage(.idle, null);
-                self.hideHud();
-                self.setWsState(.idle);
+                self.enter(if (self.yap_win != null) .yap else .idle, null);
             },
             .failed => {
                 self.log(.err, "{s}", .{job.errorMessage()});
@@ -664,8 +746,6 @@ pub const Daemon = struct {
                 const text = job.text orelse "";
                 self.rememberTranscript(text);
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
-                self.setStage(.idle, null);
-                self.hideHud();
                 try self.handleYapTranscript(text);
             },
         }
@@ -864,7 +944,7 @@ pub const Daemon = struct {
 
     fn onS1Remove(user_data: ?*anyopaque) callconv(.c) void {
         const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
-        if (self.job != null or self.s1_thread != null) return;
+        if (!self.phase.isQuiescent() or self.s1_thread != null) return;
         // Release the loaded weights before deleting them.
         self.cleanup_service.deinit();
         self.s1Store().remove() catch |err| self.log(.err, "Could not remove S1-mini: {}", .{err});
@@ -893,6 +973,7 @@ pub const Daemon = struct {
         settingsFromConfig(self.pending_cfg orelse self.cfg, &data);
         c_settings.talkies_settings_window_present(win, &data);
         self.refreshS1State();
+        self.refreshHealth();
 
         // Like macOS, check the selected server as the settings open.
         switch ((self.pending_cfg orelse self.cfg).enhancer) {
@@ -970,7 +1051,7 @@ pub const Daemon = struct {
 
     /// Swap in saved settings once no worker reads the config.
     fn applyPendingConfig(self: *Daemon) !void {
-        if (self.job != null or self.capture != null) return;
+        if (!self.phase.isQuiescent() or self.job != null or self.capture != null) return;
         const next = self.pending_cfg orelse return;
         self.pending_cfg = null;
 
@@ -987,22 +1068,21 @@ pub const Daemon = struct {
         if (!self.cfg.show_hud) self.hideHud();
         if (model_changed) try self.loadWhisperModel(true);
         self.log(.info, "Settings applied", .{});
+        self.refreshHealth();
     }
 
     fn loadWhisperModel(self: *Daemon, show_progress: bool) !void {
+        self.enter(.starting, null);
         if (show_progress) self.showHud();
-        self.setStage(.loading_model, null);
         pumpGtk();
         if (self.status_win) |win| win.setModel(self.cfg.model);
         self.whisper_service.loadModel(self.cfg.model) catch |err| {
             self.log(.err, "Could not load model '{s}': {}", .{ self.cfg.model, err });
-            self.setStage(.@"error", "Could not load Whisper model");
-            self.scheduleHide(hide_after_error_ms);
+            self.enter(.failed, "Could not load Whisper model");
             return err;
         };
         self.log(.info, "Model '{s}' loaded", .{self.cfg.model});
-        self.setStage(.idle, null);
-        if (show_progress) self.hideHud();
+        self.enter(.idle, null);
     }
 
     // -----------------------------------------------------------------
@@ -1015,13 +1095,15 @@ pub const Daemon = struct {
             self.allocator.free(sb.yapping);
             sb.yapping = appended;
             if (self.yap_win) |win| win.updateDisplay() catch |err| utils.logError("YAP display: {}", .{err});
-            self.setWsState(.yap_refining);
+            self.enter(.yap, null);
             return;
         }
-        if (!self.startYapSession(text)) {
+        if (self.startYapSession(text)) {
+            self.enter(.yap, null);
+        } else {
             // YAP unavailable: behave like normal dictation.
             self.output(text);
-            self.setWsState(.idle);
+            self.enter(.complete, null);
         }
     }
 
@@ -1068,8 +1150,6 @@ pub const Daemon = struct {
             return false;
         };
         self.yap_win.?.show();
-        self.yap_active = true;
-        self.setWsState(.yap_refining);
         return true;
     }
 
@@ -1094,7 +1174,6 @@ pub const Daemon = struct {
         }
         self.yap_session_manager = null;
         self.yap_session_id = null;
-        self.yap_active = false;
     }
 
     /// Insert or copy text on the main thread (YAP accept/cancel).
@@ -1140,7 +1219,7 @@ pub const Daemon = struct {
                 self.endYapSession();
                 self.output(final_text);
                 self.rememberTranscript(final_text);
-                self.setWsState(.idle);
+                if (self.phase == .yap) self.enter(.idle, null);
             },
             .request_clarification => try self.yapClarify(win, sb),
             .refine => try self.yapRefine(win, sb),
@@ -1410,6 +1489,22 @@ fn parseAudioSources(result: *AudioSources, output: []const u8) !void {
     }
 }
 
+/// Locate the shipped tray icons: <app>/share/icons when installed, or
+/// zig-out/share/icons for a development build. Null falls back to stock icons.
+fn findIconThemePath(buf: *[std.fs.max_path_bytes:0]u8) ?[:0]const u8 {
+    var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const rc = std.os.linux.readlink("/proc/self/exe", &exe_buf, exe_buf.len);
+    if (std.os.linux.errno(rc) != .SUCCESS) return null;
+    const exe_dir = std.fs.path.dirname(exe_buf[0..rc]) orelse return null;
+    for ([_][]const u8{ "share/icons", "../share/icons" }) |rel| {
+        const dir = std.fmt.bufPrintSentinel(buf, "{s}/{s}", .{ exe_dir, rel }, 0) catch continue;
+        var probe_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const probe = std.fmt.bufPrint(&probe_buf, "{s}/hicolor/scalable/status/talkies-tray-symbolic.svg", .{dir}) catch continue;
+        if (std.Io.Dir.cwd().access(utils.io(), probe, .{})) |_| return dir else |_| {}
+    }
+    return null;
+}
+
 /// Apply Hyprland window rules so the HUD floats, stays on top and never
 /// takes focus (GTK4 cannot request this itself on Wayland).
 fn applyCompositorRules() void {
@@ -1518,7 +1613,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
             c_gtk.daemon_status_window_set_settings_callback(win.gtk_win, Daemon.onStatusSettings, &daemon);
         }
     }
-    daemon.tray = c_tray.talkies_tray_new(Daemon.onTray, &daemon);
+    var icon_dir_buf: [std.fs.max_path_bytes:0]u8 = undefined;
+    const icon_dir = findIconThemePath(&icon_dir_buf);
+    daemon.tray = c_tray.talkies_tray_new(Daemon.onTray, &daemon, if (icon_dir) |d| d.ptr else null);
     if (daemon.tray == null) utils.log("System tray unavailable (no session bus)", .{});
 
     // Event sources for the blocking main loop.
@@ -1548,7 +1645,12 @@ pub fn run(allocator: std.mem.Allocator) !void {
     ws_thread.detach();
 
     try daemon.loadWhisperModel(false);
-    daemon.setWsState(.idle);
+    daemon.refreshHealth();
+    if (daemon.health_report) |*report| {
+        for (report.checks.items) |check| {
+            if (check.level != .ok) utils.log("{s}: {s}. {s}", .{ check.title, check.detail, check.fix });
+        }
+    }
 
     std.debug.print(
         \\Talkies daemon ready

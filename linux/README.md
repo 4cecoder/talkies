@@ -68,6 +68,28 @@ The daemon is event-driven: it blocks on its hotkey, D-Bus and wake file
 descriptors, so it uses no CPU while idle. Audio capture and transcription
 run on their own threads, so the window never stalls.
 
+## When something isn't working
+
+Talkies checks your system (audio server, microphone, hotkey access, paste
+permission, clipboard tool, tray) at startup, whenever Settings opens, and
+whenever recording fails.
+
+- **Settings > General** shows a single "Ready to dictate" line, or the
+  problem and its fix, with a collapsed **Details** list of every check.
+- **The tray tooltip** shows the same one-line summary.
+- **Errors in the dictation window** name the real cause, e.g. "No audio
+  server is running" instead of a generic failure.
+- **`talkies doctor`** prints the full report in a terminal. Fixes are
+  specific to your system (OpenRC/Gentoo, systemd, GNOME, and so on).
+
+## Desktop support
+
+| Desktop | Tray | Dictation window |
+|---|---|---|
+| KDE Plasma | Native StatusNotifierItem + dbusmenu. The icon recolours with your Plasma colour scheme (`ColorScheme-Text` SVGs); middle-click starts or stops recording. | Floats above other windows without taking focus (XWayland hints, honoured by KWin) |
+| Hyprland (AGS, waybar) | Same item; icons are installed into the XDG icon theme so hosts that ignore `IconThemePath` still find them | Window rules applied automatically via `hyprctl` |
+| GNOME | Needs the "AppIndicator and KStatusNotifierItem Support" extension (the doctor tells you) | Same as KDE (Mutter honours the hints) |
+
 ## Hotkeys
 
 Right Alt everywhere: hold it for push-to-talk, or tap it to toggle.

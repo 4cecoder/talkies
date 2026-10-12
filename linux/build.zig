@@ -41,6 +41,8 @@ pub fn build(b: *std.Build) void {
     const ui_lib = addUiLib(ctx);
     b.installArtifact(native_lib);
     b.installArtifact(ui_lib);
+    // Themed tray icons (KDE ColorScheme / GTK symbolic), found via IconThemePath.
+    b.installDirectory(.{ .source_dir = b.path("assets/icons"), .install_dir = .prefix, .install_subdir = "share/icons" });
 
     // --- Zig layers -----------------------------------------------------
     const core = addCoreModule(ctx);

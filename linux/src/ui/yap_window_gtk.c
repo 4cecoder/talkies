@@ -1,4 +1,5 @@
 #include "yap_window_gtk.h"
+#include "loop_glib.h"
 #include <gtk/gtk.h>
 #include <string.h>
 
@@ -48,7 +49,7 @@ static void on_clarification_clicked(GtkButton *button, gpointer data) {
 }
 
 int yap_window_gtk_init(void) {
-    return gtk_is_initialized() || gtk_init_check();
+    return talkies_ui_init();
 }
 
 void yap_window_gtk_process_events(void) {

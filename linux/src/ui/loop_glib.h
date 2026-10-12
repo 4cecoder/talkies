@@ -16,4 +16,11 @@ void talkies_loop_remove(unsigned source_id);
 // Run one iteration; blocks until an event arrives when may_block != 0.
 void talkies_loop_iterate(int may_block);
 
+// Initialise GTK once for every Talkies window. Prefers the X11 backend
+// (XWayland on Wayland sessions): GTK4 cannot keep a window above others or
+// refuse focus under native Wayland without layer-shell, while XWayland
+// honours those hints on KWin, Mutter and Hyprland alike. Returns 0 when no
+// display is available.
+int talkies_ui_init(void);
+
 #endif

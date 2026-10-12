@@ -1,4 +1,5 @@
 #include "daemon_status_gtk.h"
+#include "loop_glib.h"
 #include <gtk/gtk.h>
 #include <string.h>
 #include <time.h>
@@ -39,7 +40,7 @@ struct DaemonStatusWindow {
 };
 
 int daemon_status_gtk_init(void) {
-    return gtk_is_initialized() || gtk_init_check();
+    return talkies_ui_init();
 }
 
 void daemon_status_gtk_process_events(void) {

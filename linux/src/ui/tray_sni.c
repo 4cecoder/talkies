@@ -1,6 +1,8 @@
 #include "tray_sni.h"
 
+#include <cairo.h>
 #include <dbus/dbus.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +14,7 @@
 #define MENU_IFACE "com.canonical.dbusmenu"
 #define WATCHER_NAME "org.kde.StatusNotifierWatcher"
 #define PROPS_IFACE "org.freedesktop.DBus.Properties"
+#define G_PI_LIKE 3.14159265358979323846
 
 enum { MENU_ROOT = 0, MENU_OPEN = 1, MENU_RECORD = 2, MENU_SEP1 = 3, MENU_SETTINGS = 4, MENU_SEP2 = 5, MENU_QUIT = 6 };
 static const int menu_children[] = {MENU_OPEN, MENU_RECORD, MENU_SEP1, MENU_SETTINGS, MENU_SEP2, MENU_QUIT};
@@ -22,6 +25,7 @@ struct TalkiesTray {
     char bus_name[96];
     int recording;
     char status_text[256];
+    char icon_theme_path[1024];
     unsigned int menu_revision;
     TalkiesTrayCallback callback;
     void *user_data;
@@ -88,7 +92,112 @@ static void append_dict_bool(DBusMessageIter *dict, const char *key, dbus_bool_t
 // ---------------------------------------------------------------------------
 
 static const char *icon_name(TalkiesTray *tray) {
+    if (tray->icon_theme_path[0]) {
+        return tray->recording ? "talkies-tray-recording-symbolic" : "talkies-tray-symbolic";
+    }
     return tray->recording ? "media-record-symbolic" : "audio-input-microphone-symbolic";
+}
+
+static const char *attention_icon_name(TalkiesTray *tray) {
+    return tray->icon_theme_path[0] ? "talkies-tray-recording-symbolic" : "media-record-symbolic";
+}
+
+// ---------------------------------------------------------------------------
+// Pixmap fallback (hosts that cannot resolve IconName): the same microphone
+// glyph as the SVGs, rendered with cairo as ARGB32 in network byte order.
+// ---------------------------------------------------------------------------
+
+static void draw_mic(cairo_t *cr, double size, int recording) {
+    cairo_scale(cr, size / 16.0, size / 16.0);
+    double dx = recording ? -2.0 : 0.0, dy = recording ? 1.0 : 0.0;
+    cairo_set_source_rgb(cr, 0.62, 0.64, 0.67); // neutral on light and dark panels
+    // capsule
+    double x = 5.5 + dx, y = 1 + dy, w = 5, h = 8.5, r = 2.5;
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + r, y + r, r, G_PI_LIKE, 1.5 * G_PI_LIKE);
+    cairo_arc(cr, x + w - r, y + r, r, 1.5 * G_PI_LIKE, 2 * G_PI_LIKE);
+    cairo_arc(cr, x + w - r, y + h - r, r, 0, 0.5 * G_PI_LIKE);
+    cairo_arc(cr, x + r, y + h - r, r, 0.5 * G_PI_LIKE, G_PI_LIKE);
+    cairo_close_path(cr);
+    cairo_fill(cr);
+    // stand
+    cairo_set_line_width(cr, 1.4);
+    cairo_arc_negative(cr, 8 + dx, 7.5 + dy, 4.3, G_PI_LIKE, 0);
+    cairo_stroke(cr);
+    cairo_rectangle(cr, 7.3 + dx, 12.3 + dy, 1.4, 2);
+    cairo_rectangle(cr, 5 + dx, 13.8, 6, 1.4); // base stays on the baseline
+    cairo_fill(cr);
+    if (recording) {
+        cairo_set_source_rgb(cr, 0.855, 0.267, 0.325);
+        cairo_arc(cr, 12.8, 3.4, 2.6, 0, 2 * G_PI_LIKE);
+        cairo_fill(cr);
+    }
+}
+
+static void append_pixmaps_value(DBusMessageIter *iter, int recording) {
+    static const int sizes[] = {22, 32, 48};
+    DBusMessageIter arr;
+    dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY, "(iiay)", &arr);
+    for (size_t i = 0; i < sizeof sizes / sizeof sizes[0]; i++) {
+        int size = sizes[i];
+        cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
+        cairo_t *cr = cairo_create(surface);
+        draw_mic(cr, size, recording);
+        cairo_destroy(cr);
+        cairo_surface_flush(surface);
+
+        int stride = cairo_image_surface_get_stride(surface);
+        const unsigned char *src = cairo_image_surface_get_data(surface);
+        unsigned char *argb = malloc((size_t)size * size * 4);
+        if (!argb) {
+            cairo_surface_destroy(surface);
+            continue;
+        }
+        for (int yy = 0; yy < size; yy++) {
+            const uint32_t *row = (const uint32_t *)(src + yy * stride);
+            for (int xx = 0; xx < size; xx++) {
+                uint32_t px = row[xx]; // native-endian ARGB (premultiplied; fine for icons)
+                unsigned char *dst = argb + ((size_t)yy * size + xx) * 4;
+                dst[0] = (px >> 24) & 0xff;
+                dst[1] = (px >> 16) & 0xff;
+                dst[2] = (px >> 8) & 0xff;
+                dst[3] = px & 0xff;
+            }
+        }
+        cairo_surface_destroy(surface);
+
+        DBusMessageIter st, bytes;
+        dbus_int32_t w = size, h = size;
+        dbus_message_iter_open_container(&arr, DBUS_TYPE_STRUCT, NULL, &st);
+        dbus_message_iter_append_basic(&st, DBUS_TYPE_INT32, &w);
+        dbus_message_iter_append_basic(&st, DBUS_TYPE_INT32, &h);
+        dbus_message_iter_open_container(&st, DBUS_TYPE_ARRAY, "y", &bytes);
+        dbus_message_iter_append_fixed_array(&bytes, DBUS_TYPE_BYTE, &argb, size * size * 4);
+        dbus_message_iter_close_container(&st, &bytes);
+        dbus_message_iter_close_container(&arr, &st);
+        free(argb);
+    }
+    dbus_message_iter_close_container(iter, &arr);
+}
+
+static void append_variant_pixmaps(DBusMessageIter *iter, int recording, int empty) {
+    DBusMessageIter v;
+    dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, "a(iiay)", &v);
+    if (empty) {
+        DBusMessageIter arr;
+        dbus_message_iter_open_container(&v, DBUS_TYPE_ARRAY, "(iiay)", &arr);
+        dbus_message_iter_close_container(&v, &arr);
+    } else {
+        append_pixmaps_value(&v, recording);
+    }
+    dbus_message_iter_close_container(iter, &v);
+}
+
+static void append_variant_int(DBusMessageIter *iter, dbus_int32_t value) {
+    DBusMessageIter v;
+    dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, "i", &v);
+    dbus_message_iter_append_basic(&v, DBUS_TYPE_INT32, &value);
+    dbus_message_iter_close_container(iter, &v);
 }
 
 static const char *status_text(TalkiesTray *tray) {
@@ -98,12 +207,12 @@ static const char *status_text(TalkiesTray *tray) {
 
 static void append_tooltip_variant(TalkiesTray *tray, DBusMessageIter *iter) {
     DBusMessageIter v, st, pixmaps;
-    const char *empty = "";
+    const char *icon = icon_name(tray);
     const char *title = "Talkies";
     const char *body = status_text(tray);
     dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, "(sa(iiay)ss)", &v);
     dbus_message_iter_open_container(&v, DBUS_TYPE_STRUCT, NULL, &st);
-    dbus_message_iter_append_basic(&st, DBUS_TYPE_STRING, &empty);
+    dbus_message_iter_append_basic(&st, DBUS_TYPE_STRING, &icon);
     dbus_message_iter_open_container(&st, DBUS_TYPE_ARRAY, "(iiay)", &pixmaps);
     dbus_message_iter_close_container(&st, &pixmaps);
     dbus_message_iter_append_basic(&st, DBUS_TYPE_STRING, &title);
@@ -118,10 +227,15 @@ static int append_item_property(TalkiesTray *tray, DBusMessageIter *iter, const 
     else if (!strcmp(name, "Id")) append_variant_string(iter, "talkies");
     else if (!strcmp(name, "Title")) append_variant_string(iter, "Talkies");
     else if (!strcmp(name, "Status")) append_variant_string(iter, tray->recording ? "NeedsAttention" : "Active");
+    else if (!strcmp(name, "WindowId")) append_variant_int(iter, 0);
     else if (!strcmp(name, "IconName")) append_variant_string(iter, icon_name(tray));
-    else if (!strcmp(name, "AttentionIconName")) append_variant_string(iter, "media-record-symbolic");
+    else if (!strcmp(name, "IconPixmap")) append_variant_pixmaps(iter, tray->recording, 0);
+    else if (!strcmp(name, "AttentionIconName")) append_variant_string(iter, attention_icon_name(tray));
+    else if (!strcmp(name, "AttentionIconPixmap")) append_variant_pixmaps(iter, 1, 0);
+    else if (!strcmp(name, "AttentionMovieName")) append_variant_string(iter, "");
     else if (!strcmp(name, "OverlayIconName")) append_variant_string(iter, "");
-    else if (!strcmp(name, "IconThemePath")) append_variant_string(iter, "");
+    else if (!strcmp(name, "OverlayIconPixmap")) append_variant_pixmaps(iter, 0, 1);
+    else if (!strcmp(name, "IconThemePath")) append_variant_string(iter, tray->icon_theme_path);
     else if (!strcmp(name, "ToolTip")) append_tooltip_variant(tray, iter);
     else if (!strcmp(name, "ItemIsMenu")) append_variant_bool(iter, FALSE);
     else if (!strcmp(name, "Menu")) append_variant_object_path(iter, MENU_PATH);
@@ -129,8 +243,11 @@ static int append_item_property(TalkiesTray *tray, DBusMessageIter *iter, const 
     return 1;
 }
 
-static const char *const item_properties[] = {"Category", "Id",       "Title",   "Status",     "IconName",
-                                              "AttentionIconName",     "ToolTip", "ItemIsMenu", "Menu", NULL};
+// Full StatusNotifierItem property set: KDE Plasma reads all of these via GetAll.
+static const char *const item_properties[] = {
+    "Category",          "Id",          "Title",           "Status",           "WindowId",
+    "IconName",          "IconPixmap",  "OverlayIconName", "OverlayIconPixmap", "AttentionIconName",
+    "AttentionIconPixmap", "AttentionMovieName", "IconThemePath", "ToolTip", "ItemIsMenu", "Menu", NULL};
 
 static int append_menu_property(TalkiesTray *tray, DBusMessageIter *iter, const char *name) {
     (void)tray;
@@ -197,14 +314,19 @@ static const char item_introspection[] =
     "<node><interface name='org.kde.StatusNotifierItem'>"
     "<property name='Category' type='s' access='read'/><property name='Id' type='s' access='read'/>"
     "<property name='Title' type='s' access='read'/><property name='Status' type='s' access='read'/>"
-    "<property name='IconName' type='s' access='read'/><property name='AttentionIconName' type='s' access='read'/>"
+    "<property name='WindowId' type='i' access='read'/><property name='IconThemePath' type='s' access='read'/>"
+    "<property name='IconName' type='s' access='read'/><property name='IconPixmap' type='a(iiay)' access='read'/>"
+    "<property name='OverlayIconName' type='s' access='read'/><property name='OverlayIconPixmap' type='a(iiay)' access='read'/>"
+    "<property name='AttentionIconName' type='s' access='read'/><property name='AttentionIconPixmap' type='a(iiay)' access='read'/>"
+    "<property name='AttentionMovieName' type='s' access='read'/>"
     "<property name='ToolTip' type='(sa(iiay)ss)' access='read'/>"
     "<property name='ItemIsMenu' type='b' access='read'/><property name='Menu' type='o' access='read'/>"
     "<method name='Activate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
     "<method name='SecondaryActivate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
     "<method name='ContextMenu'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
     "<method name='Scroll'><arg type='i' direction='in'/><arg type='s' direction='in'/></method>"
-    "<signal name='NewIcon'/><signal name='NewToolTip'/><signal name='NewStatus'><arg type='s'/></signal>"
+    "<signal name='NewIcon'/><signal name='NewAttentionIcon'/><signal name='NewOverlayIcon'/><signal name='NewTitle'/>"
+    "<signal name='NewToolTip'/><signal name='NewStatus'><arg type='s'/></signal>"
     "</interface></node>";
 
 static DBusHandlerResult reply_introspect(TalkiesTray *tray, DBusMessage *msg, const char *xml) {
@@ -263,7 +385,10 @@ static void append_menu_item_props(TalkiesTray *tray, DBusMessageIter *dict, int
     case MENU_SEP2: append_dict_string(dict, "type", "separator"); break;
     default: break;
     }
-    if (id != MENU_ROOT) append_dict_bool(dict, "enabled", TRUE);
+    if (id != MENU_ROOT) {
+        append_dict_bool(dict, "enabled", TRUE);
+        append_dict_bool(dict, "visible", TRUE); // libdbusmenu-qt (KDE) treats missing as hidden on some versions
+    }
 }
 
 static void append_menu_node(TalkiesTray *tray, DBusMessageIter *iter, int id, int depth) {
@@ -494,7 +619,7 @@ static DBusHandlerResult bus_filter(DBusConnection *conn, DBusMessage *msg, void
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
-TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data) {
+TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data, const char *icon_theme_path) {
     DBusError err;
     dbus_error_init(&err);
     DBusConnection *conn = dbus_bus_get_private(DBUS_BUS_SESSION, &err);
@@ -515,6 +640,7 @@ TalkiesTray *talkies_tray_new(TalkiesTrayCallback callback, void *user_data) {
     tray->callback = callback;
     tray->user_data = user_data;
     tray->menu_revision = 1;
+    if (icon_theme_path) snprintf(tray->icon_theme_path, sizeof tray->icon_theme_path, "%s", icon_theme_path);
     snprintf(tray->bus_name, sizeof tray->bus_name, "org.kde.StatusNotifierItem-%d-1", (int)getpid());
 
     static const DBusObjectPathVTable item_vtable = {.message_function = item_handler};
@@ -564,6 +690,23 @@ void talkies_tray_process(TalkiesTray *tray) {
     dbus_connection_flush(tray->conn);
 }
 
+int talkies_tray_host_available(void) {
+    DBusError err;
+    dbus_error_init(&err);
+    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
+    if (!conn) {
+        dbus_error_free(&err);
+        return 0;
+    }
+    dbus_bool_t has = dbus_bus_name_has_owner(conn, WATCHER_NAME, &err);
+    if (dbus_error_is_set(&err)) {
+        dbus_error_free(&err);
+        has = FALSE;
+    }
+    dbus_connection_unref(conn);
+    return has ? 1 : 0;
+}
+
 int talkies_tray_get_fd(TalkiesTray *tray) {
     int fd = -1;
     if (!tray || !dbus_connection_get_unix_fd(tray->conn, &fd)) return -1;
@@ -574,6 +717,7 @@ void talkies_tray_set_recording(TalkiesTray *tray, int recording) {
     if (!tray || tray->recording == !!recording) return;
     tray->recording = !!recording;
     emit_item_signal(tray, "NewIcon", NULL);
+    emit_item_signal(tray, "NewAttentionIcon", NULL);
     emit_item_signal(tray, "NewToolTip", NULL);
     emit_item_signal(tray, "NewStatus", tray->recording ? "NeedsAttention" : "Active");
     emit_layout_updated(tray);
