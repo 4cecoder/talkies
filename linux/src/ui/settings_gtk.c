@@ -7,8 +7,10 @@
 #define SAVE_DEBOUNCE_MS 500
 
 static const char *const whisper_models[] = {"tiny", "base", "small", "medium", "large", NULL};
-static const char *const enhancer_names[] = {"Off", "S1-mini (on-device)", "Ollama", "LM Studio", NULL};
+static const char *const whisper_model_labels[] = {"Tiny", "Base", "Small", "Medium", "Large", NULL};
+static const char *const enhancer_names[] = {"Off", "S1-mini", "Ollama", "LM Studio", NULL};
 static const char *const paste_keybinds[] = {"ctrl+v", "ctrl+shift+v", "shift+Insert", NULL};
+static const char *const paste_keybind_labels[] = {"Ctrl+V", "Ctrl+Shift+V", "Shift+Insert", NULL};
 static const char *const vad_modes[] = {"Quality", "Low bitrate", "Aggressive", "Very aggressive", NULL};
 
 typedef struct {
@@ -51,7 +53,6 @@ struct TalkiesSettingsWindow {
 
     ModelPicker ollama_models;
     GtkWidget *ollama_mode;
-    GtkWidget *ollama_mode_desc;
     GtkWidget *ollama_temperature;
     GtkWidget *ollama_top_p;
     GtkWidget *ollama_top_k;
@@ -64,7 +65,6 @@ struct TalkiesSettingsWindow {
 
     ModelPicker lm_models;
     GtkWidget *lm_mode;
-    GtkWidget *lm_mode_desc;
     GtkWidget *lm_temperature;
     GtkWidget *lm_top_p;
     GtkWidget *lm_max_tokens;
@@ -89,6 +89,9 @@ struct TalkiesSettingsWindow {
 // ---------------------------------------------------------------------------
 // Auto-save
 // ---------------------------------------------------------------------------
+
+static int choice_get(GtkWidget *widget);
+static const char *choice_value(GtkWidget *widget);
 
 static void copy_text(char *dst, size_t size, const char *src) {
     g_strlcpy(dst, src ? src : "", size);
@@ -120,15 +123,15 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
                                   ? g_ptr_array_index(win->audio_device_names, device)
                                   : "";
     copy_text(d->audio_device, sizeof d->audio_device, device_name);
-    copy_text(d->model, sizeof d->model, dropdown_string(win->model));
+    copy_text(d->model, sizeof d->model, choice_value(win->model));
     copy_text(d->language, sizeof d->language, gtk_editable_get_text(GTK_EDITABLE(win->language)));
     copy_text(d->vocabulary_prompt, sizeof d->vocabulary_prompt, gtk_editable_get_text(GTK_EDITABLE(win->vocabulary)));
 
-    d->enhancer = dropdown_index(win->enhancer);
+    d->enhancer = choice_get(win->enhancer);
 
     copy_text(d->ollama_host, sizeof d->ollama_host, gtk_editable_get_text(GTK_EDITABLE(win->ollama_models.url_entry)));
     copy_text(d->ollama_model, sizeof d->ollama_model, dropdown_string(win->ollama_models.dropdown));
-    d->ollama_mode = dropdown_index(win->ollama_mode);
+    d->ollama_mode = choice_get(win->ollama_mode);
     d->ollama_temperature = scale_value(win->ollama_temperature);
     d->ollama_top_p = scale_value(win->ollama_top_p);
     d->ollama_top_k = (int)scale_value(win->ollama_top_k);
@@ -146,17 +149,17 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
 
     copy_text(d->lm_studio_endpoint, sizeof d->lm_studio_endpoint, gtk_editable_get_text(GTK_EDITABLE(win->lm_models.url_entry)));
     copy_text(d->lm_studio_model, sizeof d->lm_studio_model, dropdown_string(win->lm_models.dropdown));
-    d->lm_studio_mode = dropdown_index(win->lm_mode);
+    d->lm_studio_mode = choice_get(win->lm_mode);
     d->lm_studio_temperature = scale_value(win->lm_temperature);
     d->lm_studio_top_p = scale_value(win->lm_top_p);
     d->lm_studio_max_tokens = (int)scale_value(win->lm_max_tokens);
 
     d->auto_paste = gtk_switch_get_active(GTK_SWITCH(win->auto_paste));
     d->restore_clipboard = gtk_switch_get_active(GTK_SWITCH(win->restore_clipboard));
-    copy_text(d->paste_keybind, sizeof d->paste_keybind, dropdown_string(win->paste_keybind));
+    copy_text(d->paste_keybind, sizeof d->paste_keybind, choice_value(win->paste_keybind));
 
     d->vad_enabled = gtk_switch_get_active(GTK_SWITCH(win->vad_enabled));
-    d->vad_mode = dropdown_index(win->vad_mode);
+    d->vad_mode = choice_get(win->vad_mode);
     d->show_status_gui = gtk_switch_get_active(GTK_SWITCH(win->show_status_gui));
 }
 
@@ -191,6 +194,35 @@ static void on_signal_changed(gpointer instance, gpointer user_data) {
 // ---------------------------------------------------------------------------
 // Widget helpers
 // ---------------------------------------------------------------------------
+
+static void on_sidebar_toggled(GtkToggleButton *button, gpointer stack) {
+    if (!gtk_toggle_button_get_active(button)) return;
+    gtk_stack_set_visible_child_name(GTK_STACK(stack), g_object_get_data(G_OBJECT(button), "page"));
+}
+
+/// Sidebar entry: a real button, so screen readers and automation can press
+/// it (GtkStackSidebar rows expose no accessible action).
+static void sidebar_add(GtkWidget *sidebar, GtkWidget *stack, const char *name, const char *title, const char *icon) {
+    GtkWidget *button = gtk_toggle_button_new();
+    GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_append(GTK_BOX(content), gtk_image_new_from_icon_name(icon));
+    GtkWidget *label = gtk_label_new(title);
+    gtk_label_set_xalign(GTK_LABEL(label), 0);
+    gtk_box_append(GTK_BOX(content), label);
+    gtk_button_set_child(GTK_BUTTON(button), content);
+    gtk_accessible_update_property(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_PROPERTY_LABEL, title, -1);
+    gtk_widget_add_css_class(button, "flat");
+    g_object_set_data_full(G_OBJECT(button), "page", g_strdup(name), g_free);
+
+    GtkWidget *first = gtk_widget_get_first_child(sidebar);
+    if (first) {
+        gtk_toggle_button_set_group(GTK_TOGGLE_BUTTON(button), GTK_TOGGLE_BUTTON(first));
+    } else {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
+    }
+    g_signal_connect(button, "toggled", G_CALLBACK(on_sidebar_toggled), stack);
+    gtk_box_append(GTK_BOX(sidebar), button);
+}
 
 static GtkWidget *page_new(GtkWidget *stack, const char *name, const char *title, GtkWidget **out_box) {
     GtkWidget *scroller = gtk_scrolled_window_new();
@@ -237,6 +269,13 @@ static void add_row(GtkWidget *box, const char *title, const char *subtitle, Gtk
         gtk_label_set_wrap(GTK_LABEL(sub), TRUE);
         gtk_box_append(GTK_BOX(labels), sub);
     }
+    // Name controls after their row so assistive tech and automation can
+    // tell the switches apart.
+    gtk_accessible_update_relation(GTK_ACCESSIBLE(control), GTK_ACCESSIBLE_RELATION_LABELLED_BY, title_label, NULL, -1);
+    if (subtitle) {
+        gtk_accessible_update_relation(GTK_ACCESSIBLE(control), GTK_ACCESSIBLE_RELATION_DESCRIBED_BY,
+                                       gtk_widget_get_last_child(labels), NULL, -1);
+    }
     gtk_widget_set_valign(control, GTK_ALIGN_CENTER);
     gtk_box_append(GTK_BOX(row), labels);
     gtk_box_append(GTK_BOX(row), control);
@@ -267,11 +306,120 @@ static GtkWidget *entry_new(TalkiesSettingsWindow *win, const char *placeholder,
     return w;
 }
 
-static GtkWidget *dropdown_new(TalkiesSettingsWindow *win, const char *const *items) {
-    GtkWidget *w = gtk_drop_down_new_from_strings(items);
-    g_signal_connect(w, "notify::selected", G_CALLBACK(on_changed), win);
-    return w;
+// ---------------------------------------------------------------------------
+// Choice control: a segmented button row (short options) or a radio list
+// with descriptions (enhancement modes). Unlike GtkDropDown, every option is
+// a button with an accessible "click" action and name.
+// ---------------------------------------------------------------------------
+
+typedef void (*ChoiceChangedFn)(TalkiesSettingsWindow *win);
+
+typedef struct {
+    TalkiesSettingsWindow *win;
+    char **values; // owned copy of the stored values, index-aligned with buttons
+    ChoiceChangedFn on_changed;
+    gboolean radio;
+    GPtrArray *buttons; // GtkWidget*, borrowed
+} Choice;
+
+static void choice_free(gpointer data) {
+    Choice *choice = data;
+    g_ptr_array_unref(choice->buttons);
+    g_strfreev(choice->values);
+    g_free(choice);
 }
+
+static Choice *choice_of(GtkWidget *widget) {
+    return g_object_get_data(G_OBJECT(widget), "talkies-choice");
+}
+
+static gboolean choice_button_active(Choice *choice, GtkWidget *button) {
+    return choice->radio ? gtk_check_button_get_active(GTK_CHECK_BUTTON(button))
+                         : gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(button));
+}
+
+static void on_choice_toggled(GtkWidget *button, gpointer data) {
+    Choice *choice = data;
+    if (!choice_button_active(choice, button)) return;
+    schedule_save(choice->win);
+    if (choice->on_changed && !choice->win->populating) choice->on_changed(choice->win);
+}
+
+static GtkWidget *choice_new(TalkiesSettingsWindow *win, const char *const *labels, const char *const *values,
+                             const char *const *descriptions, ChoiceChangedFn on_changed) {
+    Choice *choice = g_new0(Choice, 1);
+    choice->win = win;
+    choice->values = g_strdupv((char **)(values ? values : labels));
+    choice->on_changed = on_changed;
+    choice->radio = descriptions != NULL;
+    choice->buttons = g_ptr_array_new();
+
+    GtkWidget *box = gtk_box_new(choice->radio ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL,
+                                 choice->radio ? 6 : 0);
+    if (!choice->radio) gtk_widget_add_css_class(box, "linked");
+    g_object_set_data_full(G_OBJECT(box), "talkies-choice", choice, choice_free);
+
+    GtkWidget *first = NULL;
+    for (int i = 0; labels[i]; i++) {
+        GtkWidget *button;
+        if (choice->radio) {
+            button = gtk_check_button_new();
+            GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
+            GtkWidget *title = gtk_label_new(labels[i]);
+            gtk_label_set_xalign(GTK_LABEL(title), 0);
+            GtkWidget *desc = gtk_label_new(descriptions[i]);
+            gtk_widget_add_css_class(desc, "dim-label");
+            gtk_widget_add_css_class(desc, "caption");
+            gtk_label_set_xalign(GTK_LABEL(desc), 0);
+            gtk_label_set_wrap(GTK_LABEL(desc), TRUE);
+            gtk_box_append(GTK_BOX(text), title);
+            gtk_box_append(GTK_BOX(text), desc);
+            gtk_check_button_set_child(GTK_CHECK_BUTTON(button), text);
+            gtk_accessible_update_relation(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_RELATION_DESCRIBED_BY, desc, NULL, -1);
+            if (first) gtk_check_button_set_group(GTK_CHECK_BUTTON(button), GTK_CHECK_BUTTON(first));
+        } else {
+            button = gtk_toggle_button_new_with_label(labels[i]);
+            if (first) gtk_toggle_button_set_group(GTK_TOGGLE_BUTTON(button), GTK_TOGGLE_BUTTON(first));
+        }
+        gtk_accessible_update_property(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_PROPERTY_LABEL, labels[i], -1);
+        if (!first) first = button;
+        g_signal_connect(button, "toggled", G_CALLBACK(on_choice_toggled), choice);
+        g_ptr_array_add(choice->buttons, button);
+        gtk_box_append(GTK_BOX(box), button);
+    }
+    return box;
+}
+
+static int choice_get(GtkWidget *widget) {
+    Choice *choice = choice_of(widget);
+    for (guint i = 0; i < choice->buttons->len; i++) {
+        if (choice_button_active(choice, g_ptr_array_index(choice->buttons, i))) return (int)i;
+    }
+    return 0;
+}
+
+static void choice_set(GtkWidget *widget, int index) {
+    Choice *choice = choice_of(widget);
+    if (index < 0 || (guint)index >= choice->buttons->len) index = 0;
+    GtkWidget *button = g_ptr_array_index(choice->buttons, index);
+    if (choice->radio) gtk_check_button_set_active(GTK_CHECK_BUTTON(button), TRUE);
+    else gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), TRUE);
+}
+
+static const char *choice_value(GtkWidget *widget) {
+    return choice_of(widget)->values[choice_get(widget)];
+}
+
+static void choice_set_value(GtkWidget *widget, const char *value) {
+    Choice *choice = choice_of(widget);
+    for (guint i = 0; i < choice->buttons->len; i++) {
+        if (g_strcmp0(choice->values[i], value) == 0) {
+            choice_set(widget, (int)i);
+            return;
+        }
+    }
+}
+
 
 static void dropdown_select_string(GtkWidget *dropdown, const char *value) {
     GListModel *model = gtk_drop_down_get_model(GTK_DROP_DOWN(dropdown));
@@ -364,39 +512,32 @@ static void picker_set_models(TalkiesSettingsWindow *win, ModelPicker *picker, c
 // Pages
 // ---------------------------------------------------------------------------
 
-static void update_mode_descriptions(TalkiesSettingsWindow *win) {
-    gtk_label_set_text(GTK_LABEL(win->ollama_mode_desc), win->mode_descriptions[dropdown_index(win->ollama_mode)]);
-    gtk_label_set_text(GTK_LABEL(win->lm_mode_desc), win->mode_descriptions[dropdown_index(win->lm_mode)]);
-}
-
-static void on_mode_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
-    (void)object;
-    (void)pspec;
-    update_mode_descriptions(user_data);
-}
-
-static void on_enhancer_changed(GObject *object, GParamSpec *pspec, gpointer user_data) {
-    (void)object;
-    (void)pspec;
-    TalkiesSettingsWindow *win = user_data;
+static void on_enhancer_changed(TalkiesSettingsWindow *win) {
     static const char *const pages[] = {"none", "s1_mini", "ollama", "lm_studio"};
-    gtk_stack_set_visible_child_name(GTK_STACK(win->enhancer_stack), pages[dropdown_index(win->enhancer)]);
+    int index = choice_get(win->enhancer);
+    gtk_stack_set_visible_child_name(GTK_STACK(win->enhancer_stack), pages[index]);
+    // Like macOS, check the server as soon as it is chosen.
+    if (win->on_refresh && (index == 2 || index == 3)) {
+        ModelPicker *picker = index == 2 ? &win->ollama_models : &win->lm_models;
+        gtk_label_set_text(GTK_LABEL(picker->status), "Checking...");
+        win->on_refresh(index == 2 ? TALKIES_SERVER_OLLAMA : TALKIES_SERVER_LM_STUDIO,
+                        gtk_editable_get_text(GTK_EDITABLE(picker->url_entry)), win->user_data);
+    }
 }
 
-static GtkWidget *mode_picker(TalkiesSettingsWindow *win, GtkWidget *box, GtkWidget **dropdown, GtkWidget **desc) {
+static GtkWidget *mode_picker(TalkiesSettingsWindow *win, GtkWidget *box) {
     const char *names[MODE_COUNT + 1];
-    for (int i = 0; i < MODE_COUNT; i++) names[i] = win->mode_names[i];
+    const char *descs[MODE_COUNT + 1];
+    for (int i = 0; i < MODE_COUNT; i++) {
+        names[i] = win->mode_names[i];
+        descs[i] = win->mode_descriptions[i];
+    }
     names[MODE_COUNT] = NULL;
-    *dropdown = dropdown_new(win, names);
-    g_signal_connect(*dropdown, "notify::selected", G_CALLBACK(on_mode_changed), win);
+    descs[MODE_COUNT] = NULL;
     add_section(box, "Enhancement Mode");
-    add_row(box, "Mode", NULL, *dropdown);
-    *desc = gtk_label_new("");
-    gtk_widget_add_css_class(*desc, "dim-label");
-    gtk_label_set_xalign(GTK_LABEL(*desc), 0);
-    gtk_label_set_wrap(GTK_LABEL(*desc), TRUE);
-    gtk_box_append(GTK_BOX(box), *desc);
-    return *dropdown;
+    GtkWidget *picker = choice_new(win, names, NULL, descs, NULL);
+    gtk_box_append(GTK_BOX(box), picker);
+    return picker;
 }
 
 static void on_ollama_reset(GtkButton *button, gpointer user_data) {
@@ -437,12 +578,12 @@ static GtkWidget *provider_page(void) {
 
 static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     add_section(box, "Text Enhancement");
-    win->enhancer = dropdown_new(win, enhancer_names);
-    g_signal_connect(win->enhancer, "notify::selected", G_CALLBACK(on_enhancer_changed), win);
+    win->enhancer = choice_new(win, enhancer_names, NULL, NULL, on_enhancer_changed);
     add_row(box, "Enhancer", "Post-process each transcript before it is inserted", win->enhancer);
 
     win->enhancer_stack = gtk_stack_new();
     gtk_stack_set_vhomogeneous(GTK_STACK(win->enhancer_stack), FALSE);
+    gtk_stack_set_hhomogeneous(GTK_STACK(win->enhancer_stack), FALSE);
     gtk_box_append(GTK_BOX(box), win->enhancer_stack);
 
     GtkWidget *none = provider_page();
@@ -479,7 +620,7 @@ static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     // Ollama
     GtkWidget *ol = provider_page();
     build_model_picker(win, ol, &win->ollama_models, TALKIES_SERVER_OLLAMA, "Host", "http://localhost:11434");
-    mode_picker(win, ol, &win->ollama_mode, &win->ollama_mode_desc);
+    win->ollama_mode = mode_picker(win, ol);
     add_section(ol, "LLM Parameters");
     win->ollama_temperature = scale_new(win, 0, 2, 0.05, 2);
     add_row(ol, "Temperature", "Higher is more creative", win->ollama_temperature);
@@ -518,7 +659,7 @@ static void build_enhancement_page(TalkiesSettingsWindow *win, GtkWidget *box) {
     // LM Studio
     GtkWidget *lm = provider_page();
     build_model_picker(win, lm, &win->lm_models, TALKIES_SERVER_LM_STUDIO, "Endpoint", "http://127.0.0.1:1234");
-    mode_picker(win, lm, &win->lm_mode, &win->lm_mode_desc);
+    win->lm_mode = mode_picker(win, lm);
     add_section(lm, "LLM Parameters");
     win->lm_temperature = scale_new(win, 0, 2, 0.05, 2);
     add_row(lm, "Temperature", NULL, win->lm_temperature);
@@ -575,10 +716,25 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     GtkWidget *paned = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     GtkWidget *stack = gtk_stack_new();
     gtk_stack_set_transition_type(GTK_STACK(stack), GTK_STACK_TRANSITION_TYPE_CROSSFADE);
+    // Size each page on its own; the widest page must not widen the others.
+    gtk_stack_set_hhomogeneous(GTK_STACK(stack), FALSE);
     gtk_widget_set_hexpand(stack, TRUE);
-    GtkWidget *sidebar = gtk_stack_sidebar_new();
-    gtk_stack_sidebar_set_stack(GTK_STACK_SIDEBAR(sidebar), GTK_STACK(stack));
-    gtk_widget_set_size_request(sidebar, 160, -1);
+    GtkWidget *sidebar = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    gtk_widget_add_css_class(sidebar, "talkies-sidebar");
+    gtk_widget_set_size_request(sidebar, 170, -1);
+    GtkCssProvider *css = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(css,
+        ".talkies-sidebar { padding: 10px 8px; background: alpha(currentColor, 0.04); }"
+        ".talkies-sidebar button { border-radius: 8px; padding: 6px 10px; }"
+        ".talkies-sidebar button:checked { background: alpha(#3584e4, 0.18); }");
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
+    sidebar_add(sidebar, stack, "general", "General", "preferences-system-symbolic");
+    sidebar_add(sidebar, stack, "transcription", "Transcription", "audio-input-microphone-symbolic");
+    sidebar_add(sidebar, stack, "enhancement", "Enhancement", "starred-symbolic");
+    sidebar_add(sidebar, stack, "output", "Output", "edit-paste-symbolic");
+    sidebar_add(sidebar, stack, "advanced", "Advanced", "applications-engineering-symbolic");
     gtk_box_append(GTK_BOX(paned), sidebar);
     gtk_box_append(GTK_BOX(paned), gtk_separator_new(GTK_ORIENTATION_VERTICAL));
     gtk_box_append(GTK_BOX(paned), stack);
@@ -593,7 +749,8 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     add_row(box, "Push-to-talk threshold (s)",
             "Hold the hotkey longer than this to record while held; a quicker tap toggles recording",
             win->threshold);
-    add_note(box, "X11: Right Alt. Wayland: bind talkies-hotkey.sh down/up in your compositor (see README).");
+    add_note(box, "Hotkey: Right Alt. On Wayland this needs membership in the input group; otherwise bind "
+                  "scripts/talkies-hotkey.sh down/up in your compositor.");
     add_section(box, "Display");
     win->show_hud = switch_new(win);
     add_row(box, "Floating dictation window", "Live waveform and pipeline status while dictating", win->show_hud);
@@ -612,7 +769,7 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     g_signal_connect(win->audio_device, "notify::selected", G_CALLBACK(on_changed), win);
     add_row(box, "Microphone", NULL, win->audio_device);
     add_section(box, "Whisper");
-    win->model = dropdown_new(win, whisper_models);
+    win->model = choice_new(win, whisper_model_labels, whisper_models, NULL, NULL);
     add_row(box, "Model", "Larger models are more accurate but slower", win->model);
     win->language = entry_new(win, "en", 80);
     add_row(box, "Language", "ISO code, e.g. en, de, es", win->language);
@@ -628,7 +785,7 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     add_section(box, "Text Insertion");
     win->auto_paste = switch_new(win);
     add_row(box, "Insert at cursor", "Otherwise the text is only copied to the clipboard", win->auto_paste);
-    win->paste_keybind = dropdown_new(win, paste_keybinds);
+    win->paste_keybind = choice_new(win, paste_keybind_labels, paste_keybinds, NULL, NULL);
     add_row(box, "Paste shortcut", "Use ctrl+shift+v for terminals", win->paste_keybind);
     win->restore_clipboard = switch_new(win);
     add_row(box, "Restore clipboard", "Put your previous clipboard back after pasting", win->restore_clipboard);
@@ -638,7 +795,7 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     add_section(box, "Voice Activity Detection");
     win->vad_enabled = switch_new(win);
     add_row(box, "Trim silence", "Skips silent audio and empty recordings", win->vad_enabled);
-    win->vad_mode = dropdown_new(win, vad_modes);
+    win->vad_mode = choice_new(win, vad_modes, NULL, NULL, NULL);
     add_row(box, "Aggressiveness", NULL, win->vad_mode);
     add_section(box, "Diagnostics");
     win->show_status_gui = switch_new(win);
@@ -679,7 +836,24 @@ void talkies_settings_window_set_callbacks(TalkiesSettingsWindow *win, TalkiesSe
     win->user_data = user_data;
 }
 
+// PulseAudio names/descriptions can be 70+ characters; GtkDropDown sizes to
+// its widest item, so show a shortened label (the full name is stored).
+static char *device_label(const char *text) {
+    const glong max_chars = 40;
+    if (g_utf8_strlen(text, -1) <= max_chars) return g_strdup(text);
+    const char *end = g_utf8_offset_to_pointer(text, max_chars - 1);
+    char *head = g_strndup(text, (gsize)(end - text));
+    char *label = g_strconcat(head, "…", NULL);
+    g_free(head);
+    return label;
+}
+
 static void select_audio_device(TalkiesSettingsWindow *win, const char *name) {
+    // Device listing can fail (no PulseAudio); "System default" always exists.
+    if (win->audio_device_names->len == 0) {
+        gtk_string_list_append(win->audio_device_list, "System default");
+        g_ptr_array_add(win->audio_device_names, g_strdup(""));
+    }
     for (guint i = 0; i < win->audio_device_names->len; i++) {
         if (g_strcmp0(g_ptr_array_index(win->audio_device_names, i), name) == 0) {
             gtk_drop_down_set_selected(GTK_DROP_DOWN(win->audio_device), i);
@@ -687,7 +861,9 @@ static void select_audio_device(TalkiesSettingsWindow *win, const char *name) {
         }
     }
     // Unknown (e.g. unplugged) device: keep it selectable rather than losing it.
-    gtk_string_list_append(win->audio_device_list, name);
+    char *label = device_label(name);
+    gtk_string_list_append(win->audio_device_list, label);
+    g_free(label);
     g_ptr_array_add(win->audio_device_names, g_strdup(name));
     gtk_drop_down_set_selected(GTK_DROP_DOWN(win->audio_device), win->audio_device_names->len - 1);
 }
@@ -702,18 +878,18 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     gtk_switch_set_active(GTK_SWITCH(win->assistant_insert), d->insert_text_in_assistant_mode);
 
     select_audio_device(win, d->audio_device);
-    dropdown_select_string(win->model, d->model);
+    choice_set_value(win->model, d->model);
     gtk_editable_set_text(GTK_EDITABLE(win->language), d->language);
     gtk_editable_set_text(GTK_EDITABLE(win->vocabulary), d->vocabulary_prompt);
 
-    gtk_drop_down_set_selected(GTK_DROP_DOWN(win->enhancer), (guint)d->enhancer);
-    on_enhancer_changed(NULL, NULL, win);
+    choice_set(win->enhancer, d->enhancer);
+    on_enhancer_changed(win);
 
     gtk_editable_set_text(GTK_EDITABLE(win->ollama_models.url_entry), d->ollama_host);
     g_free(win->ollama_models.wanted);
     win->ollama_models.wanted = g_strdup(d->ollama_model);
     picker_set_models(win, &win->ollama_models, NULL, 0);
-    gtk_drop_down_set_selected(GTK_DROP_DOWN(win->ollama_mode), (guint)d->ollama_mode);
+    choice_set(win->ollama_mode, d->ollama_mode);
     gtk_range_set_value(GTK_RANGE(win->ollama_temperature), d->ollama_temperature);
     gtk_range_set_value(GTK_RANGE(win->ollama_top_p), d->ollama_top_p);
     gtk_range_set_value(GTK_RANGE(win->ollama_top_k), d->ollama_top_k);
@@ -729,18 +905,17 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     g_free(win->lm_models.wanted);
     win->lm_models.wanted = g_strdup(d->lm_studio_model);
     picker_set_models(win, &win->lm_models, NULL, 0);
-    gtk_drop_down_set_selected(GTK_DROP_DOWN(win->lm_mode), (guint)d->lm_studio_mode);
+    choice_set(win->lm_mode, d->lm_studio_mode);
     gtk_range_set_value(GTK_RANGE(win->lm_temperature), d->lm_studio_temperature);
     gtk_range_set_value(GTK_RANGE(win->lm_top_p), d->lm_studio_top_p);
     gtk_range_set_value(GTK_RANGE(win->lm_max_tokens), d->lm_studio_max_tokens);
-    update_mode_descriptions(win);
 
     gtk_switch_set_active(GTK_SWITCH(win->auto_paste), d->auto_paste);
     gtk_switch_set_active(GTK_SWITCH(win->restore_clipboard), d->restore_clipboard);
-    dropdown_select_string(win->paste_keybind, d->paste_keybind);
+    choice_set_value(win->paste_keybind, d->paste_keybind);
 
     gtk_switch_set_active(GTK_SWITCH(win->vad_enabled), d->vad_enabled);
-    gtk_drop_down_set_selected(GTK_DROP_DOWN(win->vad_mode), (guint)d->vad_mode);
+    choice_set(win->vad_mode, d->vad_mode);
     gtk_switch_set_active(GTK_SWITCH(win->show_status_gui), d->show_status_gui);
 
     win->populating = FALSE;
@@ -758,7 +933,9 @@ void talkies_settings_window_set_audio_devices(TalkiesSettingsWindow *win, const
     gtk_string_list_append(win->audio_device_list, "System default");
     g_ptr_array_add(win->audio_device_names, g_strdup(""));
     for (int i = 0; i < count; i++) {
-        gtk_string_list_append(win->audio_device_list, descriptions && descriptions[i] ? descriptions[i] : names[i]);
+        char *label = device_label(descriptions && descriptions[i] ? descriptions[i] : names[i]);
+        gtk_string_list_append(win->audio_device_list, label);
+        g_free(label);
         g_ptr_array_add(win->audio_device_names, g_strdup(names[i]));
     }
     win->populating = was_populating;

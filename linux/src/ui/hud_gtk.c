@@ -139,7 +139,8 @@ static void refresh_labels(TalkiesHud *hud) {
     } else if (hud->stage == TALKIES_HUD_COMPLETE) {
         footer = preview_text(hud->transcript, PREVIEW_CHARS_DONE);
     } else if (hud->stage == TALKIES_HUD_ERROR) {
-        footer = g_strdup(hud->detail ? hud->detail : "");
+        footer = g_strdup(""); // the status line already says "Error: ..."
+        show_icon = FALSE;
     } else if (hud->transcript && hud->transcript[0]) {
         footer = preview_text(hud->transcript, PREVIEW_CHARS_IDLE);
         show_icon = FALSE;

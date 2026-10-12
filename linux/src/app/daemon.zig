@@ -1423,6 +1423,10 @@ fn applyCompositorRules() void {
         "match:title ^(Talkies Dictation)$, no_shadow true",
         "match:title ^(Talkies Dictation)$, no_anim true",
         "match:title ^(Talkies Dictation)$, move ((monitor_w-520)/2) ((monitor_h-140)/2-100)",
+        // Settings is a compact dialog (macOS: 600x500), not a tiled pane.
+        "match:title ^(Talkies Settings)$, float true",
+        "match:title ^(Talkies Settings)$, size 680 560",
+        "match:title ^(Talkies Settings)$, center true",
     };
     for (rules) |rule| {
         utils.runQuiet(&.{ "hyprctl", "keyword", "windowrule", rule }) catch |err| {
