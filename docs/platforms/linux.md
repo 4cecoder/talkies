@@ -1,34 +1,25 @@
-# Talkies Linux - Voice Transcription
+# Talkies for Linux
 
-For model setup, offline checks, and first-run troubleshooting across platforms, see the [first-run guide](first-run-and-troubleshooting.md).
-
-Zig-based voice transcription application for Linux with global hotkey support for both X11 and Wayland.
+Local-first dictation for X11 and Wayland: hold **Right Alt**, speak, release, and the text is typed
+into the focused app. Recording, Whisper transcription, optional cleanup and text insertion all run
+on this computer. For model setup and first-run checks across platforms, see the
+[first-run guide](first-run-and-troubleshooting.md).
 
 ## Features
 
-- **Push-to-talk dictation**: hold Right Alt, speak, release; or tap to toggle.
-- **Types into the focused app** and restores your clipboard afterwards.
-- **On-device Whisper** transcription with optional cleanup by the bundled S1-mini model, Ollama, or LM Studio.
-- **Desktop integration**: floating indicator, StatusNotifierItem tray (KDE, GNOME with AppIndicator, waybar, AGS), Settings window.
-- **X11 and Wayland**: GNOME, KDE Plasma, Hyprland, Sway, and X11 window managers.
-- **`talkies doctor`** checks audio, hotkey, paste, clipboard and tray support and names the fix.
+- **Push-to-talk or toggle**: hold Right Alt to dictate, or tap it to start and tap again to stop.
+- **Types into the focused app** through `/dev/uinput`, and restores your clipboard afterwards. If
+  typing isn't possible, the text is put on the clipboard instead and the panel says so.
+- **On-device Whisper** (whisper.cpp), with optional cleanup by the on-device S1-mini model (downloaded from Settings) or by a
+  local Ollama / LM Studio server.
+- **Dictation panel and tray** that follow the macOS app: a small waveform pill at the top of the
+  screen, a live panel while you dictate, recent-transcript history, and a status tray icon.
+- **Works across desktops**: GNOME, KDE Plasma, Hyprland, Sway and X11 window managers.
+- **`talkies doctor`** checks audio, microphone, hotkey, typing, clipboard, tray and model, and
+  tells you how to fix anything that isn't ready.
 
-Ollama transcript cleanup accepts only `localhost`, `127.0.0.0/8`, or IPv6 `::1` endpoints.
-Remote endpoints are rejected and HTTP redirects are disabled to keep transcript requests on
-the local machine.
-
-## Local crash diagnostics
-
-If a command exits with an unhandled error, Talkies best-effort writes a local
-report containing the error name, timestamp, and available Zig error-return
-stack addresses. Reports are stored under
-`${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics/`, with private
-directory and file permissions, a 32 KiB report limit, and five rotating files.
-Reports are never uploaded. To remove them, quit Talkies and run:
-
-```sh
-rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics"
-```
+Ollama and LM Studio cleanup only accept `localhost`, `127.0.0.0/8` or `::1` endpoints. Remote
+endpoints are rejected and HTTP redirects are disabled, so transcripts never leave the machine.
 
 ## Install
 
@@ -80,334 +71,195 @@ typing into apps then needs `/dev/uinput` access, which the root install sets up
 `pacman -R talkies`, `emerge --depclean talkies`) or `./talkies-*/install.sh --uninstall`.
 Settings (`~/.config/talkies`) and models (`~/.local/share/talkies`) are kept.
 
-### Build from source
+## Using Talkies
 
-Needs Zig master (0.18.0-dev), GTK 4 and PulseAudio development files, and the pinned whisper.cpp and
-llama.cpp, which `packaging/linux/build-native-deps.sh` builds:
+Start **Talkies** from your app menu, or run `talkies daemon` (add it to your session's autostart, or
+turn on **Launch at login** in Settings).
 
-```bash
-packaging/linux/build-native-deps.sh          # once; installs into /usr/local
-cd linux && zig build -Doptimize=ReleaseSafe   # zig-out/bin/talkies
-zig build test                                 # unit tests by layer
-scripts/install.sh --restart                   # developer install + restart the daemon
-```
+### The dictation panel
 
-To produce the release packages locally: `zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z`, then
-`VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh` (writes `linux/dist/`).
+Talkies rests as a small waveform pill at the top centre of the screen. Click it to open the panel.
 
-Whisper models are pinned to a [specific upstream revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1), checked against exact size and SHA-256, and installed from a temporary file. Talkies verifies the cached model before each load; verified models work offline.
+| State | What you see |
+| --- | --- |
+| Ready | Green dot, "Ready to dictate", your hotkey hint, and the last transcript |
+| Recording | Red dot, elapsed time, and a live scrolling waveform of your voice |
+| Transcribing / cleaning / inserting | Animated waveform and a spinner while the work runs on-device |
+| Done | "Text insertion complete" with a **Copy text** button; the panel collapses after 2.5 seconds |
+| No speech, manual paste, errors | Stays open with the reason and what to do; move the pointer away to dismiss |
+
+The clock button opens **Transcript History**, the transcripts from this session with their times.
+**Use mini window** in Settings switches to a compact 360-pixel panel.
+
+### Tray icon
+
+The tray icon shows what Talkies is doing: ready, loading the model, recording, transcribing,
+polishing, inserting, finished, or needs attention. Hover it for details. Click it to open or
+collapse the panel, middle-click to start or stop recording, and right-click for **Open Talkies**,
+**Settings...** and **Quit Talkies**. It works with any StatusNotifierItem host: KDE Plasma, GNOME
+with the AppIndicator extension, waybar, AGS and similar bars.
+
+### Settings
+
+Settings has five pages:
+
+- **General**: mini window, launch at login, push-to-talk threshold, voice assistant mode.
+- **Transcription**: microphone, Whisper model and language, personal vocabulary (one name or
+  uncommon word per line, used as recognition hints).
+- **Enhancement**: off, S1-mini (download and manage the model here, then pick writing style,
+  structure and context), Ollama or LM Studio.
+- **Output**: type at the cursor or copy only, paste shortcut, clipboard restore.
+- **Advanced**: config file location and developer options.
+
+A status card at the top of Settings shows the same checks as `talkies doctor`.
+
+### Hotkey on X11 and Wayland
+
+- **X11**: Right Alt works out of the box.
+- **Wayland** (GNOME, KDE, Hyprland, Sway): Talkies reads Right Alt directly from the keyboard
+  device, which needs read access to keyboards:
+
+  ```bash
+  sudo usermod -aG input "$USER"   # then log out and back in
+  ```
+
+  If you'd rather not join the `input` group, bind a key in your compositor to the bundled helper,
+  `/usr/share/talkies/talkies-hotkey.sh` (`down` / `up` for push-to-talk, `toggle` for tap-to-toggle).
+  For Hyprland:
+
+  ```ini
+  exec-once = talkies daemon
+  bind  = , Alt_R, exec, /usr/share/talkies/talkies-hotkey.sh down
+  bindr = ALT, Alt_R, exec, /usr/share/talkies/talkies-hotkey.sh up
+  # or a toggle on any chord:
+  # bind = SUPER ALT, T, exec, /usr/share/talkies/talkies-hotkey.sh toggle
+  ```
+
+  On Hyprland the daemon also sets the window rules for its panel and Settings window at startup.
+  `/usr/share/talkies/hyprland-rules.conf` has the same rules if you prefer them in your config.
 
 ## Configuration
 
-### Hyprland (Wayland)
-
-For Hyprland users, add this to your `~/.config/hypr/hyprland.conf`:
-
-```bash
-# Talkies voice transcription daemon
-# Start the daemon on login (optional)
-exec-once = /path/to/talkies/linux/zig-out/bin/talkies daemon
-
-# Right Alt hotkey for recording
-# Note: This won't work directly - see workaround below
-```
-
-**Hyprland Workaround** (until native Wayland hotkey support is added):
-
-Since Hyprland doesn't support press-and-hold hotkeys natively, use this approach:
-
-1. Create a wrapper script `~/.config/hypr/scripts/talkies-record.sh`:
-
-```bash
-#!/bin/bash
-# Toggle recording with talkies
-# Usage: Bind to a key in Hyprland
-
-PIDFILE="/tmp/talkies-recording.pid"
-
-if [ -f "$PIDFILE" ]; then
-    # Stop recording
-    kill -TERM $(cat "$PIDFILE")
-    rm "$PIDFILE"
-else
-    # Start recording
-    /path/to/talkies/linux/zig-out/bin/talkies quick &
-    echo $! > "$PIDFILE"
-fi
-```
-
-2. Make it executable:
-```bash
-chmod +x ~/.config/hypr/scripts/talkies-record.sh
-```
-
-3. Add to hyprland.conf:
-```bash
-# Toggle recording with Super+Alt+T (easier to use than Right Alt)
-bind = $mainMod ALT, T, exec, ~/.config/hypr/scripts/talkies-record.sh
-
-# Or try Right Alt with keycode (may conflict with other apps):
-# bind = , code:108, exec, ~/.config/hypr/scripts/talkies-record.sh
-```
-
-**Better Hyprland Solution** (Recommended):
-
-Use `submap` for press-and-hold behavior:
-
-```bash
-# Right Alt press - start recording
-bind = , Alt_R, submap, recording
-submap = recording
-
-# Right Alt release - stop recording (handled by talkies daemon)
-bind = , Alt_R, submap, reset
-
-# Escape hatch
-bind = , escape, submap, reset
-submap = reset
-```
-
-**Note**: The daemon mode currently works best on X11. Full Wayland/Hyprland press-and-hold support is coming soon.
-
-### X11 (i3, bspwm, GNOME, KDE, etc.)
-
-On X11, the daemon automatically grabs the Right Alt key globally:
-
-```bash
-# Just start the daemon
-zig-out/bin/talkies daemon
-
-# Press and hold Right Alt to record
-# Release to transcribe and paste
-```
-
-If Right Alt conflicts with other applications:
-- Firefox: `about:config` → disable Right Alt bindings
-- foot terminal: Check `~/.config/foot/foot.ini`
-
-### Application Config
-
-Edit `~/.config/talkies/config.toml`:
+Settings are saved to `~/.config/talkies/config.toml`. Everything is editable in the Settings
+window; the file is plain TOML if you prefer editing it directly:
 
 ```toml
+[general]
+push_to_talk_threshold = 0.15   # hold longer than this (s) for push-to-talk; quicker taps toggle
+show_hud = true                 # dictation panel
+mini_window = false             # compact panel
+sounds = false                  # start/stop sounds
+voice_assistant_mode = false    # speak the result (spd-say / espeak-ng) instead of typing it
+
 [audio]
-device = "alsa_input.usb-SunplusIT_Inc_Nisheng_M3_W20221116-02.mono-fallback"
+device = ""                     # PulseAudio/PipeWire source; empty = default (talkies audio-list)
 
 [transcription]
-model = "small"       # Options: tiny, base, small, medium, large
+model = "base"                  # tiny | base | small | medium | large
 language = "en"
-threads = 4
-vocabulary_prompt = "Talkies, WhisperKit, S1-mini" # Optional local recognition hints; max 400 characters
+vocabulary_prompt = "Talkies, S1-mini"  # recognition hints, max 400 characters
+
+[enhancement]
+provider = "none"               # none | s1_mini | ollama | lm_studio
+
+[cleanup]                       # S1-mini
+style = "semi_formal"           # casual | semi_casual | semi_formal
+structure = "prose"             # prose | lists
+context = "general"             # general | email
 
 [output]
-auto_paste = true     # true = paste at cursor, false = copy to clipboard
+auto_paste = true               # type at the cursor; false = copy to clipboard only
+restore_clipboard = true
+
+[vad]
+enabled = true                  # trim silence before transcription
 ```
 
-Linux currently inserts the transcript at the cursor or copies it to the clipboard.
-To explicitly export a WAV file with local Whisper timestamps, run:
-
-```sh
-talkies transcribe speech.wav --format vtt --output speech.vtt
-```
-
-The format can be `txt`, `vtt`, or `srt`. Export writes raw ASR segments without
-inserting them or touching the clipboard; the chosen output file must not already
-exist. The legacy `export_format` config key is ignored.
-
-The vocabulary prompt is passed to the on-device whisper.cpp recognizer. It supports names
-and uncommon terms and is stored in this local config file.
+`[ollama]` and `[lm_studio]` hold the model, endpoint (loopback only) and sampling settings for
+those providers.
 
 ## Commands
 
-### Daemon Mode
-```bash
-talkies daemon              # Start background daemon with hotkey
+| Command | What it does |
+| --- | --- |
+| `talkies daemon` | Run Talkies: panel, tray and hotkey |
+| `talkies doctor` | Check this system and suggest fixes |
+| `talkies models` | Download the Whisper model named in the config |
+| `talkies audio-list` / `audio-set <device>` | List or choose the microphone |
+| `talkies audio` | Record a 5-second test |
+| `talkies quick` | Record, transcribe and type once, without the daemon |
+| `talkies transcribe <file.wav> --format txt\|vtt\|srt --output <file>` | Export a transcript with timestamps |
+| `talkies config` | Print the current configuration |
+| `talkies --version` | Print the version |
+
+Whisper models are pinned to a [specific upstream revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1),
+checked against their exact size and SHA-256, and verified before each load; verified models work
+offline. They live in `~/.local/share/talkies/models/`.
+
+## Local crash diagnostics
+
+If a command exits with an unhandled error, Talkies best-effort writes a local
+report containing the error name, timestamp, and available Zig error-return
+stack addresses. Reports are stored under
+`${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics/`, with private
+directory and file permissions, a 32 KiB report limit, and five rotating files.
+Reports are never uploaded. To remove them, quit Talkies and run:
+
+```sh
+rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics"
 ```
 
-### Audio Management
-```bash
-talkies audio-list          # List available input devices
-talkies audio-set <device>  # Set input device
-talkies audio               # Test recording (5 seconds)
-```
+## Building from source
 
-### Transcription
-```bash
-talkies quick               # One-shot: record → transcribe → paste
-talkies transcribe          # Test transcription on anime_16k.wav
-talkies models              # Download whisper model from config
-```
-
-### Configuration
-```bash
-talkies config              # Show current configuration
-```
-
-## Building from Source
-
-### Dependencies
-
-- **Zig master (0.17.0-dev or newer)** - The Linux build follows current Zig development and uses build-system C translation.
-- **PulseAudio** - Audio recording (`libpulse-simple`, `libpulse`)
-- **whisper.cpp** - Speech recognition (`libwhisper`)
-- **X11** (X11 only) - Global hotkeys (`libX11`)
-- **wl-clipboard** (Wayland) - Clipboard access (install `wl-clipboard` package)
-
-**No xdotool needed!** - Uses native Linux uinput for keyboard simulation
-
-### Gentoo/Funtoo
+Needs Zig master (0.18.0-dev), GTK 4, PulseAudio (or pipewire-pulse), SQLite, X11 and D-Bus
+development files, plus the pinned whisper.cpp and llama.cpp that `build-native-deps.sh` builds:
 
 ```bash
-# Install dependencies
-doas emerge -av media-sound/pulseaudio app-accessibility/whisper-cpp x11-libs/libX11 gui-apps/wl-clipboard
-
-# Build
-./run.sh build
-
-# Setup uinput permissions (for text pasting)
-doas modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | doas tee /etc/udev/rules.d/99-uinput.rules
-doas udevadm control --reload-rules && doas udevadm trigger
-doas usermod -aG input $USER  # Logout and login for this to take effect
-
-# Install (optional)
-doas cp zig-out/bin/talkies /usr/local/bin/
+packaging/linux/build-native-deps.sh            # once; installs into /usr/local
+cd linux
+zig build -Doptimize=ReleaseSafe                # zig-out/bin/talkies
+zig build test                                  # unit tests for every layer
+scripts/install.sh --restart                    # developer install, restarts the daemon
 ```
 
-### Arch Linux
+On Gentoo, `app-accessibility/talkies` from the release overlay does all of this for you.
 
-```bash
-# Install dependencies
-sudo pacman -S zig pulseaudio whisper-cpp libx11 wl-clipboard
+To build the release packages locally, run
+`zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z` and then
+`VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh`. The output goes to `linux/dist/`, and
+`packaging/linux/README.md` describes the pipeline.
 
-# Build
-./run.sh build
+The build is split by how often each part changes:
 
-# Setup uinput permissions (for text pasting)
-sudo modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-sudo usermod -aG input $USER  # Logout and login for this to take effect
-```
+| Binary | Source | Contents |
+| --- | --- | --- |
+| `talkies` | `src/app`, `src/engine`, `src/core` | Daemon, config, audio, Whisper, hotkey, text insertion |
+| `libtalkies-ui.so` | `src/ui` | GTK 4 panel, Settings, tray (StatusNotifierItem over D-Bus) |
+| `libtalkies-native.so` | `src/native` | S1-mini cleanup on llama.cpp |
+| bundled `libwhisper`, `libllama`, `libggml*` | `deps.env` | Pinned runtimes, shared by both models |
 
-### Ubuntu/Debian
-
-```bash
-# Install dependencies
-sudo apt install zig libpulse-dev libwhisper-dev libx11-dev wl-clipboard
-
-# Build
-./run.sh build
-
-# Setup uinput permissions (for text pasting)
-sudo modprobe uinput
-echo 'KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-sudo usermod -aG input $USER  # Logout and login for this to take effect
-```
-
-## Performance
-
-- **Build time**: <10 seconds (debug), <20 seconds (release)
-- **Binary size**: ~3-5MB (excluding models)
-- **Model loading**: ~2-3 seconds (small model)
-- **Transcription**: GPU-accelerated (Vulkan/CUDA)
-- **Memory**: ~500MB (with small model loaded)
-
-## GPU Acceleration
-
-Talkies uses whisper.cpp which supports:
-
-- **Vulkan** - Universal GPU acceleration (NVIDIA, AMD, Intel)
-- **CUDA** - NVIDIA GPUs
-- **ROCm** - AMD GPUs
-- **CPU** - Fallback (slower but works everywhere)
-
-GPU is auto-detected. Check daemon output for:
-```
-ggml_vulkan: Found 1 Vulkan devices:
-ggml_vulkan: 0 = NVIDIA GeForce GTX 1070
-```
+All of these resolve each other through `$ORIGIN`, so the installed tree is relocatable.
 
 ## Troubleshooting
 
-### Port already in use (AddressInUse error)
-If you see `error: AddressInUse` when starting the daemon:
+Start with `talkies doctor`; it names the problem and the fix. Common cases:
 
-```bash
-# Clean up stuck processes and free ports
-zig build cleanup
-
-# Or manually:
-./scripts/cleanup.sh
-```
-
-This kills any zombie `arecord` processes and frees port 6789 (WebSocket daemon).
-
-### Text not pasting (Permission denied on /dev/uinput)
-1. Check uinput module loaded: `lsmod | grep uinput`
-2. Load if needed: `doas modprobe uinput`
-3. Check permissions: `ls -la /dev/uinput`
-4. Add udev rule (see installation instructions above)
-5. Add yourself to `input` group: `doas usermod -aG input $USER`
-6. **Important**: Logout and login for group changes to take effect
-7. Verify group membership: `groups | grep input`
-
-### No audio recorded (0 bytes)
-1. Check device is correct: `talkies audio-list`
-2. Test recording: `talkies audio`
-3. Verify PulseAudio: `pactl list sources short`
-
-### Hotkey not working (X11)
-1. Check for conflicts: `xmodmap -pke | grep Alt_R`
-2. Try different key in config (future feature)
-3. Close Firefox/foot if they grab Right Alt
-
-### Hotkey not working (Wayland/Hyprland)
-1. Make sure daemon is running: `ps aux | grep talkies`
-2. Check Hyprland config syntax
-3. Use the toggle script workaround (see Configuration section)
-4. Reload Hyprland config: `hyprctl reload`
-
-### Transcription fails
-1. Download model: `talkies models`
-2. Check model exists: `ls ~/.local/share/talkies/models/`
-3. Verify whisper.cpp: `ldd zig-out/bin/talkies | grep whisper`
-
-### GPU not detected
-1. Check Vulkan: `vulkaninfo | grep deviceName`
-2. Install Vulkan drivers for your GPU
-3. Fallback to CPU works automatically (slower)
-
-## Architecture
-
-```
-src/
-├── main.zig       - CLI entry point, daemon orchestration
-├── audio.zig      - PulseAudio recording (16kHz mono PCM)
-├── whisper.zig    - whisper.cpp C FFI bindings
-├── hotkey.zig     - X11 global hotkey listener
-├── clipboard.zig  - Wayland/X11 clipboard (wl-copy/xclip)
-├── input.zig      - Text insertion (xdotool)
-├── config.zig     - TOML config, XDG directories
-└── utils.zig      - Logging, helpers
-```
-
-## Comparison to Windows/macOS
-
-| Feature | Linux (Zig) | Windows (.NET) | macOS (Swift) |
-|---------|-------------|----------------|---------------|
-| Build time | <10s | ~60s | ~30s |
-| Binary size | 3-5MB | 50MB | 20MB |
-| Dependencies | 1 (whisper.cpp) | 5+ NuGet | 3+ SPM |
-| GPU | Vulkan/CUDA/ROCm | CUDA | Metal |
-| Hotkey | X11/Wayland | Global | Global |
-| Interface | CLI/Daemon | GUI (WPF) | GUI (SwiftUI) |
-
-## Contributing
-
-See [CLAUDE.md](../../CLAUDE.md) for development guidelines.
+- **Text isn't typed into apps.** The packages install a udev rule for `/dev/uinput`; log out and in
+  once after installing. A manual install needs the rule from `linux/data/70-talkies-uinput.rules`.
+  Until then Talkies copies the text to the clipboard and tells you to paste it.
+- **Right Alt does nothing on Wayland.** Join the `input` group (see above), or bind the hotkey
+  helper in your compositor.
+- **No audio or "Microphone unavailable".** Make sure PipeWire (with pipewire-pulse) or PulseAudio
+  is running, then pick the microphone with `talkies audio-list` and `talkies audio-set`, or in
+  Settings.
+- **No tray icon.** Your panel needs a StatusNotifierItem host (on GNOME, the AppIndicator
+  extension). The hotkey and panel work without one.
+- **"Address already in use" when starting.** Another daemon is running. Quit it from the tray, or
+  run `linux/scripts/cleanup.sh` in a source checkout.
+- **GPU.** The packaged build runs Whisper on the CPU (AVX2). A source build can enable whisper.cpp's
+  Vulkan or CUDA backends in `build-native-deps.sh`.
 
 ## License
 
-See root LICENSE file.
+See the repository's LICENSE file. Bundled third-party licenses ship in
+`/usr/share/doc/talkies/licenses/`.
