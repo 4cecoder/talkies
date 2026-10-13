@@ -57,6 +57,10 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{ .name = "talkies", .root_module = app });
     b.installArtifact(exe);
+    // Shipped artifacts resolve libraries via $ORIGIN only. Zig would
+    // otherwise add an RPATH for every -L directory (e.g. -Dnative-prefix,
+    // a distro build root) that does not exist on the user's machine.
+    for ([_]*std.Build.Step.Compile{ native_lib, ui_lib, exe }) |artifact| artifact.each_lib_rpath = false;
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
