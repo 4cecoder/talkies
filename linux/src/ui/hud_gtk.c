@@ -13,9 +13,6 @@
 #include <X11/Xutil.h>
 #include <gdk/x11/gdkx.h>
 #endif
-#ifdef GDK_WINDOWING_WAYLAND
-#include <gdk/wayland/gdkwayland.h>
-#endif
 
 // Panel geometry, straight from DictationView.swift.
 #define PILL_W 124.0
@@ -913,7 +910,12 @@ static void apply_x11_hints(TalkiesHud *hud) {
 // window is realized. Returns TRUE when the window became a layer surface.
 static gboolean try_layer_shell(GtkWindow *window) {
 #ifdef GDK_WINDOWING_WAYLAND
-    if (!GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default())) return FALSE;
+    // Check the display type by name: GDK_IS_WAYLAND_DISPLAY would link
+    // gdk_wayland_display_get_type, which GTK builds without the Wayland
+    // backend (e.g. Gentoo USE=-wayland) do not export, and the prebuilt
+    // package would then fail to start.
+    GdkDisplay *display = gdk_display_get_default();
+    if (!display || g_strcmp0(G_OBJECT_TYPE_NAME(display), "GdkWaylandDisplay") != 0) return FALSE;
     void *lib = dlopen("libgtk4-layer-shell.so.0", RTLD_NOW | RTLD_GLOBAL);
     if (!lib) return FALSE;
     typedef gboolean (*IsSupported)(void);
