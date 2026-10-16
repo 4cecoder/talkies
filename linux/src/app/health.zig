@@ -8,7 +8,7 @@ const config = @import("config.zig");
 
 pub const Level = enum(u8) { ok = 0, warn = 1, fail = 2 };
 
-pub const Id = enum { desktop, audio, microphone, hotkey, paste, clipboard, tray, model };
+pub const Id = enum { desktop, audio, microphone, hotkey, paste, clipboard, tray, recognizer, model };
 
 pub const HotkeySource = enum { x11_grab, evdev, compositor_only };
 
@@ -29,7 +29,47 @@ pub const Probe = struct {
     model: ?[]const u8 = null,
     /// Size of the model download still needed; 0 when installed.
     model_missing_bytes: u64 = 0,
+    speech: ?SpeechStatus = null,
 };
+
+/// Which recognizer dictation uses (Phonon-2 first, Whisper fallback).
+pub const SpeechStatus = struct {
+    /// Phonon-2 transcribes; Whisper is only the fallback.
+    phonon_active: bool,
+    /// Why Phonon-2 is not used, when it is not.
+    reason: []const u8 = "",
+    /// The user chose Phonon-2 explicitly, so running without it is a warning.
+    phonon_selected: bool = false,
+    /// Phonon-2 is not downloaded.
+    phonon_missing: bool = false,
+    /// Phonon-2 is installed but could not load or run.
+    phonon_failed: bool = false,
+};
+
+pub const phonon_download_fix = "Download Phonon-2 (674 MB) in Settings > Transcription, or run: talkies models";
+
+fn speechCheck(report: *Report, status: SpeechStatus, whisper_model: []const u8) Check {
+    if (status.phonon_active) return .{
+        .id = .recognizer,
+        .level = .ok,
+        .title = "Recognizer",
+        .detail = report.fmt("Phonon-2 (Whisper {s} as fallback)", .{whisper_model}),
+    };
+    if (status.phonon_failed) return .{
+        .id = .recognizer,
+        .level = .warn,
+        .title = "Recognizer",
+        .detail = report.fmt("Using Whisper {s}; Phonon-2 could not load: {s}", .{ whisper_model, status.reason }),
+        .fix = "Reinstall Talkies so its lib/crispasr runtime is present, or set speech_engine = \"whisper\".",
+    };
+    return .{
+        .id = .recognizer,
+        .level = if (status.phonon_missing and status.phonon_selected) .warn else .ok,
+        .title = "Recognizer",
+        .detail = report.fmt("Whisper {s} ({s})", .{ whisper_model, status.reason }),
+        .fix = if (status.phonon_missing) phonon_download_fix else "",
+    };
+}
 
 pub const Report = struct {
     arena: std.heap.ArenaAllocator,
@@ -157,6 +197,8 @@ pub fn run(allocator: std.mem.Allocator, cfg: *const config.Config, probe: Probe
             .fix = if (gnome) "Install the \"AppIndicator and KStatusNotifierItem Support\" GNOME extension." else "Add a system tray widget to your panel; the hotkey works without it.",
         });
     }
+
+    if (probe.speech) |status| try report.add(speechCheck(&report, status, probe.model orelse cfg.model));
 
     if (probe.model) |model| {
         if (probe.model_missing_bytes == 0) {
@@ -290,6 +332,31 @@ test "summary shows the worst problem first, else Ready" {
     var clean: Report = .{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator) };
     defer clean.deinit();
     try std.testing.expectEqualStrings("Ready - press Right Alt to dictate", clean.summary(&buf, "Right Alt"));
+}
+
+test "recognizer check names the active engine and offers the explicit download" {
+    var report: Report = .{ .arena = std.heap.ArenaAllocator.init(std.testing.allocator) };
+    defer report.deinit();
+
+    const active = speechCheck(&report, .{ .phonon_active = true }, "base");
+    try std.testing.expectEqual(Level.ok, active.level);
+    try std.testing.expectEqualStrings("Phonon-2 (Whisper base as fallback)", active.detail);
+
+    const missing_auto = speechCheck(&report, .{ .phonon_active = false, .reason = "Phonon-2 is not downloaded", .phonon_missing = true }, "base");
+    try std.testing.expectEqual(Level.ok, missing_auto.level);
+    try std.testing.expectEqualStrings("Whisper base (Phonon-2 is not downloaded)", missing_auto.detail);
+    try std.testing.expectEqualStrings(phonon_download_fix, missing_auto.fix);
+
+    const missing_selected = speechCheck(&report, .{ .phonon_active = false, .reason = "Phonon-2 is not downloaded", .phonon_missing = true, .phonon_selected = true }, "small");
+    try std.testing.expectEqual(Level.warn, missing_selected.level);
+
+    const failed = speechCheck(&report, .{ .phonon_active = false, .reason = "libcrispasr.so.1 missing", .phonon_failed = true }, "base");
+    try std.testing.expectEqual(Level.warn, failed.level);
+    try std.testing.expect(std.mem.indexOf(u8, failed.detail, "libcrispasr.so.1 missing") != null);
+
+    const whisper_only = speechCheck(&report, .{ .phonon_active = false, .reason = "Whisper is selected" }, "base");
+    try std.testing.expectEqual(Level.ok, whisper_only.level);
+    try std.testing.expectEqualStrings("", whisper_only.fix);
 }
 
 test "PATH lookup finds sh" {

@@ -4,18 +4,19 @@
 //!   hotkey (X11 grab | compositor binding over WebSocket | HUD | tray)
 //!     -> Trigger (push-to-talk vs tap-to-toggle)
 //!     -> record (live level -> HUD waveform)
-//!     -> worker thread: VAD -> Whisper -> enhancer -> insert / speak
+//!     -> worker thread: VAD -> Phonon-2 (Whisper fallback) -> enhancer -> insert / speak
 //!     -> HUD "Done!" -> auto-hide after 1.5s
 //!
 //! Threading: GTK, D-Bus, X11 and all UI state live on the main thread. The
-//! worker only touches the services it owns while a job runs (Whisper, S1,
+//! worker only touches the services it owns while a job runs (recognizer, S1,
 //! TextInserter) plus atomics; config changes are deferred until no job runs.
 
 const std = @import("std");
 const utils = @import("core").utils;
 const config = @import("config.zig");
 const audio = @import("engine").audio;
-const whisper = @import("engine").whisper;
+const speech = @import("engine").speech;
+const phonon_model = @import("engine").phonon_model;
 const cleanup = @import("engine").cleanup;
 const enhance = @import("enhance.zig");
 const input = @import("engine").input;
@@ -206,11 +207,13 @@ const Job = struct {
             } else |_| {}
         }
 
-        const raw = d.whisper_service.transcribe(audio_path, cfg.vocabulary_prompt) catch |err| {
+        const transcript = d.recognizer.transcribe(audio_path, cfg.vocabulary_prompt) catch |err| {
             self.fail("Transcription failed: {s}", .{@errorName(err)});
             return;
         };
+        const raw = transcript.text;
         defer allocator.free(raw);
+        utils.logDebug("Transcribed with {s}", .{transcript.backend.displayName()});
         const trimmed = std.mem.trim(u8, raw, &std.ascii.whitespace);
         if (trimmed.len == 0) {
             self.outcome = .no_voice;
@@ -380,7 +383,10 @@ const Capture = struct {
     }
 };
 
+/// Download state of an on-device model (S1-mini, Phonon-2). Values match
+/// TalkiesS1State in settings_gtk.h.
 const S1State = enum(u8) { missing, downloading, ready, failed };
+const ModelState = S1State;
 
 pub const Daemon = struct {
     allocator: std.mem.Allocator,
@@ -391,7 +397,8 @@ pub const Daemon = struct {
     recording_path: []u8,
     vad_path: []u8,
 
-    whisper_service: whisper.WhisperService,
+    /// Phonon-2 with Whisper fallback (engine/speech.zig).
+    recognizer: speech.Recognizer,
     cleanup_service: cleanup.Cleaner,
     inserter: input.TextInserter,
     recorder: audio.AudioRecorder,
@@ -429,6 +436,12 @@ pub const Daemon = struct {
     s1_thread: ?std.Thread = null,
     s1_timer: c_uint = 0,
 
+    phonon_state: std.atomic.Value(u8) = .init(@intFromEnum(ModelState.missing)),
+    phonon_thread: ?std.Thread = null,
+    phonon_timer: c_uint = 0,
+    /// Reload the recognizer once no job runs (after a Phonon-2 download).
+    speech_reload_pending: bool = false,
+
     // UI requests raised from GTK / D-Bus callbacks, handled in tick().
     request_toggle: bool = false,
     request_toggle_hud: bool = false,
@@ -462,6 +475,7 @@ pub const Daemon = struct {
             self.freeJob(job);
         }
         if (self.s1_thread) |t| t.join();
+        if (self.phonon_thread) |t| t.join();
         self.endYapSession();
         if (self.tray) |t| c_tray.talkies_tray_destroy(t);
         if (self.settings_win) |w| c_settings.talkies_settings_window_destroy(w);
@@ -475,7 +489,7 @@ pub const Daemon = struct {
         self.recorder.deinit();
         self.inserter.deinit();
         self.cleanup_service.deinit();
-        self.whisper_service.deinit();
+        self.recognizer.deinit();
         self.cfg.deinit();
         self.allocator.free(self.recording_path);
         self.allocator.free(self.vad_path);
@@ -561,6 +575,7 @@ pub const Daemon = struct {
             .hotkey = if (self.hotkey_listener != null) .x11_grab else if (self.evdev.count > 0) .evdev else .compositor_only,
             .tray_host = self.tray != null and c_tray.talkies_tray_host_available() != 0,
             .model = self.cfg.model,
+            .speech = self.speechStatus(),
         };
         const report = health.run(self.allocator, &self.cfg, probe) catch |err| {
             utils.logError("System check failed: {}", .{err});
@@ -571,6 +586,24 @@ pub const Daemon = struct {
         self.pushHealth();
         self.pushAttention();
         if (self.phase == .idle) self.setStage(.idle, null); // refresh tooltip
+    }
+
+    fn speechStatus(self: *Daemon) health.SpeechStatus {
+        const p = self.recognizer.currentPlan();
+        const selected = self.cfg.speech_engine == .phonon;
+        if (p.phonon_skipped) |reason| return .{
+            .phonon_active = false,
+            .reason = reason.describe(),
+            .phonon_selected = selected,
+            .phonon_missing = reason == .not_installed,
+        };
+        if (self.recognizer.phononFailure()) |reason| return .{
+            .phonon_active = false,
+            .reason = reason,
+            .phonon_selected = selected,
+            .phonon_failed = true,
+        };
+        return .{ .phonon_active = true, .phonon_selected = selected };
     }
 
     /// A failing check (no audio server, no way to type) replaces "Ready to
@@ -1155,6 +1188,113 @@ pub const Daemon = struct {
     }
 
     // -----------------------------------------------------------------
+    // Phonon-2 model management (explicit download, Settings > Transcription)
+    // -----------------------------------------------------------------
+
+    fn phononStore(self: *Daemon) phonon_model.ModelStore {
+        return .{ .allocator = self.allocator, .quiet = true };
+    }
+
+    fn phononReady(self: *Daemon) bool {
+        return @as(ModelState, @enumFromInt(self.phonon_state.load(.acquire))) == .ready;
+    }
+
+    fn refreshPhononState(self: *Daemon) void {
+        if (self.phonon_thread != null) return;
+        const state: ModelState = if (self.phononStore().isInstalled()) .ready else .missing;
+        self.phonon_state.store(@intFromEnum(state), .release);
+        self.pushPhononState();
+    }
+
+    fn pushPhononState(self: *Daemon) void {
+        const win = self.settings_win orelse return;
+        const state: ModelState = @enumFromInt(self.phonon_state.load(.acquire));
+        const fraction: f64 = if (state == .downloading)
+            @as(f64, @floatFromInt(self.phononStore().downloadedBytes())) / @as(f64, @floatFromInt(phonon_model.downloadSize()))
+        else
+            0;
+        var detail_buf: [256]u8 = undefined;
+        const detail: ?[:0]const u8 = if (state == .ready) blk: {
+            const failure = self.recognizer.phononFailure() orelse break :blk null;
+            break :blk bufPrintZ(&detail_buf, "{s}", .{failure}) catch null;
+        } else null;
+        c_settings.talkies_settings_window_set_phonon_state(win, @intFromEnum(state), std.math.clamp(fraction, 0, 1), if (detail) |d| d.ptr else null);
+    }
+
+    fn startPhononDownload(self: *Daemon) void {
+        if (self.phonon_thread != null) return;
+        self.phonon_state.store(@intFromEnum(ModelState.downloading), .release);
+        self.phonon_thread = std.Thread.spawn(.{}, phononDownloadThread, .{self}) catch |err| {
+            self.log(.err, "Could not start Phonon-2 download: {}", .{err});
+            self.phonon_state.store(@intFromEnum(ModelState.failed), .release);
+            self.pushPhononState();
+            return;
+        };
+        self.log(.info, "Downloading Phonon-2 model...", .{});
+        self.pushPhononState();
+        self.phonon_timer = c_loop.talkies_loop_timeout(400, onPhononProgress, self);
+    }
+
+    fn phononDownloadThread(self: *Daemon) void {
+        self.phononStore().download() catch |err| {
+            utils.logError("Phonon-2 download failed: {}", .{err});
+            self.phonon_state.store(@intFromEnum(ModelState.failed), .release);
+            self.wake();
+            return;
+        };
+        self.phonon_state.store(@intFromEnum(ModelState.ready), .release);
+        self.wake();
+    }
+
+    fn onPhononProgress(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.pushPhononState();
+        if (self.phonon_thread == null) {
+            self.phonon_timer = 0;
+            return 0;
+        }
+        return 1;
+    }
+
+    fn collectPhononDownload(self: *Daemon) void {
+        const thread = self.phonon_thread orelse return;
+        const state: ModelState = @enumFromInt(self.phonon_state.load(.acquire));
+        if (state == .downloading) return;
+        thread.join();
+        self.phonon_thread = null;
+        c_loop.talkies_loop_remove(self.phonon_timer);
+        self.phonon_timer = 0;
+        self.log(if (state == .ready) .info else .err, "Phonon-2 download {s}", .{if (state == .ready) "complete" else "failed"});
+        // Switch to Phonon-2 as soon as no dictation is running.
+        if (state == .ready) self.speech_reload_pending = true;
+        self.pushPhononState();
+    }
+
+    /// Re-run recognizer selection (after a download or removal) once idle.
+    fn reloadSpeechWhenIdle(self: *Daemon) !void {
+        if (!self.phase.isQuiescent() or self.job != null or self.capture != null) return;
+        self.speech_reload_pending = false;
+        try self.loadSpeechModel(false);
+        self.pushPhononState();
+        self.refreshHealth();
+    }
+
+    fn onPhononDownload(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startPhononDownload();
+    }
+
+    fn onPhononRemove(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        if (!self.phase.isQuiescent() or self.job != null or self.phonon_thread != null) return;
+        // Release the loaded weights before deleting them.
+        self.recognizer.phonon.unload();
+        self.phononStore().remove() catch |err| self.log(.err, "Could not remove Phonon-2: {}", .{err});
+        self.refreshPhononState();
+        self.speech_reload_pending = true;
+    }
+
+    // -----------------------------------------------------------------
     // Settings
     // -----------------------------------------------------------------
 
@@ -1168,6 +1308,7 @@ pub const Daemon = struct {
                 return error.SettingsWindowFailed;
             c_settings.talkies_settings_window_set_callbacks(self.settings_win, onSettingsSave, onSettingsRefresh, self);
             c_settings.talkies_settings_window_set_s1_callbacks(self.settings_win, onS1Download, onS1Remove);
+            c_settings.talkies_settings_window_set_phonon_callbacks(self.settings_win, onPhononDownload, onPhononRemove);
         }
         const win = self.settings_win.?;
         self.loadAudioDevices(win);
@@ -1177,6 +1318,7 @@ pub const Daemon = struct {
         data.launch_at_login = @intFromBool(autostart.isEnabled(self.allocator));
         c_settings.talkies_settings_window_present(win, &data);
         self.refreshS1State();
+        self.refreshPhononState();
         self.refreshHealth();
 
         // Like macOS, check the selected server as the settings open.
@@ -1250,6 +1392,8 @@ pub const Daemon = struct {
 
         // Picking S1-mini without the model starts the download right away.
         if (next.enhancer == .s1_mini and !self.s1Ready()) self.startS1Download();
+        // So does choosing Phonon-2 explicitly (Automatic never downloads).
+        if (next.speech_engine == .phonon and !self.phononReady()) self.startPhononDownload();
 
         if (self.pending_cfg) |*old| old.deinit();
         self.pending_cfg = next;
@@ -1262,34 +1406,40 @@ pub const Daemon = struct {
         const next = self.pending_cfg orelse return;
         self.pending_cfg = null;
 
-        const model_changed = !std.mem.eql(u8, next.model, self.cfg.model);
         const threads_changed = next.threads != self.cfg.threads;
         self.cfg.deinit();
         self.cfg = next;
         self.trigger = trigger_mod.Trigger.init(self.cfg.push_to_talk_threshold);
-        self.whisper_service.configure(self.cfg.language, self.cfg.threads);
+        const speech_changed = self.configureRecognizer();
         if (threads_changed) {
             self.cleanup_service.deinit();
             self.cleanup_service = .{ .allocator = self.allocator, .threads = self.cfg.threads };
         }
         if (self.hud) |hud| c_hud.talkies_hud_set_mini(hud, @intFromBool(self.cfg.mini_window));
         if (!self.cfg.show_hud) self.hideHud() else if (self.phase == .idle) self.collapseHud();
-        if (model_changed) try self.loadWhisperModel(true);
+        if (speech_changed) try self.loadSpeechModel(true);
         self.log(.info, "Settings applied", .{});
         self.refreshHealth();
     }
 
-    fn loadWhisperModel(self: *Daemon, show_progress: bool) !void {
+    /// Returns true when the recognizer must be reloaded.
+    fn configureRecognizer(self: *Daemon) bool {
+        return self.recognizer.configure(speechPreference(self.cfg.speech_engine), self.cfg.model, self.cfg.language, self.cfg.threads);
+    }
+
+    /// Load the first recognizer of the plan (Phonon-2, else Whisper).
+    fn loadSpeechModel(self: *Daemon, show_progress: bool) !void {
         self.enter(.starting, null);
         if (show_progress) self.expandHud();
         pumpGtk();
-        if (self.status_win) |win| win.setModel(self.cfg.model);
-        self.whisper_service.loadModel(self.cfg.model) catch |err| {
-            self.log(.err, "Could not load model '{s}': {}", .{ self.cfg.model, err });
-            self.showError("Could not load Whisper model");
+        const backend = self.recognizer.prepare() catch |err| {
+            self.log(.err, "Could not load a speech model (Whisper '{s}'): {}", .{ self.cfg.model, err });
+            self.showError("Could not load the speech model");
             return err;
         };
-        self.log(.info, "Model '{s}' loaded", .{self.cfg.model});
+        const name: []const u8 = if (backend == .phonon) "Phonon-2" else self.cfg.model;
+        if (self.status_win) |win| win.setModel(name);
+        self.log(.info, "Speech model '{s}' loaded ({s})", .{ name, backend.displayName() });
         self.enter(.idle, null);
     }
 
@@ -1506,6 +1656,8 @@ pub const Daemon = struct {
         self.collectCapture();
         try self.pollJob();
         self.collectS1Download();
+        self.collectPhononDownload();
+        if (self.speech_reload_pending) try self.reloadSpeechWhenIdle();
         if (self.yap_win != null) try self.pollYap();
     }
 
@@ -1570,6 +1722,7 @@ pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData
     d.voice_assistant_mode = @intFromBool(cfg.voice_assistant_mode);
     d.insert_text_in_assistant_mode = @intFromBool(cfg.insert_text_in_assistant_mode);
     putString(&d.audio_device, cfg.audio_device);
+    d.speech_engine = @intCast(@intFromEnum(cfg.speech_engine));
     putString(&d.model, cfg.model);
     putString(&d.language, cfg.language);
     putString(&d.vocabulary_prompt, cfg.vocabulary_prompt);
@@ -1617,6 +1770,7 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     cfg.voice_assistant_mode = d.voice_assistant_mode != 0;
     cfg.insert_text_in_assistant_mode = d.insert_text_in_assistant_mode != 0;
     try cfg.setString("audio_device", getString(&d.audio_device));
+    cfg.speech_engine = std.enums.fromInt(config.SpeechEngine, d.speech_engine) orelse .auto;
     if (getString(&d.model).len > 0) try cfg.setString("model", getString(&d.model));
     try cfg.setString("language", getString(&d.language));
     try cfg.setString("vocabulary_prompt", getString(&d.vocabulary_prompt));
@@ -1652,6 +1806,15 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     cfg.vad_enabled = d.vad_enabled != 0;
     cfg.vad_mode = @intCast(std.math.clamp(d.vad_mode, 0, 3));
     cfg.show_status_gui = d.show_status_gui != 0;
+}
+
+/// Map the persisted setting onto the engine's selection policy.
+pub fn speechPreference(engine: config.SpeechEngine) speech.Preference {
+    return switch (engine) {
+        .auto => .auto,
+        .phonon => .phonon,
+        .whisper => .whisper,
+    };
 }
 
 /// Deep-copy every field of `src` into `dst`, with strings owned by dst's arena.
@@ -1823,7 +1986,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
         .cfg = config.Config.init(allocator),
         .recording_path = try utils.privateRuntimePath(allocator, "recording.wav"),
         .vad_path = try utils.privateRuntimePath(allocator, "recording-vad.wav"),
-        .whisper_service = whisper.WhisperService.init(allocator),
+        .recognizer = speech.Recognizer.init(allocator),
         .cleanup_service = .{ .allocator = allocator },
         .inserter = input.TextInserter.init(allocator),
         .recorder = audio.AudioRecorder.init(allocator),
@@ -1837,7 +2000,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     try daemon.cfg.load();
     daemon.cleanup_service.threads = daemon.cfg.threads;
-    daemon.whisper_service.configure(daemon.cfg.language, daemon.cfg.threads);
+    _ = daemon.configureRecognizer();
     daemon.trigger = trigger_mod.Trigger.init(daemon.cfg.push_to_talk_threshold);
     const platform = daemon.cfg.getEffectivePlatform();
     const is_wayland = std.mem.eql(u8, platform, "wayland");
@@ -1899,6 +2062,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
         if (fd >= 0) _ = c_loop.talkies_loop_watch_fd(fd, Daemon.onTrayReadable, &daemon);
     }
     daemon.refreshS1State();
+    daemon.refreshPhononState();
 
     const ws_thread = try std.Thread.spawn(.{}, struct {
         fn serve(server: *websocket.Server, st: *daemon_ws.DaemonState) void {
@@ -1912,7 +2076,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
     // The accept loop blocks forever; the process exits with the main loop.
     ws_thread.detach();
 
-    try daemon.loadWhisperModel(false);
+    try daemon.loadSpeechModel(false);
     daemon.refreshHealth();
     if (daemon.health_report) |*report| {
         for (report.checks.items) |check| {
@@ -1924,12 +2088,14 @@ pub fn run(allocator: std.mem.Allocator) !void {
         \\Talkies daemon ready
         \\  Platform: {s}
         \\  Hotkey:   {s}
+        \\  Speech:   {s}
         \\  Enhancer: {s}
         \\  WebSocket: ws://127.0.0.1:{d}
         \\
     , .{
         platform,
         if (daemon.hotkey_listener != null or daemon.evdev.count > 0) "Right Alt (hold = push-to-talk, tap = toggle)" else "compositor binding -> scripts/talkies-hotkey.sh down|up",
+        if (daemon.recognizer.currentPlan().primary() == .phonon and daemon.recognizer.phononFailure() == null) "Phonon-2 (Whisper fallback)" else "Whisper",
         daemon.cfg.enhancer.displayName(),
         ws_port,
     });
@@ -1955,6 +2121,7 @@ test "settings round trip through the C struct" {
     var original = config.Config.init(allocator);
     defer original.deinit();
     original.enhancer = .ollama;
+    original.speech_engine = .whisper;
     original.ollama_top_k = 17;
     try original.setString("ollama_enhancement_mode", "Concise & Professional");
     try original.setString("audio_device", "alsa_input.usb-mic");
@@ -1972,6 +2139,7 @@ test "settings round trip through the C struct" {
     try configFromSettings(&restored, &data);
 
     try std.testing.expectEqual(config.EnhancerProvider.ollama, restored.enhancer);
+    try std.testing.expectEqual(config.SpeechEngine.whisper, restored.speech_engine);
     try std.testing.expectEqual(@as(u32, 17), restored.ollama_top_k);
     try std.testing.expectEqualStrings("concise", restored.ollama_enhancement_mode);
     try std.testing.expectEqualStrings("alsa_input.usb-mic", restored.audio_device);
@@ -1980,6 +2148,20 @@ test "settings round trip through the C struct" {
     try std.testing.expectEqual(config.CleanupStructure.lists, restored.cleanup_structure);
     try std.testing.expectEqual(config.CleanupContext.email, restored.cleanup_context);
     try std.testing.expectEqual(@as(f64, 0.3), restored.push_to_talk_threshold);
+}
+
+test "speech_engine setting maps onto the engine policy" {
+    try std.testing.expectEqual(speech.Preference.auto, speechPreference(.auto));
+    try std.testing.expectEqual(speech.Preference.phonon, speechPreference(.phonon));
+    try std.testing.expectEqual(speech.Preference.whisper, speechPreference(.whisper));
+    // An out-of-range value from the C struct falls back to the default.
+    var cfg = config.Config.init(std.testing.allocator);
+    defer cfg.deinit();
+    var data = std.mem.zeroes(c_settings.TalkiesSettingsData);
+    settingsFromConfig(cfg, &data);
+    data.speech_engine = 7;
+    try configFromSettings(&cfg, &data);
+    try std.testing.expectEqual(config.SpeechEngine.auto, cfg.speech_engine);
 }
 
 test "cleanup options follow the configured S1-mini style" {

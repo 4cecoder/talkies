@@ -13,6 +13,10 @@ const local_diagnostics = core.local_diagnostics;
 const engine = @import("engine");
 const audio = engine.audio;
 const whisper = engine.whisper;
+const speech = engine.speech;
+const speech_policy = engine.speech_policy;
+const phonon = engine.phonon;
+const phonon_model = engine.phonon_model;
 const cleanup = engine.cleanup;
 const clipboard = engine.clipboard;
 const input = engine.input;
@@ -139,9 +143,9 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     var recorder = audio.AudioRecorder.init(allocator);
     defer recorder.deinit();
 
-    var whisper_service = whisper.WhisperService.init(allocator);
-    defer whisper_service.deinit();
-    whisper_service.configure(cfg.language, cfg.threads);
+    var recognizer = speech.Recognizer.init(allocator);
+    defer recognizer.deinit();
+    _ = recognizer.configure(daemon.speechPreference(cfg.speech_engine), cfg.model, cfg.language, cfg.threads);
 
     var cleanup_service = cleanup.Cleaner{ .allocator = allocator, .threads = cfg.threads };
     defer cleanup_service.deinit();
@@ -195,13 +199,15 @@ fn runQuick(allocator: std.mem.Allocator) !void {
     try recorder.stopRecording();
     std.debug.print("Recording saved to: {s}\n", .{temp_path});
 
-    // Load whisper model
-    std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
-    try whisper_service.loadModel(cfg.model);
+    // Load the speech model (Phonon-2, else Whisper)
+    std.debug.print("Loading speech model...\n", .{});
+    const backend = try recognizer.prepare();
+    std.debug.print("Using {s}\n", .{backend.displayName()});
 
     // Transcribe
     std.debug.print("Transcribing audio...\n", .{});
-    const raw_transcription = try whisper_service.transcribe(temp_path, cfg.vocabulary_prompt);
+    const transcript = try recognizer.transcribe(temp_path, cfg.vocabulary_prompt);
+    const raw_transcription = transcript.text;
     defer allocator.free(raw_transcription);
     const cleaned_transcription = if (cfg.s1CleanupEnabled())
         cleanup_service.clean(raw_transcription, .{}) catch |err| blk: {
@@ -291,24 +297,30 @@ fn runRecord(allocator: std.mem.Allocator) !void {
     std.debug.print("You can play it with: aplay {s}\n", .{output_path});
 }
 
+/// Explicit, verified downloads: Phonon-2 (unless Whisper is selected) and
+/// the Whisper model named in the config, which is always the fallback.
 fn runModelsDownload(allocator: std.mem.Allocator) !void {
-    utils.log("Downloading whisper models...", .{});
-
-    // Load config to get model name
     var cfg = config.Config.init(allocator);
     defer cfg.deinit();
     try cfg.load();
+
+    if (cfg.speech_engine != .whisper) {
+        std.debug.print("Downloading Phonon-2 ({d} MB, pinned {s}@{s})...\n", .{ phonon_model.downloadSize() / 1_000_000, phonon_model.repository, phonon_model.revision[0..10] });
+        const store: phonon_model.ModelStore = .{ .allocator = allocator };
+        try store.download();
+        std.debug.print("Phonon-2 verified and installed.\n", .{});
+    }
 
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
     whisper_service.configure(cfg.language, cfg.threads);
 
-    std.debug.print("Downloading whisper model: {s}\n", .{cfg.model});
+    std.debug.print("Downloading Whisper model: {s}\n", .{cfg.model});
     std.debug.print("This may take a few minutes...\n", .{});
 
     try whisper_service.downloadModel(cfg.model);
 
-    std.debug.print("Model downloaded successfully!\n", .{});
+    std.debug.print("Models downloaded successfully!\n", .{});
     std.debug.print("You can now use 'talkies quick' to start transcribing.\n", .{});
 }
 
@@ -484,7 +496,23 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
     defer cfg.deinit();
     try cfg.load();
 
-    std.debug.print("Loading whisper model '{s}'...\n", .{cfg.model});
+    const export_args = if (args.len > 3) args[3..] else &.{};
+    const export_request = try transcript_export.parseRequest(export_args);
+    if (export_request == null) {
+        // Plain text: the same recognizer chain as dictation.
+        var recognizer = speech.Recognizer.init(allocator);
+        defer recognizer.deinit();
+        _ = recognizer.configure(daemon.speechPreference(cfg.speech_engine), cfg.model, cfg.language, cfg.threads);
+        _ = try recognizer.prepare();
+        std.debug.print("Transcribing {s}...\n", .{audio_file});
+        const transcript = try recognizer.transcribe(audio_file, cfg.vocabulary_prompt);
+        defer allocator.free(transcript.text);
+        std.debug.print("\n=== TRANSCRIPTION ({s}) ===\n{s}\n=====================\n", .{ transcript.backend.displayName(), transcript.text });
+        return;
+    }
+
+    // Timed exports need Whisper's segment timestamps.
+    std.debug.print("Loading whisper model '{s}' (timed export)...\n", .{cfg.model});
 
     var whisper_service = whisper.WhisperService.init(allocator);
     defer whisper_service.deinit();
@@ -496,8 +524,7 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
     const transcription = try whisper_service.transcribe(audio_file, cfg.vocabulary_prompt);
     defer allocator.free(transcription);
 
-    const export_args = if (args.len > 3) args[3..] else &.{};
-    if (try transcript_export.parseRequest(export_args)) |request| {
+    if (export_request) |request| {
         const source_segments = try whisper_service.getSegments();
         defer if (source_segments.len > 0) whisper_service.freeSegments(source_segments);
         const export_segments = try allocator.alloc(transcript_export.Segment, source_segments.len);
@@ -516,8 +543,6 @@ fn runTranscribeTest(allocator: std.mem.Allocator, args: []const []const u8) !vo
         errdefer std.Io.Dir.cwd().deleteFile(utils.io(), request.output_path) catch {};
         try file.writeStreamingAll(utils.io(), content);
         std.debug.print("Exported local ASR transcript to: {s}\n", .{request.output_path});
-    } else {
-        std.debug.print("\n=== TRANSCRIPTION ===\n{s}\n=====================\n", .{transcription});
     }
 }
 
@@ -538,6 +563,7 @@ fn runDoctor(allocator: std.mem.Allocator) !void {
             std.debug.print("Could not check the Whisper model: {}\n", .{err});
             break :blk 0;
         },
+        .speech = doctorSpeechStatus(allocator, &cfg),
     };
     var report = try health.run(allocator, &cfg, probe);
     defer report.deinit();
@@ -559,6 +585,27 @@ fn runDoctor(allocator: std.mem.Allocator) !void {
     }});
 }
 
+/// What the daemon would use, without loading the 674 MB model.
+fn doctorSpeechStatus(allocator: std.mem.Allocator, cfg: *const config.Config) health.SpeechStatus {
+    const store: phonon_model.ModelStore = .{ .allocator = allocator };
+    const p = speech_policy.plan(daemon.speechPreference(cfg.speech_engine), cfg.language, store.isInstalled());
+    const selected = cfg.speech_engine == .phonon;
+    if (p.phonon_skipped) |reason| return .{
+        .phonon_active = false,
+        .reason = reason.describe(),
+        .phonon_selected = selected,
+        .phonon_missing = reason == .not_installed,
+    };
+    var dir_buf: [std.fs.max_path_bytes:0]u8 = undefined;
+    if (phonon.runtimeDir(&dir_buf) == null) return .{
+        .phonon_active = false,
+        .reason = "the CrispASR runtime (lib/crispasr) is not installed",
+        .phonon_selected = selected,
+        .phonon_failed = true,
+    };
+    return .{ .phonon_active = true, .phonon_selected = selected };
+}
+
 fn runDaemon(allocator: std.mem.Allocator) !void {
     try daemon.run(allocator);
 }
@@ -575,12 +622,12 @@ fn printHelp() !void {
         \\  doctor             Check this system (audio, hotkey, paste, tray) and suggest fixes
         \\  quick              Record, transcribe, and paste in one step
         \\  record             Record audio only
-        \\  models             Download whisper models
+        \\  models             Download speech models (Phonon-2 and the Whisper fallback)
         \\  config             Show current configuration
         \\  audio              Test audio recording (5 seconds)
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
-        \\  transcribe [wav]   Transcribe a WAV, optionally exporting TXT/VTT/SRT
+        \\  transcribe [wav]   Transcribe a WAV; TXT/VTT/SRT exports use Whisper timestamps
         \\  version            Print the Talkies version
         \\  help               Show this help message
         \\
