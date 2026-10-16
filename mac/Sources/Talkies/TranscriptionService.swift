@@ -83,11 +83,16 @@ class TranscriptionService: ObservableObject {
     @Published var statusMessage: String = "Ready to dictate"
     @Published var pipelineStage: PipelineStage = .idle
 
-    private let recognizer = WhisperKitRecognizer(modelName: "openai_whisper-base")
+    private let recognizers = SpeechRecognizerChain(recognizers: [
+        PhononRecognizer(),
+        WhisperKitRecognizer(modelName: "openai_whisper-base"),
+    ])
     private var transcriptionTask: Task<Void, Never>?
-    private var modelInitializationTask: Task<Void, Never>?
-    private var modelInitializationError: Error?
-    private var isInitialized = false
+    @Published private(set) var activeRuntime: SpeechRuntimeID?
+
+    private var speechEngine: SpeechEnginePreference {
+        SettingsService.shared.settings.speechEngine ?? .automatic
+    }
 
     var onTranscriptionComplete: ((String) -> Void)?
 
@@ -109,57 +114,10 @@ class TranscriptionService: ObservableObject {
     
     init() {}
 
-    private func beginModelInitializationIfNeeded() {
-        guard !isInitialized, modelInitializationTask == nil else { return }
-        isDownloadingModel = true
-        modelInitializationError = nil
-        print("📥 Preparing local WhisperKit recognizer on first use")
-
-        modelInitializationTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await self.recognizer.initialize()
-                self.isInitialized = true
-                self.modelInitializationError = nil
-                self.error = nil
-                print("✅ WhisperKit initialized successfully")
-            } catch {
-                self.modelInitializationError = error
-                self.error = "Failed to initialize: \(error.localizedDescription)"
-                print("❌ WhisperKit initialization error: \(error)")
-            }
-            self.isDownloadingModel = false
-        }
-    }
-
-    private func ensureModelInitialized() async throws {
-        if isInitialized && recognizer.isReady { return }
-        beginModelInitializationIfNeeded()
-        if let modelInitializationTask {
-            await modelInitializationTask.value
-        }
-        if let modelInitializationError {
-            throw modelInitializationError
-        }
-        guard isInitialized && recognizer.isReady else {
-            throw WhisperKitRecognizerError.notInitialized
-        }
-    }
-
     func startTranscription(model: String = "base", language: String? = nil) {
-        print("      TranscriptionService.startTranscription() - START")
-        print("         isInitialized: \(isInitialized)")
-        print("         recognizer ready: \(recognizer.isReady)")
-
-        if !isInitialized, modelInitializationError != nil {
-            modelInitializationTask = nil
-            modelInitializationError = nil
-        }
-
         isTranscribing = true
         error = nil
-        beginModelInitializationIfNeeded()
-        print("      TranscriptionService.startTranscription() - DONE")
+        recognizers.prewarm(speechEngine)
     }
 
     func stopTranscription() {
@@ -175,35 +133,41 @@ class TranscriptionService: ObservableObject {
             isTranscribing = true
             transcriptionProgress = 0
             error = nil
-            if recognizer.isReady {
+            if recognizers.isReady(speechEngine) {
                 statusMessage = "Transcribing audio..."
                 pipelineStage = .transcribing
             } else {
                 statusMessage = "Preparing the speech model locally…"
                 pipelineStage = .loadingModel
+                isDownloadingModel = true
             }
         }
 
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
 
         do {
-            try await ensureModelInitialized()
-            isDownloadingModel = false
-            statusMessage = "Transcribing audio..."
-            pipelineStage = .transcribing
-
-            let recognizedSegments = try await recognizer.transcribe(
+            let result = try await recognizers.transcribe(
                 audioURL,
-                deleteAudioAfterProcessing: true,
+                preference: speechEngine,
                 vocabulary: SettingsService.shared.settings.vocabulary ?? [],
+                onRuntimeChange: { [weak self] runtime in
+                    self?.activeRuntime = runtime
+                },
                 onProgress: { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard let self, self.isTranscribing else { return }
+                        self.isDownloadingModel = false
+                        self.pipelineStage = .transcribing
                         self.transcriptionProgress = progress
                         self.statusMessage = "Transcribing · ~\(Int(progress * 100))%"
                     }
                 }
             )
+            isDownloadingModel = false
+            for fallback in result.fallbacks {
+                print("⚠️ \(fallback.runtime.displayName) unavailable, used \(result.runtime.displayName): \(fallback.error)")
+            }
+            let recognizedSegments = result.segments
             print("✅ Transcription complete - \(recognizedSegments.count) segments")
 
             await MainActor.run {
@@ -228,6 +192,7 @@ class TranscriptionService: ObservableObject {
         } catch {
             print("❌ Transcription error: \(error)")
             await MainActor.run {
+                self.isDownloadingModel = false
                 self.error = "Transcription failed: \(error.localizedDescription)"
                 self.statusMessage = "Transcription failed"
                 self.isTranscribing = false

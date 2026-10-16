@@ -1,11 +1,11 @@
 # Talkies Swift macOS App
 
-A native Swift macOS dictation app using WhisperKit for speech recognition and optional S1-mini cleanup through llama.cpp.
+A native Swift macOS dictation app using Phonon-2 on Core ML for English speech recognition, WhisperKit as the multilingual fallback, and optional S1-mini cleanup through llama.cpp.
 
 ## Features
 
 ### 🎤 Real-Time Transcription
-- Live voice-to-text using on-device WhisperKit models
+- Live voice-to-text using Phonon-2 (English, default) with an on-device WhisperKit fallback
 - Optional S1-mini transcript cleanup using the local Q4_K_M GGUF model
 - CPU-only cleanup inference through llama.cpp
 - Voice Activity Detection (VAD) for efficient processing
@@ -115,8 +115,8 @@ rm -rf "$HOME/Library/Application Support/Talkies/Diagnostics"
 - **TalkiesApp.swift**: Main app entry point
 - **ContentView.swift**: Primary interface with sidebar navigation
 - **AudioRecorder.swift**: AVFoundation-based audio recording
-- **TranscriptionService.swift**: WhisperKit transcription pipeline
-- **TalkiesInference**: S1-mini model storage and llama.cpp CPU adapter
+- **TranscriptionService.swift**: transcription pipeline over the speech-runtime chain
+- **TalkiesInference**: speech-runtime chain (`SpeechRecognizerChain`), Phonon-2 and WhisperKit adapters, S1-mini model storage and llama.cpp CPU adapter
 - **RecordingView.swift**: Live recording interface
 - **TranscriptView.swift**: Transcript viewing and editing
 - **SettingsView.swift**: App configuration
@@ -134,6 +134,33 @@ If microphone access is denied:
 1. Open System Settings > Privacy & Security > Microphone
 2. Enable Talkies in the list
 3. Restart the app
+
+### Speech engines
+
+Settings → General → **Speech Engine** chooses between:
+
+- **Phonon-2 (English), Whisper fallback** (default). Talkies runs [Phonon-2](https://huggingface.co/FermionResearch/Phonon-2-CoreML)
+  through Fermion Research's [`phonon-coreml`](https://github.com/fermionresearch/phonon-coreml) Swift package (pinned to 1.1.2).
+  If Phonon-2 is missing, fails to load, or fails a transcription, the same recording is transcribed with WhisperKit.
+- **Whisper (multilingual)**: WhisperKit `openai_whisper-base` only. Use this for languages other than English.
+
+The first Phonon-2 use downloads about 345 MB from a pinned Hugging Face revision into
+`~/Library/Application Support/Talkies/Models/Phonon-2-CoreML-<revision>/`, with every file checked against
+its size and SHA-256 from the repository's `SHA256SUMS`. macOS then compiles the encoder for the Neural Engine
+once, which took about five minutes on an M-series test Mac. The compiled copy is cached in
+`~/Library/Caches/phonon-coreml/`. While that one-time preparation runs, Talkies uses an already-installed
+Whisper model so dictation isn't blocked. Later loads take a few seconds.
+
+Phonon-2 has no vocabulary prompt, so personal vocabulary affects only the Whisper path and S1-mini cleanup.
+Phonon-2 weights are CC BY 4.0 (Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3). The license and
+NOTICE files are downloaded next to the weights. `phonon-coreml` is Apache 2.0 and links a prebuilt static
+TDT decoder library (`PhononTDT.xcframework`) supplied by the package.
+
+To run the offline Phonon-2 acceptance test against a provisioned bundle:
+
+```sh
+cd mac && TALKIES_PHONON_MODEL_DIR=/path/to/Phonon-2-CoreML swift test --filter PhononAcceptanceTests
+```
 
 ### S1-mini download issues
 S1-mini requires a one-time model download. Connect to the network, retry cleanup, and then the app can use the verified local model offline. If cleanup still fails, Talkies inserts the raw WhisperKit transcript.
