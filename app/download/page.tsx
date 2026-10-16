@@ -1,285 +1,133 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
-import Link from 'next/link';
+import { Apple, ArrowUpRight, Check, Monitor, ShieldCheck, Smartphone, Terminal } from 'lucide-react';
 import { Header } from '@/app/components/sections/Header';
-import { Download, Check, Apple, Monitor, AlertCircle } from 'lucide-react';
+import { Footer } from '@/app/components/sections/Footer';
+import { FIRST_RUN_URL, platforms, RELEASES_URL, type PlatformId } from '@/app/lib/site';
+import { usePlatform } from '@/app/lib/usePlatform';
 
-type Platform = 'mac' | 'windows' | 'linux' | 'unknown';
-
-function subscribeToPlatformChanges() {
-  return () => {};
-}
-
-function getDetectedPlatform(): Platform {
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (userAgent.includes('mac')) return 'mac';
-  if (userAgent.includes('win')) return 'windows';
-  if (userAgent.includes('linux')) return 'linux';
-  return 'unknown';
-}
-
-function getServerPlatform(): Platform {
-  return 'unknown';
-}
+const icons: Record<PlatformId, typeof Apple> = {
+  mac: Apple,
+  windows: Monitor,
+  linux: Terminal,
+  android: Smartphone,
+};
 
 export default function DownloadPage() {
-  const platform = useSyncExternalStore(
-    subscribeToPlatformChanges,
-    getDetectedPlatform,
-    getServerPlatform,
-  );
+  const detected = usePlatform();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white">
-      {/* Gradient background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 -left-1/4 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-purple-600/20 via-violet-600/10 to-transparent blur-3xl"></div>
-        <div className="absolute bottom-0 right-0 w-[600px] h-[600px] rounded-full bg-gradient-to-bl from-pink-600/15 via-fuchsia-600/10 to-transparent blur-3xl"></div>
-      </div>
-
+    <div className="min-h-screen bg-bg text-fg">
       <Header />
-
-      <main className="relative pt-32 pb-20 px-6">
-        <div className="max-w-5xl mx-auto">
-          {/* Page Header */}
-          <div className="text-center mb-12">
-            <h1 className="text-5xl md:text-6xl font-bold mb-4">
-              <span className="bg-gradient-to-r from-purple-300 to-pink-300 bg-clip-text text-transparent">
-                Download Talkies
-              </span>
-            </h1>
-            <p className="text-lg text-neutral-400">
-              Get started with voice transcription on your platform
+      <main id="main" className="relative overflow-hidden px-4 pb-24 pt-32 sm:px-6 sm:pt-40">
+        <div className="hero-fallback pointer-events-none absolute inset-x-0 top-0 -z-0 h-[32rem] opacity-70" aria-hidden="true" />
+        <div className="relative mx-auto max-w-6xl">
+          <header className="max-w-2xl">
+            <p className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-accent">Download</p>
+            <h1 className="display mt-4 text-[2.6rem] font-semibold sm:text-6xl">Get Talkies.</h1>
+            <p className="mt-5 text-[17px] leading-relaxed text-fg-2">
+              Builds are published on GitHub Releases. The current <span className="font-mono text-[0.92em]">latest</span>{' '}
+              channel is a prerelease. On first launch you choose and download a speech model; after that, dictation runs
+              offline.
             </p>
-          </div>
+          </header>
 
-          {/* Platform Cards */}
-          <div className="grid md:grid-cols-2 gap-6 mb-12">
-            {/* macOS */}
-            <div className={`rounded-2xl border p-8 backdrop-blur-xl transition-all ${
-              platform === 'mac'
-                ? 'border-purple-500/50 bg-gradient-to-br from-purple-500/10 to-pink-500/10'
-                : 'border-white/10 bg-white/5'
-            }`}>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500">
-                  <Apple className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">macOS</h2>
-                  {platform === 'mac' && (
-                    <span className="text-sm text-green-400">Detected ✓</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mb-6 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>Apple Silicon (M1, M2, M3) optimized</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>Requires macOS 15+ (Sequoia or later)</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>WhisperKit powered - blazing fast</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>100+ languages supported</span>
-                </div>
-              </div>
-
-              <button className="w-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-8 py-4 font-semibold text-white transition-transform hover:scale-105 flex items-center justify-center gap-2">
-                <Download className="h-5 w-5" />
-                Download for macOS
-              </button>
-
-              <p className="text-xs text-center text-neutral-500 mt-3">
-                Version 1.0.0 • 45 MB
-              </p>
-            </div>
-
-            {/* Windows */}
-            <div className={`rounded-2xl border p-8 backdrop-blur-xl transition-all ${
-              platform === 'windows'
-                ? 'border-blue-500/50 bg-gradient-to-br from-blue-500/10 to-cyan-500/10'
-                : 'border-white/10 bg-white/5'
-            }`}>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500">
-                  <Monitor className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">Windows</h2>
-                  {platform === 'windows' && (
-                    <span className="text-sm text-green-400">Detected ✓</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mb-6 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>Windows 10/11 (64-bit)</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>.NET 8.0 (included in installer)</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>Whisper.net powered transcription</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-neutral-300">
-                  <Check className="h-4 w-4 text-green-400" />
-                  <span>Ollama/LM Studio integration</span>
-                </div>
-              </div>
-
-              <div className="relative">
-                <button
-                  disabled
-                  className="w-full rounded-full bg-white/5 px-8 py-4 font-semibold text-neutral-500 cursor-not-allowed flex items-center justify-center gap-2 border border-white/10"
+          <ul className="mt-12 grid gap-4 sm:grid-cols-2">
+            {platforms.map((platform) => {
+              const Icon = icons[platform.id];
+              const isDetected = detected === platform.id;
+              return (
+                <li
+                  key={platform.id}
+                  className={`card flex flex-col p-6 sm:p-8 ${isDetected ? 'ring-brand' : ''}`}
+                  aria-current={isDetected ? 'true' : undefined}
                 >
-                  <AlertCircle className="h-5 w-5" />
-                  Coming Soon
-                </button>
-                <div className="absolute -top-3 right-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                  Beta Access
-                </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-line bg-surface-2">
+                        <Icon className="h-6 w-6" aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h2 className="text-2xl font-semibold tracking-tight">{platform.name}</h2>
+                        <p className="text-[13px] text-fg-3">{platform.stack}</p>
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-[12px] font-medium ${
+                        platform.tone === 'ok' ? 'text-ok' : 'text-warn'
+                      }`}
+                    >
+                      {isDetected ? 'Your device' : platform.status}
+                    </span>
+                  </div>
+                  <ul className="mt-6 flex-1 space-y-2.5">
+                    {platform.requirements.map((req) => (
+                      <li key={req} className="flex items-start gap-2 text-[15px] text-fg-2">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-fg-3" aria-hidden="true" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-7 flex flex-col gap-2 sm:flex-row">
+                    <a
+                      href={platform.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full px-5 text-[15px] font-medium transition-opacity hover:opacity-90 ${
+                        platform.id === 'android' ? 'border border-line-strong text-fg' : 'bg-cta text-cta-fg'
+                      }`}
+                    >
+                      {platform.cta}
+                      <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only"> (opens GitHub in a new tab)</span>
+                    </a>
+                    {platform.id !== 'android' && (
+                      <a
+                        href={platform.guide}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-11 items-center justify-center rounded-full border border-line-strong px-5 text-[15px] font-medium text-fg transition-colors hover:bg-surface-2"
+                      >
+                        Setup guide
+                        <span className="sr-only"> for {platform.name} (opens GitHub in a new tab)</span>
+                      </a>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <section aria-labelledby="verify-heading" className="card mt-6 flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div className="flex items-start gap-4">
+              <ShieldCheck className="mt-1 h-6 w-6 shrink-0 text-ok" aria-hidden="true" />
+              <div>
+                <h2 id="verify-heading" className="text-lg font-semibold tracking-tight">
+                  Verify what you download
+                </h2>
+                <p className="mt-1 max-w-xl text-[15px] leading-relaxed text-fg-2">
+                  Every release includes a <span className="font-mono text-[0.92em]">SHA256SUMS</span> file. Windows
+                  packages are currently unsigned, so compare checksums before installing. Models are checked against
+                  pinned SHA-256 hashes inside the app.
+                </p>
               </div>
-
-              <p className="text-xs text-center text-neutral-500 mt-3">
-                Join waitlist for early access
-              </p>
             </div>
-          </div>
-
-          {/* Feature Comparison Table */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl mb-12">
-            <h2 className="text-2xl font-bold mb-6 text-center">Feature Comparison</h2>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10">
-                    <th className="text-left py-3 px-4">Feature</th>
-                    <th className="text-center py-3 px-4">Web App</th>
-                    <th className="text-center py-3 px-4">Desktop App</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  <tr>
-                    <td className="py-3 px-4">Transcription time</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">1 min demo</td>
-                    <td className="text-center py-3 px-4 text-green-400">Unlimited</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">Languages supported</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">20+</td>
-                    <td className="text-center py-3 px-4 text-green-400">100+</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">Works offline</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">No</td>
-                    <td className="text-center py-3 px-4 text-green-400">Yes</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">Export formats</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">Copy only</td>
-                    <td className="text-center py-3 px-4 text-green-400">TXT, SRT, VTT</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">AI Enhancement</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">Basic</td>
-                    <td className="text-center py-3 px-4 text-green-400">Advanced</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">Hotkey support</td>
-                    <td className="text-center py-3 px-4 text-neutral-400">No</td>
-                    <td className="text-center py-3 px-4 text-green-400">Yes</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* System Requirements */}
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* macOS Requirements */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h3 className="text-lg font-semibold mb-4">macOS System Requirements</h3>
-              <ul className="space-y-2 text-sm text-neutral-300">
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-purple-400 mt-0.5" />
-                  <span><strong>OS:</strong> macOS 15+ (Sequoia or later)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-purple-400 mt-0.5" />
-                  <span><strong>Chip:</strong> Apple Silicon (M1, M2, M3)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-purple-400 mt-0.5" />
-                  <span><strong>RAM:</strong> 8 GB minimum, 16 GB recommended</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-purple-400 mt-0.5" />
-                  <span><strong>Storage:</strong> 200 MB for app + models</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Windows Requirements */}
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <h3 className="text-lg font-semibold mb-4">Windows System Requirements</h3>
-              <ul className="space-y-2 text-sm text-neutral-300">
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-blue-400 mt-0.5" />
-                  <span><strong>OS:</strong> Windows 10 or 11 (64-bit)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-blue-400 mt-0.5" />
-                  <span><strong>Processor:</strong> Intel i5 or AMD equivalent</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-blue-400 mt-0.5" />
-                  <span><strong>RAM:</strong> 8 GB minimum, 16 GB recommended</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 text-blue-400 mt-0.5" />
-                  <span><strong>Storage:</strong> 300 MB for app + dependencies</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Help Section */}
-          <div className="mt-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-8 text-center backdrop-blur-xl">
-            <h3 className="text-2xl font-semibold mb-2">Need Help Installing?</h3>
-            <p className="text-neutral-400 mb-6">
-              Check out our installation guide or contact support
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                href="https://docs.talkies.app"
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3 font-semibold text-white transition-colors hover:bg-white/10"
-              >
-                View Documentation
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[15px] font-medium text-accent hover:underline">
+                All release files
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only"> (opens GitHub in a new tab)</span>
               </a>
-              <Link
-                href="/contact"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 font-semibold text-white transition-transform hover:scale-105"
-              >
-                Contact Support
-              </Link>
+              <a href={FIRST_RUN_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[15px] font-medium text-accent hover:underline">
+                First-run guide
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only"> (opens GitHub in a new tab)</span>
+              </a>
             </div>
-          </div>
+          </section>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

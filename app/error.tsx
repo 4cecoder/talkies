@@ -23,25 +23,25 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-6">
-      <div className="max-w-md w-full rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 p-8 text-center">
-        <AlertTriangle className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold mb-2 text-white">
-          Oops! Something went wrong
+    <div className="min-h-screen bg-bg text-fg flex items-center justify-center p-6">
+      <div className="max-w-md w-full card p-8 text-center">
+        <AlertTriangle className="w-16 h-16 text-warn mx-auto mb-4" />
+        <h2 className="text-2xl font-semibold tracking-tight mb-2 text-fg">
+          This page failed to load
         </h2>
-        <p className="text-neutral-400 mb-6">
-          We encountered an unexpected error. Please try reloading the page.
+        <p className="text-fg-2 mb-6">
+          Try again, or go back to the home page.
         </p>
         {process.env.NODE_ENV === 'development' && (
           <pre className="text-left text-xs bg-black/50 p-4 rounded-lg mb-4 overflow-auto max-h-40 text-red-400">
             {error.message}
           </pre>
         )}
-        <div className="flex gap-3">
+        <div className="flex justify-center gap-3">
           <Button variant="secondary" onClick={() => router.push('/')}>
             Go Home
           </Button>
-          <Button variant="gradient" onClick={reset}>
+          <Button variant="primary" onClick={reset}>
             Try Again
           </Button>
         </div>

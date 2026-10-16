@@ -1,23 +1,115 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Dark is the default; light applies when the visitor's OS
+ * prefers it (unless they chose dark) or when they pick it in the header.
+ */
 :root {
-  --background: #0a0a0f;
-  --foreground: #ffffff;
+  --scheme: dark;
+  color-scheme: dark;
+
+  --bg: #07070b;
+  --bg-elev: #0e0e15;
+  --surface: rgba(255, 255, 255, 0.035);
+  --surface-2: rgba(255, 255, 255, 0.065);
+  --line: rgba(255, 255, 255, 0.085);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --fg: #f5f5f7;
+  --fg-2: rgba(245, 245, 247, 0.74);
+  --fg-3: rgba(245, 245, 247, 0.58);
+  --accent: #c084fc;
+  --accent-2: #f472b6;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --focus: #c084fc;
+  --cta-bg: #f5f5f7;
+  --cta-fg: #07070b;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+  --hero-glow-1: rgba(168, 85, 247, 0.28);
+  --hero-glow-2: rgba(236, 72, 153, 0.18);
+  --hero-glow-3: rgba(59, 130, 246, 0.14);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --scheme: light;
+    color-scheme: light;
+
+    --bg: #fbfbfd;
+    --bg-elev: #ffffff;
+    --surface: rgba(12, 12, 24, 0.028);
+    --surface-2: rgba(12, 12, 24, 0.05);
+    --line: rgba(12, 12, 24, 0.085);
+    --line-strong: rgba(12, 12, 24, 0.16);
+    --fg: #0b0b12;
+    --fg-2: rgba(11, 11, 18, 0.74);
+    --fg-3: rgba(11, 11, 18, 0.62);
+    --accent: #7c3aed;
+    --accent-2: #be185d;
+    --ok: #15803d;
+    --warn: #b45309;
+    --focus: #7c3aed;
+    --cta-bg: #0b0b12;
+    --cta-fg: #ffffff;
+    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 24px 60px -30px rgba(40, 20, 80, 0.25);
+    --hero-glow-1: rgba(168, 85, 247, 0.18);
+    --hero-glow-2: rgba(236, 72, 153, 0.12);
+    --hero-glow-3: rgba(59, 130, 246, 0.1);
+  }
+}
+
+:root[data-theme="light"] {
+  --scheme: light;
+  color-scheme: light;
+
+  --bg: #fbfbfd;
+  --bg-elev: #ffffff;
+  --surface: rgba(12, 12, 24, 0.028);
+  --surface-2: rgba(12, 12, 24, 0.05);
+  --line: rgba(12, 12, 24, 0.085);
+  --line-strong: rgba(12, 12, 24, 0.16);
+  --fg: #0b0b12;
+  --fg-2: rgba(11, 11, 18, 0.74);
+  --fg-3: rgba(11, 11, 18, 0.62);
+  --accent: #7c3aed;
+  --accent-2: #be185d;
+  --ok: #15803d;
+  --warn: #b45309;
+  --focus: #7c3aed;
+  --cta-bg: #0b0b12;
+  --cta-fg: #ffffff;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 24px 60px -30px rgba(40, 20, 80, 0.25);
+  --hero-glow-1: rgba(168, 85, 247, 0.18);
+  --hero-glow-2: rgba(236, 72, 153, 0.12);
+  --hero-glow-3: rgba(59, 130, 246, 0.1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-elev: var(--bg-elev);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-cta: var(--cta-bg);
+  --color-cta-fg: var(--cta-fg);
+  /* Kept for older components that still reference these names. */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme {
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 * {
@@ -26,143 +118,202 @@ body {
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, #a855f7 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+[id] {
+  scroll-margin-top: 5.5rem;
+}
+
+/* Display type */
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.text-brand {
+  background: linear-gradient(100deg, #a855f7 0%, #d946ef 45%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+:root[data-theme="light"] .text-brand {
+  background-image: linear-gradient(100deg, #7c3aed 0%, #a21caf 45%, #be185d 100%);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .text-brand {
+    background-image: linear-gradient(100deg, #7c3aed 0%, #a21caf 45%, #be185d 100%);
+  }
+}
+
+/* Hairline card with an inner highlight */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-card);
+}
+
+/* Gradient hairline border, used for the featured engine card */
+.ring-brand {
+  position: relative;
+  isolation: isolate;
+}
+
+.ring-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.55) 40%, transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Hero: static gradient that also serves as the WebGL fallback frame */
+.hero-fallback {
+  background:
+    radial-gradient(60% 55% at 30% 55%, var(--hero-glow-1), transparent 70%),
+    radial-gradient(45% 50% at 72% 50%, var(--hero-glow-2), transparent 70%),
+    radial-gradient(40% 45% at 52% 70%, var(--hero-glow-3), transparent 70%);
+}
+
+.hero-band-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.grid-fade {
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 0%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(70% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* Dictation mock: the transcript "types" itself in */
+@keyframes type-in {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes rec-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(244, 63, 94, 0); }
+}
+
+.typing {
+  animation: type-in 3.2s steps(48, end) 0.6s both;
+}
+
+/* clip-path cannot reveal a wrapped inline run line by line, so narrow screens show the full sentence. */
+@media (max-width: 639px) {
+  .typing {
+    animation: none;
+    clip-path: none;
+  }
+}
+
+.caret {
+  animation: caret-blink 1.05s step-end infinite;
+}
+
+.rec-dot {
+  animation: rec-pulse 1.8s ease-out infinite;
+}
+
+/* Scroll reveal. Content is only hidden when JS has run (html.js). */
+html.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.8s var(--ease-out-expo), transform 0.8s var(--ease-out-expo);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+html.js [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Used by the mobile navigation sheet and toasts */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
+.animate-slide-up { animation: slide-up 0.3s ease-out; }
+.animate-sheet-in { animation: sheet-in 0.25s var(--ease-out-expo); }
+.animate-gradient-fast { background-size: 200% 200%; animation: gradient-shift 4s ease infinite; }
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
-}
 
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
+  .typing {
+    animation: none;
+    clip-path: none;
   }
-  50% {
-    background-position: 100% 50%;
-  }
-}
 
-@keyframes gradient-rotate {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes glow-pulse {
-  0%, 100% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-  50% {
+  html.js [data-reveal] {
     opacity: 1;
-    transform: scale(1.05);
+    transform: none;
   }
-}
-
-@keyframes border-flow {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 8s ease infinite;
-}
-
-.animate-gradient-fast {
-  background-size: 200% 200%;
-  animation: gradient-shift 4s ease infinite;
-}
-
-.animate-glow {
-  animation: glow-pulse 3s ease-in-out infinite;
-}
-
-.gradient-border {
-  position: relative;
-  background: linear-gradient(135deg, rgba(16, 16, 18, 0.95), rgba(24, 24, 27, 0.95));
-}
-
-.gradient-border::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px;
-  background: linear-gradient(135deg, #667eea, #764ba2, #f093fb, #4facfe);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  background-size: 200% 200%;
-  animation: gradient-shift 6s ease infinite;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slide-up {
-  from {
-    transform: translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes scale-in {
-  from {
-    transform: scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out;
-}
-
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
 }
