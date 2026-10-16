@@ -22,8 +22,7 @@ import java.io.File
 class TalkiesInputMethodService : InputMethodService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val audioCapture = OfflineAudioCapture()
-    private lateinit var modelStore: WhisperTinyModelStore
-    private lateinit var speechRecognizer: SpeechRecognizer
+    private lateinit var speechModels: LocalSpeechModels
     private lateinit var cleanupModelStore: S1MiniModelStore
     private lateinit var cleanupCleaner: TranscriptCleaner
     private var recording = false
@@ -36,8 +35,7 @@ class TalkiesInputMethodService : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
-        modelStore = WhisperTinyModelStore(File(filesDir, "models"))
-        speechRecognizer = WhisperTinyRecognizer(modelStore)
+        speechModels = LocalSpeechModels(filesDir)
         cleanupModelStore = S1MiniModelStore(
             File(File(filesDir, "models"), "S1-mini-${S1MiniModelStore.MODEL_REVISION}")
         )
@@ -116,9 +114,12 @@ class TalkiesInputMethodService : InputMethodService() {
         updateControls("Checking local model…")
         serviceScope.launch {
             try {
-                val ready = withContext(Dispatchers.IO) { modelStore.isInstalled() }
+                val preference = SpeechSettings.enginePreference(
+                    getSharedPreferences(SpeechSettings.PREFERENCES, Context.MODE_PRIVATE)
+                )
+                val ready = withContext(Dispatchers.IO) { speechModels.chain.plan(preference).isNotEmpty() }
                 if (!ready) {
-                    updateControls("Download Whisper in Talkies first")
+                    updateControls(SpeechStatusText.missingModel(preference))
                     return@launch
                 }
                 check(targetSession == inputSession && targetViewGeneration == inputViewGeneration && inputViewActive) {
@@ -151,12 +152,14 @@ class TalkiesInputMethodService : InputMethodService() {
             var samples: FloatArray? = null
             try {
                 samples = withContext(Dispatchers.IO) { audioCapture.stop() }
-                var result = withContext(Dispatchers.Default) {
-                    speechRecognizer.transcribe(requireNotNull(samples))
-                }.trim()
+                val settings = getSharedPreferences(SpeechSettings.PREFERENCES, Context.MODE_PRIVATE)
+                val preference = SpeechSettings.enginePreference(settings)
+                val outcome = withContext(Dispatchers.Default) {
+                    speechModels.chain.transcribe(requireNotNull(samples), preference)
+                }
+                var result = outcome.transcript.trim()
                 check(result.isNotBlank()) { "No speech recognized. Try again." }
 
-                val settings = getSharedPreferences("talkies-settings", Context.MODE_PRIVATE)
                 val cleanupReady = settings.getBoolean("s1-mini-enabled", false) &&
                     withContext(Dispatchers.IO) { cleanupModelStore.isInstalled() }
                 if (cleanupReady) {
@@ -182,7 +185,7 @@ class TalkiesInputMethodService : InputMethodService() {
                 if (!connection.commitText(insertion, 1)) {
                     error("The app did not accept the dictated text.")
                 }
-                updateControls("Inserted ✓")
+                updateControls(SpeechStatusText.inserted(outcome))
             } catch (error: Exception) {
                 updateControls(error.message ?: "Dictation failed. Try again.")
             } finally {

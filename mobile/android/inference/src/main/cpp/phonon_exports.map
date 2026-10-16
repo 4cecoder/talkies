@@ -1,0 +1,6 @@
+{
+  global:
+    Java_com_talkies_android_LocalPhonon_*;
+  local:
+    *;
+};
