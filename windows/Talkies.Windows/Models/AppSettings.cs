@@ -14,6 +14,10 @@ namespace Talkies.Windows.Models
     {
         public string Model { get; set; } = "tiny";
         public string Language { get; set; } = "auto";
+
+        /// <summary>Speech engine preference; stored by name so the config stays readable and reorder-safe.</summary>
+        [Newtonsoft.Json.JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+        public SpeechEngine SpeechEngine { get; set; } = SpeechEngine.Automatic;
         public string? MicrophoneId { get; set; }
         public bool EnhanceEnabled { get; set; }
         public string OllamaUrl { get; set; } = "http://localhost:11434";

@@ -44,8 +44,13 @@
                     <StackPanel>
                         <TextBlock Text="Transcription Settings" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
 
-                        <TextBlock Text="Model" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
-                        <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Margin="0,0,0,8" Height="32" Padding="8,6"/>
+                        <TextBlock Text="Speech engine" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding SpeechEngineOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SelectedSpeechEngine}" Margin="0,0,0,4" Height="32" Padding="8,6" AutomationProperties.Name="Speech engine"/>
+                        <TextBlock Text="{Binding Phonon2Status}" Foreground="#9ecbff" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <Button Content="{Binding Phonon2DownloadLabel}" Command="{Binding InstallPhonon2Command}" Height="30" Margin="0,0,0,8" Visibility="{Binding CanInstallPhonon2, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="Downloads the revision-pinned Phonon-2 model from Hugging Face and verifies its SHA-256. Transcription stays on this device."/>
+
+                        <TextBlock Text="Whisper model" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}" Margin="0,0,0,8" Height="32" Padding="8,6" AutomationProperties.Name="Whisper model"/>
 
                         <TextBlock Text="Language" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
                         <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" Margin="0,0,0,8" Height="32" Padding="8,6"/>

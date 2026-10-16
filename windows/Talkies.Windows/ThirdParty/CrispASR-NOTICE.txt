@@ -1,0 +1,26 @@
+CrispASR native runtime (Phonon-2 speech recognition)
+=====================================================
+
+Talkies for Windows bundles the CPU build of CrispASR to run the optional
+Phonon-2 English speech-recognition model on this device.
+
+Component:  CrispASR 0.8.43 (libcrispasr-windows-x86_64.tar.gz)
+Source:     https://github.com/CrispStrobe/CrispASR
+Revision:   tag v0.8.43, commit eb633d908120cc5f44b8af8cd4aeb1191f16bfd8
+Files:      crispasr\crispasr.dll, crispasr\ggml.dll, crispasr\ggml-base.dll,
+            crispasr\ggml-cpu.dll
+License:    MIT. The upstream license is included as licenses\CrispASR\LICENSE.
+            CrispASR's own third-party notices (ggml, llamafile/sgemm and
+            others compiled into the runtime) are included unmodified as
+            licenses\CrispASR\THIRD_PARTY_NOTICES.txt.
+
+The release archive and each shipped file are verified against pinned
+SHA-256 values when Talkies is built.
+
+Phonon-2 model weights are NOT bundled. If you choose to download them, the
+app fetches phonon2-q8_0.gguf from https://huggingface.co/cstr/phonon2-GGUF
+(revision 3ed3e6ad6e7ce63affffeede37328ff756efaa2f), verifies its SHA-256, and
+stores it with the upstream LICENSE and NOTICE files under
+%LOCALAPPDATA%\Talkies\Models\Phonon-2-<revision>. Phonon-2 by Fermion
+Research is derived from NVIDIA Parakeet TDT 0.6B v3 and its weights are
+licensed under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/).

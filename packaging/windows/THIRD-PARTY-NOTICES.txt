@@ -33,6 +33,13 @@ included in the adjacent licenses directory:
   licenses/LLamaSharp-MIT.txt and licenses/llama.cpp-MIT.txt.
   https://github.com/SciSharp/LLamaSharp
   https://github.com/ggml-org/llama.cpp
+- CrispASR 0.8.43 and its bundled ggml native runtime, used for the optional
+  Phonon-2 speech engine, are distributed under the MIT License. The upstream
+  LICENSE and THIRD_PARTY_NOTICES files are included under licenses/CrispASR/.
+  Phonon-2 model weights are not bundled; they are downloaded on request with
+  their CC BY 4.0 LICENSE and NOTICE (Fermion Research, derived from NVIDIA
+  Parakeet TDT 0.6B v3).
+  https://github.com/CrispStrobe/CrispASR
 - The self-contained Microsoft .NET runtime is accompanied by the exact
   LICENSE.txt and ThirdPartyNotices.txt from the .NET installation used to
   publish the Windows build, copied under licenses/dotnet/.

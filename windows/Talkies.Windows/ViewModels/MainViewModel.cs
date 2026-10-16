@@ -21,6 +21,9 @@ namespace Talkies.Windows.ViewModels
         private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
         private readonly IAudioRecorder _recorder;
         private readonly ITranscriptionService _transcriber;
+        private readonly ISpeechEngineSelection? _speechEngineSelection;
+        private readonly Phonon2ModelStore _phonon2Store;
+        private readonly Phonon2Recognizer? _phonon2Recognizer;
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
         private AppSettings _settings = new();
@@ -53,7 +56,34 @@ namespace Talkies.Windows.ViewModels
 
         public string SelectedModel { get => _selectedModel; set { _selectedModel = value; OnPropertyChanged(); } }
         private string _selectedModel = "base";
-        public string SelectedLanguage { get => _selectedLanguage; set { _selectedLanguage = value; OnPropertyChanged(); } }
+        public string SelectedLanguage { get => _selectedLanguage; set { _selectedLanguage = value; OnPropertyChanged(); RefreshPhonon2Status(); } }
+
+        public IReadOnlyList<SpeechEngineOption> SpeechEngineOptions { get; } = new[]
+        {
+            new SpeechEngineOption(SpeechEngine.Automatic, "Automatic (Phonon-2 for English, Whisper otherwise)"),
+            new SpeechEngineOption(SpeechEngine.Phonon2, "Phonon-2"),
+            new SpeechEngineOption(SpeechEngine.Whisper, "Whisper"),
+        };
+
+        public SpeechEngine SelectedSpeechEngine
+        {
+            get => _selectedSpeechEngine;
+            set
+            {
+                _selectedSpeechEngine = value;
+                if (_speechEngineSelection != null) _speechEngineSelection.Engine = value;
+                OnPropertyChanged();
+                RefreshPhonon2Status();
+            }
+        }
+        private SpeechEngine _selectedSpeechEngine = SpeechEngine.Automatic;
+
+        public bool IsPhonon2Installed => _phonon2Store.IsInstalled;
+        public bool CanInstallPhonon2 => !IsPhonon2Installed && !_isInstallingPhonon2;
+        public string Phonon2Status { get => _phonon2Status; private set { _phonon2Status = value; OnPropertyChanged(); } }
+        private string _phonon2Status = string.Empty;
+        private bool _isInstallingPhonon2;
+        public string Phonon2DownloadLabel { get; } = $"Download Phonon-2 ({Phonon2ModelStore.ModelSize / (1024.0 * 1024.0):F0} MiB, English)";
         private string _selectedLanguage = "auto";
         public string VocabularyText
         {
@@ -260,6 +290,7 @@ namespace Talkies.Windows.ViewModels
         public ICommand ShowPluginsCommand { get; }
         public ICommand BrowseExportDirectoryCommand { get; }
         public ICommand ExportDefaultCommand { get; }
+        public ICommand InstallPhonon2Command { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -271,14 +302,37 @@ namespace Talkies.Windows.ViewModels
         private const string DefaultLlmModel = "openai/gpt-oss-20b";
 
         public MainViewModel()
-            : this(new AudioRecorder(), new WhisperNetTranscriptionService(), new AudioDeviceService())
+            : this(new Phonon2ModelStore())
         {
         }
 
-        public MainViewModel(IAudioRecorder recorder, ITranscriptionService transcriber, IAudioDeviceService deviceService)
+        private MainViewModel(Phonon2ModelStore phonon2Store)
+            : this(phonon2Store, new Phonon2Recognizer(phonon2Store))
+        {
+        }
+
+        private MainViewModel(Phonon2ModelStore phonon2Store, Phonon2Recognizer phonon2Recognizer)
+            : this(
+                new AudioRecorder(),
+                new SpeechRecognizerChain(new ISpeechRecognizer[] { phonon2Recognizer, new WhisperNetTranscriptionService() }),
+                new AudioDeviceService(),
+                phonon2Store,
+                phonon2Recognizer)
+        {
+        }
+
+        public MainViewModel(
+            IAudioRecorder recorder,
+            ITranscriptionService transcriber,
+            IAudioDeviceService deviceService,
+            Phonon2ModelStore? phonon2Store = null,
+            Phonon2Recognizer? phonon2Recognizer = null)
         {
             _recorder = recorder;
             _transcriber = transcriber;
+            _speechEngineSelection = transcriber as ISpeechEngineSelection;
+            _phonon2Store = phonon2Store ?? new Phonon2ModelStore();
+            _phonon2Recognizer = phonon2Recognizer;
             _deviceService = deviceService;
 
             StartCommand = new RelayCommand(_ => StartRecording(), _ => IsIdle);
@@ -292,6 +346,7 @@ namespace Talkies.Windows.ViewModels
             ExportDefaultCommand = new RelayCommand(_ => ExportConfiguredFormat(), _ => CanSave);
             SavePromptCommand = new RelayCommand(_ => SaveCustomPrompt());
             ShowPluginsCommand = new RelayCommand(_ => ShowPluginsWindow());
+            InstallPhonon2Command = new AsyncRelayCommand(_ => InstallPhonon2Async(), _ => CanInstallPhonon2);
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
@@ -312,6 +367,7 @@ namespace Talkies.Windows.ViewModels
             InitializeLlmProvider();
             RefreshEnhancementModes();
             DetectBackend();
+            RefreshPhonon2Status();
             InitializePlugins();
             AutoFetchLlmModelsAsync();
         }
@@ -650,6 +706,7 @@ namespace Talkies.Windows.ViewModels
                     FilterEnabled,
                     decodingOptions,
                     progress);
+                ReportSpeechEngineOutcome();
 
                 var finalText = result.Text;
                 var finalSegments = result.Segments;
@@ -1065,6 +1122,7 @@ namespace Talkies.Windows.ViewModels
         {
             SaveSettings();
             _s1MiniProvider?.Dispose();
+            _transcriber.Dispose();
             _hotkey.Dispose();
             _recorder.Dispose();
         }
@@ -1097,6 +1155,7 @@ namespace Talkies.Windows.ViewModels
             foreach (var path in _settings.Export.RecentExports.Take(10)) RecentExports.Add(path);
             SelectedModel = _settings.Model;
             SelectedLanguage = _settings.Language;
+            SelectedSpeechEngine = Enum.IsDefined(_settings.SpeechEngine) ? _settings.SpeechEngine : SpeechEngine.Automatic;
             _settings.PersonalVocabulary ??= new List<string>();
             OnPropertyChanged(nameof(VocabularyText));
             EnhanceEnabled = _settings.EnhanceEnabled;
@@ -1160,6 +1219,7 @@ namespace Talkies.Windows.ViewModels
         {
             _settings.Model = SelectedModel;
             _settings.Language = SelectedLanguage;
+            _settings.SpeechEngine = SelectedSpeechEngine;
             _settings.PersonalVocabulary = LocalVocabulary.Normalize(_settings.PersonalVocabulary);
             _settings.MicrophoneId = SelectedMicrophone?.Id;
             _settings.EnhanceEnabled = EnhanceEnabled;
@@ -1205,6 +1265,89 @@ namespace Talkies.Windows.ViewModels
         private void SaveSettingsIfReady()
         {
             if (!_loadingSettings && _settings != null) SaveSettings();
+        }
+
+        private void RefreshPhonon2Status()
+        {
+            OnPropertyChanged(nameof(IsPhonon2Installed));
+            OnPropertyChanged(nameof(CanInstallPhonon2));
+            CommandManager.InvalidateRequerySuggested();
+
+            if (_isInstallingPhonon2) return;
+            Phonon2Status = SelectedSpeechEngine switch
+            {
+                SpeechEngine.Whisper => "Whisper handles all languages.",
+                _ when !SpeechEnginePolicy.IsPhonon2Language(SelectedLanguage) =>
+                    $"Phonon-2 is English-only, so Whisper handles '{SelectedLanguage}'.",
+                _ when !IsPhonon2Installed =>
+                    "Phonon-2 is not downloaded yet. Whisper is used until you download it.",
+                _ => "Phonon-2 is installed and used for English; Whisper remains the fallback.",
+            };
+        }
+
+        private void ReportSpeechEngineOutcome()
+        {
+            if (_speechEngineSelection is not { } selection) return;
+            var reason = selection.LastFallbackReason;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            dispatcher.Invoke(() =>
+            {
+                // Whisper reports its own GPU/CPU runtime label through progress.
+                if (selection.LastRecognizerName == _phonon2Recognizer?.DisplayName)
+                    Backend = Phonon2Recognizer.BackendLabel;
+
+                if (reason is null)
+                {
+                    RefreshPhonon2Status();
+                    return;
+                }
+
+                Phonon2Status = $"Last dictation used {selection.LastRecognizerName}. {reason}";
+                // Only interrupt with an error when the user explicitly asked for Phonon-2 and it was installed.
+                if (selection.Engine == SpeechEngine.Phonon2 && IsPhonon2Installed && SpeechEnginePolicy.IsPhonon2Language(SelectedLanguage))
+                    AddUserError($"Phonon-2 could not transcribe this recording, so Whisper was used. {reason}");
+            });
+        }
+
+        private async System.Threading.Tasks.Task InstallPhonon2Async()
+        {
+            if (!CanInstallPhonon2) return;
+            _isInstallingPhonon2 = true;
+            RefreshPhonon2Status();
+            var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            try
+            {
+                IsDownloadingModel = true;
+                IsModelDownloadIndeterminate = false;
+                ShowOverlay = true;
+                OverlayTitle = "Installing Phonon-2";
+                OverlayMessage = "Downloading and verifying Phonon-2...";
+                OverlayIsIndeterminate = false;
+                Phonon2Status = "Downloading Phonon-2...";
+                var progress = new Progress<double>(fraction => dispatcher.BeginInvoke(() =>
+                {
+                    var percent = Math.Clamp(fraction * 100, 0, 100);
+                    ModelDownloadProgress = percent;
+                    OverlayProgress = percent;
+                    OverlayMessage = $"Downloading Phonon-2... {fraction:P0}";
+                    Phonon2Status = OverlayMessage;
+                }));
+                await _phonon2Store.EnsureInstalledAsync(progress);
+                _phonon2Recognizer?.ResetAfterInstall();
+                Logger.Success("Phonon-2 model installed and verified");
+            }
+            catch (Exception ex)
+            {
+                Logger.OperationFailed("Phonon-2 download", ex.Message);
+                AddUserError($"Phonon-2 could not be downloaded or verified ({ex.Message}). Whisper remains available; check your connection and disk space, then retry.");
+            }
+            finally
+            {
+                _isInstallingPhonon2 = false;
+                IsDownloadingModel = false;
+                ShowOverlay = false;
+                RefreshPhonon2Status();
+            }
         }
 
         private void DetectBackend()
@@ -1317,6 +1460,7 @@ namespace Talkies.Windows.ViewModels
 
             if (name is nameof(SelectedModel)
                 or nameof(SelectedLanguage)
+                or nameof(SelectedSpeechEngine)
                 or nameof(VadEnabled)
                 or nameof(FilterEnabled)
                 or nameof(SelectedMicrophone)
@@ -1409,6 +1553,9 @@ namespace Talkies.Windows.ViewModels
             }
         }
     }
+
+    /// <summary>Speech-engine choice shown in settings.</summary>
+    public sealed record SpeechEngineOption(SpeechEngine Value, string Label);
 
     public class RelayCommand : ICommand
     {
