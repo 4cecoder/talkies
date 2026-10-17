@@ -224,19 +224,19 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: macos-release
           path: artifacts
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: windows-release
           path: artifacts
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: linux-release
           path: artifacts
@@ -290,7 +290,7 @@ jobs:
 
       - name: Download Gentoo overlay
         if: ${{ github.ref_type == 'tag' }}
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: linux-release-gentoo
           path: artifacts/gentoo-release
