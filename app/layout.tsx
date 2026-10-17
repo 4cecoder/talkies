@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "./components/Toast/useToast";
 
@@ -8,8 +8,8 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://talkies.app";
 
 export const metadata: Metadata = {
   title: "Talkies — Open-source offline dictation",
-  description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux, free under MIT.",
-  keywords: ["voice to text", "transcription", "writing assistant", "productivity", "AI", "speech to text", "dictation"],
+  description: "Open-source, on-device dictation for macOS, Windows, Linux, and Android. Local speech recognition and optional cleanup, free under MIT. No account, no cloud.",
+  keywords: ["dictation", "speech to text", "voice typing", "offline", "on-device", "open source", "Whisper", "privacy"],
   authors: [{ name: "Talkies Team" }],
   creator: "Talkies",
   publisher: "Talkies",
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: siteUrl,
     title: "Talkies — Open-source offline dictation",
-    description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux.",
+    description: "Open-source, on-device dictation for macOS, Windows, Linux, and Android. Speech recognition and cleanup run locally after a one-time model download.",
     siteName: "Talkies",
     images: [
       {
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Talkies — Open-source offline dictation",
-    description: "An open-source, offline alternative to closed dictation apps. Local speech recognition and optional cleanup for macOS, Windows, and Linux.",
+    description: "Open-source, on-device dictation for macOS, Windows, Linux, and Android. Speech recognition and cleanup run locally after a one-time model download.",
     images: [publicAsset("/og-image.svg")],
     creator: "@talkiesapp", // Update with actual Twitter handle
     site: "@talkiesapp", // Update with actual Twitter handle
@@ -76,16 +76,29 @@ export const metadata: Metadata = {
   // },
 };
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#07070b" },
+    { media: "(prefers-color-scheme: light)", color: "#fbfbfd" },
+  ],
+  colorScheme: "dark light",
+};
+
+// Runs before first paint: applies a saved theme choice and marks JS as
+// available so scroll-reveal styles never hide content for no-JS visitors.
+const themeBootstrap = `try{var d=document.documentElement;d.classList.add('js');var t=localStorage.getItem('talkies-theme');if(t==='light'||t==='dark')d.dataset.theme=t}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className="antialiased"
-      >
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      </head>
+      <body className="bg-bg text-fg antialiased">
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

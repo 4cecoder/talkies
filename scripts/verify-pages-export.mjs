@@ -35,4 +35,27 @@ assert.match(homepage, /property=\"og:image\" content=\"https:\/\/4cecoder\.gith
 assert.ok(existsSync(join(output, 'og-image.svg')), 'Open Graph image is missing from the static export');
 assert.ok(existsSync(join(output, 'favicon.svg')), 'Favicon is missing from the static export');
 
+// Landing page structure: landmarks, section anchors used by the header and footer, and the hero canvas.
+for (const landmark of [/<header[\s>]/, /<main[^>]*id="main"/, /<footer[\s>]/]) {
+  assert.match(homepage, landmark, `Homepage is missing landmark ${landmark}`);
+}
+for (const id of ['how', 'engines', 'platforms', 'open-source', 'faq']) {
+  assert.match(homepage, new RegExp(`id="${id}"`), `Homepage is missing the #${id} section`);
+}
+assert.equal((homepage.match(/<h1[\s>]/g) ?? []).length, 1, 'Homepage must have exactly one <h1>');
+assert.match(homepage, /<canvas[^>]*>/, 'Homepage hero canvas is missing');
+assert.match(homepage, /class="hero-fallback/, 'Homepage hero must render the CSS gradient fallback');
+assert.match(homepage, /Phonon-2/, 'Homepage must describe the Phonon-2 engine');
+assert.match(homepage, /localStorage\.getItem\('talkies-theme'\)/, 'Theme bootstrap script is missing');
+
+// Static, local-first site: no analytics, trackers, or remote fonts.
+for (const [route, file] of pages) {
+  const html = readFileSync(join(output, file), 'utf8');
+  assert.doesNotMatch(
+    html,
+    /googletagmanager|google-analytics|gtag\(|plausible\.io|segment\.com|fonts\.googleapis|fonts\.gstatic/i,
+    `Tracking script or remote font found at ${route}`,
+  );
+}
+
 console.log(`Verified ${pages.length} GitHub Pages routes and their local static assets in ${output}`);

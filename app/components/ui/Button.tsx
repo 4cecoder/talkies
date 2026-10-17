@@ -25,25 +25,25 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const baseStyles = cn(
       'inline-flex items-center justify-center font-semibold',
       'rounded-xl transition-all duration-200',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0f]',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
       'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
       fullWidth && 'w-full'
     );
 
     const variants = {
       primary: cn(
-        'bg-white text-[#0a0a0f]',
-        'hover:bg-white/90 hover:scale-105',
+        'bg-cta text-cta-fg',
+        'hover:opacity-90',
         'active:scale-100'
       ),
       secondary: cn(
-        'bg-white/5 border border-white/10 text-white',
-        'hover:bg-white/10 hover:border-white/20',
+        'bg-surface border border-line-strong text-fg',
+        'hover:bg-surface-2',
         'active:scale-98'
       ),
       ghost: cn(
-        'bg-transparent text-white',
-        'hover:bg-white/5',
+        'bg-transparent text-fg',
+        'hover:bg-surface-2',
         'active:scale-98'
       ),
       gradient: cn(
