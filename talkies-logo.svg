@@ -1,0 +1,60 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="micGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ec4899;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="glowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#ec4899;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+
+  <!-- Glow effect -->
+  <ellipse cx="256" cy="200" rx="120" ry="160" fill="url(#glowGradient)" filter="blur(20px)" opacity="0.6"/>
+
+  <!-- Microphone body -->
+  <rect x="206" y="80" width="100" height="180" rx="50" fill="url(#micGradient)" stroke="url(#micGradient)" stroke-width="4"/>
+
+  <!-- Microphone grille lines -->
+  <line x1="226" y1="120" x2="286" y2="120" stroke="#ffffff" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+  <line x1="226" y1="145" x2="286" y2="145" stroke="#ffffff" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+  <line x1="226" y1="170" x2="286" y2="170" stroke="#ffffff" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+  <line x1="226" y1="195" x2="286" y2="195" stroke="#ffffff" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+  <line x1="226" y1="220" x2="286" y2="220" stroke="#ffffff" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- Microphone stand connector -->
+  <path d="M 256 260 L 256 300 M 206 300 L 306 300 M 230 300 L 230 360 M 282 360 L 230 360"
+        stroke="url(#micGradient)"
+        stroke-width="12"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"/>
+
+  <!-- Sound wave indicators -->
+  <path d="M 340 160 Q 360 160 360 180 Q 360 200 340 200"
+        stroke="url(#micGradient)"
+        stroke-width="6"
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.7"/>
+  <path d="M 370 140 Q 400 140 400 180 Q 400 220 370 220"
+        stroke="url(#micGradient)"
+        stroke-width="6"
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.5"/>
+
+  <path d="M 172 160 Q 152 160 152 180 Q 152 200 172 200"
+        stroke="url(#micGradient)"
+        stroke-width="6"
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.7"/>
+  <path d="M 142 140 Q 112 140 112 180 Q 112 220 142 220"
+        stroke="url(#micGradient)"
+        stroke-width="6"
+        stroke-linecap="round"
+        fill="none"
+        opacity="0.5"/>
+</svg>
