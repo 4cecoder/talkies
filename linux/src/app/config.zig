@@ -20,6 +20,25 @@ pub const EnhancerProvider = enum {
     }
 };
 
+/// Which speech recognizer transcribes dictation. Whisper is always the
+/// fallback when Phonon-2 is missing, fails, or cannot handle the language.
+pub const SpeechEngine = enum {
+    /// Phonon-2 for English when it is downloaded; Whisper otherwise.
+    auto,
+    /// Phonon-2 (English-only) whenever it can run, Whisper as fallback.
+    phonon,
+    /// Whisper only.
+    whisper,
+
+    pub fn displayName(self: SpeechEngine) []const u8 {
+        return switch (self) {
+            .auto => "Automatic (Phonon-2, Whisper fallback)",
+            .phonon => "Phonon-2",
+            .whisper => "Whisper",
+        };
+    }
+};
+
 /// S1-mini cleanup options, as offered by the macOS General settings.
 pub const CleanupStyle = enum { casual, semi_casual, semi_formal };
 pub const CleanupStructure = enum { prose, lists };
@@ -53,6 +72,8 @@ pub const Config = struct {
     audio_device: []const u8 = "", // Empty string means use default device
 
     // [transcription]
+    speech_engine: SpeechEngine = .auto,
+    /// Whisper model (the fallback recognizer, or the only one).
     model: []const u8 = "base",
     language: []const u8 = "en",
     threads: u8 = 4,
@@ -387,10 +408,11 @@ const field_specs = [_]FieldSpec{
 
     .{ .section = "audio", .key = "device", .field = "audio_device", .comment = "PulseAudio source name (empty = default). List with: talkies audio-list" },
 
-    .{ .section = "transcription", .key = "model", .field = "model", .comment = "tiny | base | small | medium | large" },
+    .{ .section = "transcription", .key = "speech_engine", .field = "speech_engine", .comment = "auto | phonon | whisper. auto uses Phonon-2 for English once downloaded (Settings > Transcription or `talkies models`); Whisper is always the fallback" },
+    .{ .section = "transcription", .key = "model", .field = "model", .comment = "Whisper model: tiny | base | small | medium | large" },
     .{ .section = "transcription", .key = "language", .field = "language" },
     .{ .section = "transcription", .key = "threads", .field = "threads" },
-    .{ .section = "transcription", .key = "vocabulary_prompt", .field = "vocabulary_prompt", .comment = "Comma-separated names and uncommon words used as on-device Whisper hints (max 400 chars)" },
+    .{ .section = "transcription", .key = "vocabulary_prompt", .field = "vocabulary_prompt", .comment = "Comma-separated names and uncommon words used as on-device Whisper hints (max 400 chars; Phonon-2 ignores them)" },
 
     .{ .section = "enhancement", .key = "provider", .field = "enhancer", .comment = "none | s1_mini | ollama | lm_studio" },
 
@@ -530,6 +552,7 @@ test "config initialization matches macOS defaults" {
 
     try std.testing.expectEqualStrings("base", cfg.model);
     try std.testing.expectEqualStrings("en", cfg.language);
+    try std.testing.expectEqual(SpeechEngine.auto, cfg.speech_engine);
     try std.testing.expect(cfg.threads == 4);
     try std.testing.expect(cfg.auto_paste);
     try std.testing.expect(cfg.restore_clipboard);
@@ -614,6 +637,42 @@ test "parse toml content" {
     try std.testing.expectEqualStrings("Technical Writing", cfg.ollama_enhancement_mode);
 }
 
+test "speech_engine parses every option and rejects unknown engines" {
+    const allocator = std.testing.allocator;
+    inline for (.{ .{ "auto", SpeechEngine.auto }, .{ "phonon", SpeechEngine.phonon }, .{ "whisper", SpeechEngine.whisper } }) |case| {
+        var cfg = Config.init(allocator);
+        defer cfg.deinit();
+        try cfg.parseToml("[transcription]\nspeech_engine = \"" ++ case[0] ++ "\"\n");
+        try std.testing.expectEqual(case[1], cfg.speech_engine);
+    }
+    {
+        // Unquoted values are accepted like the other enum keys.
+        var cfg = Config.init(allocator);
+        defer cfg.deinit();
+        try cfg.parseToml("[transcription]\nspeech_engine = whisper\n");
+        try std.testing.expectEqual(SpeechEngine.whisper, cfg.speech_engine);
+    }
+    {
+        var cfg = Config.init(allocator);
+        defer cfg.deinit();
+        try std.testing.expectError(error.InvalidEnumValue, cfg.parseToml("[transcription]\nspeech_engine = \"parakeet\"\n"));
+    }
+    {
+        // The key belongs to [transcription]; elsewhere it is ignored.
+        var cfg = Config.init(allocator);
+        defer cfg.deinit();
+        try cfg.parseToml("[general]\nspeech_engine = \"whisper\"\n");
+        try std.testing.expectEqual(SpeechEngine.auto, cfg.speech_engine);
+    }
+    {
+        // Existing configs without the key get the default.
+        var cfg = Config.init(allocator);
+        defer cfg.deinit();
+        try cfg.parseToml("[transcription]\nmodel = \"small\"\n");
+        try std.testing.expectEqual(SpeechEngine.auto, cfg.speech_engine);
+    }
+}
+
 test "legacy s1_mini_enabled maps to enhancer unless provider is explicit" {
     const allocator = std.testing.allocator;
     {
@@ -635,6 +694,7 @@ test "toToml round trips every field" {
     var original = Config.init(allocator);
     defer original.deinit();
     original.enhancer = .lm_studio;
+    original.speech_engine = .phonon;
     original.lm_studio_max_tokens = 1234;
     original.push_to_talk_threshold = 0.25;
     original.mini_window = true;
@@ -651,6 +711,8 @@ test "toToml round trips every field" {
     try parsed.parseToml(toml);
 
     try std.testing.expectEqual(EnhancerProvider.lm_studio, parsed.enhancer);
+    try std.testing.expectEqual(SpeechEngine.phonon, parsed.speech_engine);
+    try std.testing.expect(std.mem.indexOf(u8, toml, "speech_engine = \"phonon\"") != null);
     try std.testing.expectEqual(@as(u32, 1234), parsed.lm_studio_max_tokens);
     try std.testing.expectEqual(@as(f64, 0.25), parsed.push_to_talk_threshold);
     try std.testing.expect(parsed.mini_window);

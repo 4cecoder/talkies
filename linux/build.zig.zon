@@ -26,10 +26,28 @@
     // Minimum nightly supporting the current package metadata and build APIs.
     // CI/release intentionally follow master so compiler breakages are caught early.
     .minimum_zig_version = "0.18.0-dev.35+5e754304d",
+    // CrispASR v0.8.43 (tag object 602a9888e7709a47edc988902ebeb34b0de41eb7,
+    // commit eb633d908120cc5f44b8af8cd4aeb1191f16bfd8) runs Phonon-2. Only the
+    // archive for the target architecture is fetched; see vendor/crispasr.
+    .dependencies = .{
+        // sha256 89ae56accb0b32450094d523594d93fd08bc07abe90b2c5b7102ef2c132001c3
+        .crispasr_linux_x86_64 = .{
+            .url = "https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.43/libcrispasr-linux-x86_64.tar.gz",
+            .hash = "N-V-__8AAHAgOAQWba2nn7UnSaIzXsrt_kFCrDoo0gaL8vhv",
+            .lazy = true,
+        },
+        // sha256 b91a4bbe27d605cf3dc16bdaf2ac8af534e92efa1b27ccd90faeb2beb41d1f4b
+        .crispasr_linux_arm64 = .{
+            .url = "https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.43/libcrispasr-linux-arm64.tar.gz",
+            .hash = "N-V-__8AABCx6QKiiUXDkjIdqPgsSB36B_0SqT6M2wv5DlRU",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "vendor",
         // For example...
         //"LICENSE",
         //"README.md",

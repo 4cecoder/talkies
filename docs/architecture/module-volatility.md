@@ -34,7 +34,7 @@ app / presentation ├── inference libraries ─ model runtimes
 The app is the composition root and may depend on each layer. Contracts stay free of operating
 system and inference dependencies. Platform and inference adapters depend on contracts and expose
 small interfaces. UI code consumes those interfaces and user-facing results; it does not import
-WhisperKit, whisper.cpp, llama.cpp, or ONNX runtime objects directly.
+WhisperKit, PhononCoreML, CrispASR, whisper.cpp, llama.cpp, or ONNX runtime objects directly.
 
 Shared fixtures define behavior at the boundary: prompt framing, cleanup fallback, vocabulary
 normalization, export formatting, and insertion text. Platform tests may use different fakes or OS
@@ -49,7 +49,23 @@ APIs, but should assert the same contract where behavior is intended to match.
 | Linux | Shared JSON fixtures under `tests/fixtures`; transcript/cleanup contracts in Zig source | GTK/Wayland/X11 integration, native inference and build bindings under `linux/src` | Keep generated bindings and third-party build wiring isolated from app policy. |
 | Android | Pure Kotlin contracts in `mobile/android/core` | Compose app and input method in `:app`; model stores, cleanup adapter, JNI and native runtimes in `:inference` | The app is the composition root. `:core` has no Android or model-runtime dependency; `:inference` depends on `:core`; `:app` composes both. |
 
-`mobile/android/third_party/whisper.cpp` and `llama.cpp` are pinned submodules. Treat them as upstream-owned. Keep Talkies JNI adapters, CMake options, and third-party license integration inside `mobile/android/inference`; keep microphone capture, permissions, and input-method lifecycle inside `mobile/android/app`.
+`mobile/android/third_party/whisper.cpp`, `llama.cpp`, and `CrispASR` are pinned submodules. Treat them as upstream-owned. Keep Talkies JNI adapters, CMake options, and third-party license integration inside `mobile/android/inference`; keep microphone capture, permissions, and input-method lifecycle inside `mobile/android/app`.
+
+## Speech runtimes
+
+Every client runs speech recognition through an ordered runtime chain owned by its inference layer.
+Phonon-2 (English, compressed Parakeet TDT) is tried first; Whisper is always the last runtime and is
+never removed, so a missing, failing, or still-preparing Phonon-2 model falls back to the same
+recording on Whisper. The ordering rule is a pure policy on the stable side of each boundary
+(`TalkiesCore.SpeechEnginePreference`, `SpeechEnginePolicy.cs`, `engine/speech_policy.zig`,
+`:core` `SpeechEngine.kt`); runtime adapters implement a small recognizer interface.
+
+| Platform | Phonon-2 runtime | Isolation from Whisper/llama ggml |
+|---|---|---|
+| macOS | `phonon-coreml` 1.1.2 Swift package on Core ML | Separate framework; no shared ggml |
+| Windows | CrispASR 0.8.43 C ABI | Separate `--crispasr-worker` process |
+| Linux | CrispASR 0.8.43 C ABI | `dlmopen` namespace via `libtalkies-native` shim |
+| Android | CrispASR `parakeet` target built from source | Separate `libtalkies_phonon.so` exporting only JNI symbols |
 
 ## When changing a boundary
 

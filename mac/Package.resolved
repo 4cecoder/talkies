@@ -1,5 +1,5 @@
 {
-  "originHash" : "07f15e454f84efb71ed0c8001946203ddd95a1fccf369f366a38084fcf8f15f7",
+  "originHash" : "bd39344f79c480988035eb31c2410f0b3d9ee1a8d1034ffda70d3d1a3a32c43a",
   "pins" : [
     {
       "identity" : "llama.swift",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "716419d4d7aa542fce301e809cde7234c68ddbc6",
         "version" : "2.10549.0"
+      }
+    },
+    {
+      "identity" : "phonon-coreml",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/fermionresearch/phonon-coreml",
+      "state" : {
+        "revision" : "bf59e574639b060e30ee1a3f9c0e003fed5744c8",
+        "version" : "1.1.2"
       }
     },
     {

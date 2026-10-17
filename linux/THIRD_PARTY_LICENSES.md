@@ -120,4 +120,36 @@ The pre-built bindings are built for Zig 0.15.2 and use the `@Type` builtin whic
 
 ---
 
-*Last Updated: 2025-12-18*
+## CrispASR (Phonon-2 runtime)
+
+**Source**: [CrispStrobe/CrispASR](https://github.com/CrispStrobe/CrispASR), release `v0.8.43`
+(commit `eb633d908120cc5f44b8af8cd4aeb1191f16bfd8`)
+
+**License**: MIT. The full text is vendored unmodified at `vendor/crispasr/LICENSE`
+(Copyright (c) 2023-2026 The ggml authors, and contributors listed there).
+
+**Used as**:
+- `vendor/crispasr/include/crispasr_session.h`: the upstream-generated C ABI header, unmodified
+  (pins and hashes in `vendor/crispasr/README.md`).
+- `lib/crispasr/`: the prebuilt `libcrispasr-linux-<arch>.tar.gz` release libraries, fetched by
+  `build.zig` at a pinned hash. Installed beside them are the archive's `LICENSE` and
+  `THIRD_PARTY_NOTICES.txt`, which cover the libraries the archive redistributes: ggml (MIT),
+  OpenBLAS (BSD-3-Clause), and the GCC runtime libraries `libgomp` and `libgfortran`
+  (GPL-3.0-or-later WITH GCC-exception-3.1) and, on x86_64, `libquadmath` (LGPL-2.1-or-later).
+
+Talkies loads CrispASR at run time into a separate dynamic-linker namespace; it is not linked into
+any Talkies binary.
+
+## Phonon-2 model (downloaded, not bundled)
+
+**Source**: [cstr/phonon2-GGUF](https://huggingface.co/cstr/phonon2-GGUF/tree/3ed3e6ad6e7ce63affffeede37328ff756efaa2f),
+pinned revision `3ed3e6ad6e7ce63affffeede37328ff756efaa2f`
+
+**License**: CC-BY-4.0. Phonon-2, Copyright 2026 Fermion Research, derived from NVIDIA Parakeet TDT
+0.6B v3. The upstream `LICENSE` and `NOTICE` are downloaded, size- and SHA-256-verified, and stored
+beside the weights in `~/.local/share/talkies/models/phonon2-<revision>/`. The weights are never
+shipped in a Talkies package.
+
+---
+
+*Last Updated: 2026-10-16*

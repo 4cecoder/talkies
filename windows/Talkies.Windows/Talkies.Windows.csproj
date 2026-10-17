@@ -26,6 +26,62 @@
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
   </ItemGroup>
+  <!-- CrispASR (MIT) runs Phonon-2 through its Parakeet TDT backend. There is no NuGet package, so the
+       pinned upstream CPU release archive is downloaded once per version, verified, and its DLLs are
+       copied to crispasr\ (kept apart from LLamaSharp's identically named ggml DLLs; see
+       Services/CrispAsrNative.cs). Offline builds can pass -p:CrispAsrArchivePath=<verified archive>
+       or opt out with -p:TalkiesIncludeCrispAsrRuntime=false (Phonon-2 then reports itself missing
+       and Whisper is used). -->
+  <PropertyGroup>
+    <TalkiesIncludeCrispAsrRuntime Condition="'$(TalkiesIncludeCrispAsrRuntime)' == ''">true</TalkiesIncludeCrispAsrRuntime>
+    <CrispAsrVersion>0.8.43</CrispAsrVersion>
+    <CrispAsrArchiveName>libcrispasr-windows-x86_64.tar.gz</CrispAsrArchiveName>
+    <CrispAsrArchiveUrl>https://github.com/CrispStrobe/CrispASR/releases/download/v$(CrispAsrVersion)/$(CrispAsrArchiveName)</CrispAsrArchiveUrl>
+    <CrispAsrArchiveSha256>cee1a13ee3681348b6cf0ad0cd10eecd64c0acff653e2db43d7e1244079ca07a</CrispAsrArchiveSha256>
+    <CrispAsrCacheDirectory Condition="'$(CrispAsrCacheDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'crispasr', '$(CrispAsrVersion)'))</CrispAsrCacheDirectory>
+    <CrispAsrArchivePath Condition="'$(CrispAsrArchivePath)' == ''">$(CrispAsrCacheDirectory)$(CrispAsrArchiveName)</CrispAsrArchivePath>
+    <CrispAsrExtractPath>$(CrispAsrCacheDirectory)extracted</CrispAsrExtractPath>
+    <CrispAsrPayloadRoot>libcrispasr-windows-x86_64</CrispAsrPayloadRoot>
+    <CrispAsrTar Condition="'$(OS)' == 'Windows_NT'">$(SystemRoot)\System32\tar.exe</CrispAsrTar>
+    <CrispAsrTar Condition="'$(OS)' != 'Windows_NT'">tar</CrispAsrTar>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TalkiesIncludeCrispAsrRuntime)' == 'true'">
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/bin/crispasr.dll" Member="$(CrispAsrPayloadRoot)/bin/crispasr.dll" Sha256="3062ce9130dbb000c6c726462591ee9b6219ef6731709a7204d74559cf19796d" Link="crispasr\crispasr.dll" />
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/bin/ggml.dll" Member="$(CrispAsrPayloadRoot)/bin/ggml.dll" Sha256="cbbea8e9f69af9ba16684c9c52af3c08784886950c1e6815cb212e6c84b5d25e" Link="crispasr\ggml.dll" />
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/bin/ggml-base.dll" Member="$(CrispAsrPayloadRoot)/bin/ggml-base.dll" Sha256="7816f050fd02c1199250b01cf147af0a1f3d7d85041917ff9a5aff7eb3a955f2" Link="crispasr\ggml-base.dll" />
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/bin/ggml-cpu.dll" Member="$(CrispAsrPayloadRoot)/bin/ggml-cpu.dll" Sha256="1b658780a5dcf6d86ec93f698960dd159d922ab00f8e6178457ada07180d2c3b" Link="crispasr\ggml-cpu.dll" />
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/LICENSE" Member="$(CrispAsrPayloadRoot)/LICENSE" Sha256="51b246c135c42131ec3bee3ed9a70284b2559f0516d76c9f617dcddb9e682869" Link="licenses\CrispASR\LICENSE" />
+    <CrispAsrPayload Include="$(CrispAsrExtractPath)/$(CrispAsrPayloadRoot)/THIRD_PARTY_NOTICES.txt" Member="$(CrispAsrPayloadRoot)/THIRD_PARTY_NOTICES.txt" Sha256="2ec2587202bcc2bf658962ca1b339f29b3f25986a0a68818ccf1601d40d661ce" Link="licenses\CrispASR\THIRD_PARTY_NOTICES.txt" />
+    <None Include="@(CrispAsrPayload)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Update="ThirdParty\CrispASR-NOTICE.txt" Link="licenses\CrispASR\TALKIES-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="TalkiesAcquireCrispAsrRuntime" BeforeTargets="BeforeBuild" Condition="'$(TalkiesIncludeCrispAsrRuntime)' == 'true'">
+    <DownloadFile Condition="!Exists('$(CrispAsrArchivePath)')" SourceUrl="$(CrispAsrArchiveUrl)" DestinationFolder="$(CrispAsrCacheDirectory)" DestinationFileName="$(CrispAsrArchiveName)" Retries="3" />
+    <GetFileHash Files="$(CrispAsrArchivePath)" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="_CrispAsrArchiveActualSha256" />
+    </GetFileHash>
+    <Delete Condition="'$(_CrispAsrArchiveActualSha256)' != '$(CrispAsrArchiveSha256)' And '$(CrispAsrArchivePath)' == '$(CrispAsrCacheDirectory)$(CrispAsrArchiveName)'" Files="$(CrispAsrArchivePath)" />
+    <Error Condition="'$(_CrispAsrArchiveActualSha256)' != '$(CrispAsrArchiveSha256)'" Text="CrispASR $(CrispAsrVersion) archive failed SHA-256 verification (expected $(CrispAsrArchiveSha256), got $(_CrispAsrArchiveActualSha256)). It was not used." />
+
+    <PropertyGroup>
+      <_CrispAsrStamp>$(CrispAsrExtractPath)/.verified-$(CrispAsrArchiveSha256)</_CrispAsrStamp>
+    </PropertyGroup>
+    <RemoveDir Condition="!Exists('$(_CrispAsrStamp)')" Directories="$(CrispAsrExtractPath)" />
+    <MakeDir Condition="!Exists('$(_CrispAsrStamp)')" Directories="$(CrispAsrExtractPath)" />
+    <Exec Condition="!Exists('$(_CrispAsrStamp)')" Command="&quot;$(CrispAsrTar)&quot; -xzf &quot;$(CrispAsrArchivePath)&quot; -C &quot;$(CrispAsrExtractPath)&quot; @(CrispAsrPayload->'%(Member)', ' ')" />
+
+    <!-- Verify every file that ships, on every build, independent of the archive check. -->
+    <GetFileHash Files="@(CrispAsrPayload)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_CrispAsrHashed" />
+    </GetFileHash>
+    <ItemGroup>
+      <_CrispAsrBadHash Include="@(_CrispAsrHashed)" Condition="'%(_CrispAsrHashed.FileHash)' != '%(_CrispAsrHashed.Sha256)'" />
+    </ItemGroup>
+    <RemoveDir Condition="'@(_CrispAsrBadHash)' != ''" Directories="$(CrispAsrExtractPath)" />
+    <Error Condition="'@(_CrispAsrBadHash)' != ''" Text="CrispASR runtime files failed SHA-256 verification: @(_CrispAsrBadHash->'%(Member)')" />
+    <Touch Condition="!Exists('$(_CrispAsrStamp)')" Files="$(_CrispAsrStamp)" AlwaysCreate="true" />
+  </Target>
+
    <ItemGroup>
      <EmbeddedResource Include="Resources\Prompts\*.txt" />
      <Content Include="Resources\talkies-app-icon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

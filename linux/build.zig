@@ -1,7 +1,9 @@
 //! Talkies for Linux - build graph split by volatility.
 //!
 //!   vendor (lowest)  libwhisper / libggml* / libllama      bundled in lib/
-//!   native           libtalkies-native.so  (S1-mini llama runtime, C ABI)
+//!                    CrispASR + its own ggml                bundled in lib/crispasr/
+//!   native           libtalkies-native.so  (S1-mini llama runtime and the
+//!                    CrispASR loader for Phonon-2, C ABI)
 //!   core             src/core   pure Zig helpers           \
 //!   engine           src/engine audio/VAD/whisper/IO        } linked into bin/talkies
 //!   app (highest)    src/app    daemon, config, prompts    /
@@ -19,11 +21,25 @@ const gtk_build = @import("src/build/gtk.zig");
 const Ctx = struct {
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: ?std.builtin.Optimize,
     has_x11: bool,
     /// Install prefix of a private whisper.cpp/llama.cpp build (from-source
     /// packaging, e.g. the Gentoo ebuild); null = system / pkg-config.
     native_prefix: ?[]const u8,
+};
+
+/// Libraries of the pinned CrispASR release archive, installed under their
+/// sonames (the archive's symlinks are not carried over). Optional ones are
+/// absent on some architectures.
+const crispasr_libraries = [_]struct { file: []const u8, soname: []const u8, optional: bool = false }{
+    .{ .file = "libcrispasr.so.0.8.43", .soname = "libcrispasr.so.1" },
+    .{ .file = "libggml.so.0.26.0", .soname = "libggml.so.0" },
+    .{ .file = "libggml-base.so.0.26.0", .soname = "libggml-base.so.0" },
+    .{ .file = "libggml-cpu.so.0.26.0", .soname = "libggml-cpu.so.0" },
+    .{ .file = "libopenblas.so.0", .soname = "libopenblas.so.0" },
+    .{ .file = "libgfortran.so.5", .soname = "libgfortran.so.5" },
+    .{ .file = "libgomp.so.1", .soname = "libgomp.so.1" },
+    .{ .file = "libquadmath.so.0", .soname = "libquadmath.so.0", .optional = true },
 };
 
 pub fn build(b: *std.Build) void {
@@ -47,6 +63,9 @@ pub fn build(b: *std.Build) void {
     const ui_lib = addUiLib(ctx);
     b.installArtifact(native_lib);
     b.installArtifact(ui_lib);
+    if (b.option(bool, "crispasr", "Bundle the pinned CrispASR runtime for Phonon-2 into lib/crispasr (default: on for Linux x86_64/aarch64)") orelse true) {
+        installCrispAsr(ctx);
+    }
     // Themed tray icons (KDE ColorScheme / GTK symbolic), found via IconThemePath.
     b.installDirectory(.{ .source_dir = b.path("assets/icons"), .install_dir = .prefix, .install_subdir = "share/icons" });
 
@@ -107,7 +126,10 @@ fn addNativeLib(ctx: Ctx) *std.Build.Step.Compile {
     const b = ctx.b;
     const module = b.createModule(.{ .target = ctx.target, .optimize = ctx.optimize, .link_libc = true });
     module.addCSourceFile(.{ .file = b.path("src/native/s1_runtime.c"), .flags = cFlags(ctx) });
+    // CrispASR is dlmopen'ed at run time, never linked: only its pinned header is needed here.
+    module.addCSourceFile(.{ .file = b.path("src/native/crispasr_runtime.c"), .flags = cFlags(ctx) });
     module.addIncludePath(b.path("src/native"));
+    module.addSystemIncludePath(b.path("vendor/crispasr/include"));
     addNativePrefix(ctx, module);
     module.linkSystemLibrary("llama", .{});
     // Resolve the bundled libllama next to this library.
@@ -118,6 +140,29 @@ fn addNativeLib(ctx: Ctx) *std.Build.Step.Compile {
         .root_module = module,
         .version = .{ .major = 1, .minor = 0, .patch = 0 },
     });
+}
+
+/// Install the pinned CrispASR release (build.zig.zon) into lib/crispasr/,
+/// with its MIT license and third-party notices. Talkies loads it into a
+/// private namespace (src/native/crispasr_runtime.c); a missing runtime only
+/// means Phonon-2 is unavailable and Whisper is used.
+fn installCrispAsr(ctx: Ctx) void {
+    const b = ctx.b;
+    const target = ctx.target.result;
+    if (target.os.tag != .linux or target.abi.isMusl()) return;
+    const dep_name = switch (target.cpu.arch) {
+        .x86_64 => "crispasr_linux_x86_64",
+        .aarch64 => "crispasr_linux_arm64",
+        else => return,
+    };
+    const dep = b.lazyDependency(dep_name, .{}) orelse return;
+    for (crispasr_libraries) |lib| {
+        if (lib.optional and target.cpu.arch != .x86_64) continue;
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(dep.path(b.fmt("lib/{s}", .{lib.file})), .lib, b.fmt("crispasr/{s}", .{lib.soname})).step);
+    }
+    for ([_][]const u8{ "LICENSE", "THIRD_PARTY_NOTICES.txt" }) |name| {
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(dep.path(name), .lib, b.fmt("crispasr/{s}", .{name})).step);
+    }
 }
 
 /// GTK4 windows (HUD, settings, status monitor, YAP) and the D-Bus tray.
@@ -171,6 +216,7 @@ fn addEngineModule(ctx: Ctx, core: *std.Build.Module, native_lib: *std.Build.Ste
     addCImport(ctx, module, "c_hotkey", "hotkey.h");
     addCImport(ctx, module, "c_input", "input.h");
     addCImport(ctx, module, "c_s1_runtime", "s1_runtime.h");
+    addCImport(ctx, module, "c_crispasr_runtime", "crispasr_runtime.h");
     addCImport(ctx, module, "c_vad", "vad.h");
     addCImport(ctx, module, "c_whisper", "whisper.h");
 
@@ -234,7 +280,8 @@ fn addCImport(ctx: Ctx, module: *std.Build.Module, name: []const u8, header: []c
     const translation = b.addTranslateC(.{
         .root_source_file = b.path(b.fmt("src/c_headers/{s}", .{header})),
         .target = ctx.target,
-        .optimize = ctx.optimize,
+        // Translate-C needs a concrete mode; null means the module default.
+        .optimize = ctx.optimize orelse .debug,
     });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
     translation.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });

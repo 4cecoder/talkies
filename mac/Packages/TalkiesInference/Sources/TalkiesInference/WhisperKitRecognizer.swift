@@ -7,6 +7,7 @@ import TalkiesCore
 public final class WhisperKitRecognizer {
     private let modelName: String
     private var whisperKit: WhisperKit?
+    private var preparation: Task<Void, Error>?
 
     public var isReady: Bool { whisperKit != nil }
 
@@ -225,5 +226,29 @@ public enum WhisperKitRecognizerError: LocalizedError {
         case .notInitialized:
             return "Local speech recognizer not initialized"
         }
+    }
+}
+
+extension WhisperKitRecognizer: LocalSpeechRecognizer {
+    public nonisolated var runtimeID: SpeechRuntimeID { .whisper }
+
+    public var isInstalledLocally: Bool { Self.cachedModelFolder(modelName: modelName) != nil }
+
+    /// Shares one in-flight load between prewarm and transcription callers.
+    public func prepare() async throws {
+        if isReady { return }
+        if let preparation { return try await preparation.value }
+        let task = Task { try await initialize() }
+        preparation = task
+        defer { preparation = nil }
+        try await task.value
+    }
+
+    public func transcribe(
+        _ audioURL: URL,
+        vocabulary: [String],
+        onProgress: (@Sendable (Double) -> Void)?
+    ) async throws -> [TranscriptSegment] {
+        try await transcribe(audioURL, deleteAudioAfterProcessing: false, vocabulary: vocabulary, onProgress: onProgress)
     }
 }

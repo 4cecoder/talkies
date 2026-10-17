@@ -7,6 +7,13 @@
 #define MODE_COUNT 5
 #define SAVE_DEBOUNCE_MS 500
 
+static const char *const speech_engines[] = {"Automatic", "Phonon-2", "Whisper", NULL};
+static const char *const speech_engine_descriptions[] = {
+    "Phonon-2 for English once downloaded, otherwise Whisper",
+    "Always prefer Phonon-2 (English-only); Whisper only as fallback",
+    "Use Whisper for every language",
+    NULL,
+};
 static const char *const whisper_models[] = {"tiny", "base", "small", "medium", "large", NULL};
 static const char *const whisper_model_labels[] = {"Tiny", "Base", "Small", "Medium", "Large", NULL};
 static const char *const enhancer_names[] = {"Off", "S1-mini", "Ollama", "LM Studio", NULL};
@@ -48,6 +55,13 @@ struct TalkiesSettingsWindow {
     GtkWidget *audio_device;
     GtkStringList *audio_device_list;
     GPtrArray *audio_device_names; // char*, index-aligned with the list
+    GtkWidget *speech_engine;
+    GtkWidget *phonon_status;
+    GtkWidget *phonon_progress;
+    GtkWidget *phonon_download;
+    GtkWidget *phonon_remove;
+    TalkiesSettingsActionFn on_phonon_download;
+    TalkiesSettingsActionFn on_phonon_remove;
     GtkWidget *model;
     GtkWidget *language;
     GtkWidget *vocabulary;
@@ -175,6 +189,7 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
                                   ? g_ptr_array_index(win->audio_device_names, device)
                                   : "";
     copy_text(d->audio_device, sizeof d->audio_device, device_name);
+    d->speech_engine = choice_get(win->speech_engine);
     copy_text(d->model, sizeof d->model, choice_value(win->model));
     copy_text(d->language, sizeof d->language, gtk_editable_get_text(GTK_EDITABLE(win->language)));
     char *vocabulary_lines = text_view_text(win->vocabulary);
@@ -635,6 +650,18 @@ static void on_s1_remove_clicked(GtkButton *button, gpointer user_data) {
     if (win->on_s1_remove) win->on_s1_remove(win->user_data);
 }
 
+static void on_phonon_download_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_phonon_download) win->on_phonon_download(win->user_data);
+}
+
+static void on_phonon_remove_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_phonon_remove) win->on_phonon_remove(win->user_data);
+}
+
 static GtkWidget *provider_page(void) {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     return box;
@@ -894,11 +921,36 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     gtk_widget_set_size_request(win->audio_device, 280, -1);
     g_signal_connect(win->audio_device, "notify::selected", G_CALLBACK(on_changed), win);
     add_row(box, "Microphone", NULL, win->audio_device);
+    add_section(box, "Speech Engine");
+    win->speech_engine = choice_new(win, speech_engines, NULL, speech_engine_descriptions, NULL);
+    gtk_box_append(GTK_BOX(box), win->speech_engine);
+    add_section(box, "Phonon-2");
+    win->phonon_status = gtk_label_new("Checking...");
+    gtk_label_set_xalign(GTK_LABEL(win->phonon_status), 0);
+    gtk_label_set_wrap(GTK_LABEL(win->phonon_status), TRUE);
+    gtk_widget_set_hexpand(win->phonon_status, TRUE);
+    win->phonon_download = gtk_button_new_with_label("Download (674 MB)");
+    gtk_widget_add_css_class(win->phonon_download, "suggested-action");
+    g_signal_connect(win->phonon_download, "clicked", G_CALLBACK(on_phonon_download_clicked), win);
+    win->phonon_remove = gtk_button_new_with_label("Remove");
+    gtk_widget_add_css_class(win->phonon_remove, "destructive-action");
+    g_signal_connect(win->phonon_remove, "clicked", G_CALLBACK(on_phonon_remove_clicked), win);
+    GtkWidget *phonon_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_append(GTK_BOX(phonon_row), win->phonon_status);
+    gtk_box_append(GTK_BOX(phonon_row), win->phonon_download);
+    gtk_box_append(GTK_BOX(phonon_row), win->phonon_remove);
+    gtk_box_append(GTK_BOX(box), phonon_row);
+    win->phonon_progress = gtk_progress_bar_new();
+    gtk_widget_set_visible(win->phonon_progress, FALSE);
+    gtk_box_append(GTK_BOX(box), win->phonon_progress);
+    add_note(box, "English-only, on-device (CrispASR on the CPU). Pinned cstr/phonon2-GGUF (q8_0), "
+                  "SHA-256 verified. Phonon-2 by Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3 · "
+                  "CC-BY-4.0. Ignores the personal vocabulary below.");
     add_section(box, "Whisper");
     win->model = choice_new(win, whisper_model_labels, whisper_models, NULL, NULL);
-    add_row(box, "Model", "Larger models are more accurate but slower", win->model);
+    add_row(box, "Model", "Used for other languages and whenever Phonon-2 is unavailable", win->model);
     win->language = entry_new(win, "en", 80);
-    add_row(box, "Language", "ISO code, e.g. en, de, es", win->language);
+    add_row(box, "Language", "ISO code, e.g. en, de, es (Phonon-2 needs en)", win->language);
     add_section(box, "Personal Vocabulary");
     add_note(box, "Names and uncommon words Whisper should recognise, one per line.");
     win->vocabulary = gtk_text_view_new();
@@ -1024,6 +1076,7 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     gtk_widget_set_visible(win->assistant_insert_row, d->voice_assistant_mode);
 
     select_audio_device(win, d->audio_device);
+    choice_set(win->speech_engine, d->speech_engine);
     choice_set_value(win->model, d->model);
     gtk_editable_set_text(GTK_EDITABLE(win->language), d->language);
     char *vocabulary = vocabulary_to_lines(d->vocabulary_prompt);
@@ -1193,6 +1246,39 @@ void talkies_settings_window_set_s1_state(TalkiesSettingsWindow *win, TalkiesS1S
     gtk_widget_set_visible(win->s1_download, state == TALKIES_S1_MISSING || state == TALKIES_S1_FAILED);
     gtk_button_set_label(GTK_BUTTON(win->s1_download), state == TALKIES_S1_FAILED ? "Retry" : "Download (484 MB)");
     gtk_widget_set_visible(win->s1_remove, state == TALKIES_S1_READY);
+}
+
+void talkies_settings_window_set_phonon_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,
+                                                  TalkiesSettingsActionFn on_remove) {
+    if (!win) return;
+    win->on_phonon_download = on_download;
+    win->on_phonon_remove = on_remove;
+}
+
+void talkies_settings_window_set_phonon_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
+                                              const char *detail) {
+    if (!win) return;
+    char text[320];
+    switch (state) {
+    case TALKIES_S1_READY:
+        if (detail && detail[0]) g_snprintf(text, sizeof text, "Installed, but could not load: %s", detail);
+        else g_snprintf(text, sizeof text, "Installed and ready");
+        break;
+    case TALKIES_S1_DOWNLOADING:
+        g_snprintf(text, sizeof text, "Downloading... %d%%", (int)(fraction * 100.0 + 0.5));
+        break;
+    case TALKIES_S1_FAILED:
+        g_snprintf(text, sizeof text, "Download failed%s%s", detail ? ": " : "", detail ? detail : "");
+        break;
+    case TALKIES_S1_MISSING:
+    default: g_snprintf(text, sizeof text, "Not installed: Whisper transcribes until you download it"); break;
+    }
+    gtk_label_set_text(GTK_LABEL(win->phonon_status), text);
+    gtk_widget_set_visible(win->phonon_progress, state == TALKIES_S1_DOWNLOADING);
+    gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(win->phonon_progress), fraction);
+    gtk_widget_set_visible(win->phonon_download, state == TALKIES_S1_MISSING || state == TALKIES_S1_FAILED);
+    gtk_button_set_label(GTK_BUTTON(win->phonon_download), state == TALKIES_S1_FAILED ? "Retry" : "Download (674 MB)");
+    gtk_widget_set_visible(win->phonon_remove, state == TALKIES_S1_READY);
 }
 
 void talkies_settings_window_set_models(TalkiesSettingsWindow *win, TalkiesServer server,

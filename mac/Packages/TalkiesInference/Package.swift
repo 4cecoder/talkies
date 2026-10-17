@@ -9,6 +9,7 @@ let package = Package(
         .package(path: "../TalkiesCore"),
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.1.0"),
         .package(url: "https://github.com/mattt/llama.swift", exact: "2.10549.0"),
+        .package(url: "https://github.com/fermionresearch/phonon-coreml", exact: "1.1.2"),
     ],
     targets: [
         .target(
@@ -17,6 +18,7 @@ let package = Package(
                 .product(name: "TalkiesCore", package: "TalkiesCore"),
                 .product(name: "LlamaSwift", package: "llama.swift"),
                 .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "PhononCoreML", package: "phonon-coreml"),
             ],
             path: "Sources/TalkiesInference"
         ),

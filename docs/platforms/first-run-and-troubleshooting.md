@@ -7,12 +7,12 @@ Models are separate from the app packages. Updating or reinstalling Talkies norm
 ## macOS
 
 1. Open Talkies and grant microphone access when macOS asks.
-2. Make a short recording while connected to the internet. WhisperKit prepares its selected local speech model on first use. The default model is `openai_whisper-base`.
+2. Make a short recording while connected to the internet. The default English engine, Phonon-2, downloads about 345 MB and is prepared for the Neural Engine once. That can take several minutes, and Talkies uses an installed Whisper model meanwhile. For other languages, choose **Whisper (multilingual)** under **Settings → General → Speech Engine**. Its default model is `openai_whisper-base`.
 3. To use cleanup, enable S1-mini in **Settings → General**. Its English model is downloaded the first time cleanup runs and takes about 462 MiB.
 4. Grant Talkies access under **System Settings → Privacy & Security → Accessibility** when prompted so it can insert text into another app. If insertion is unavailable, use Talkies' explicit copy action and paste manually.
 5. Disconnect the network and try another short dictation to confirm the models are ready offline.
 
-WhisperKit stores model files below `~/Documents/huggingface/models/`. S1-mini and its license notices are stored below `~/Library/Application Support/Talkies/Models/`. Talkies preferences are in `~/.talkies/config.json`. To recover from an incomplete WhisperKit download, quit Talkies, remove only the affected model folder, and retry while online. To recover from an S1-mini download error, retry cleanup while online; Talkies validates the model before loading it and falls back to the raw transcript if cleanup fails.
+WhisperKit stores model files below `~/Documents/huggingface/models/`. Phonon-2 is stored below `~/Library/Application Support/Talkies/Models/Phonon-2-CoreML-<revision>/` and its compiled Neural Engine copy below `~/Library/Caches/phonon-coreml/`. S1-mini and its license notices are stored below `~/Library/Application Support/Talkies/Models/`. Talkies preferences are in `~/.talkies/config.json`. To recover from an incomplete WhisperKit download, quit Talkies, remove only the affected model folder, and retry while online. To recover from an S1-mini download error, retry cleanup while online; Talkies validates the model before loading it and falls back to the raw transcript if cleanup fails.
 
 If the microphone is blocked, open **System Settings → Privacy & Security → Microphone**, enable Talkies, then quit and reopen it. If macOS no longer recognizes Accessibility approval after replacing the app, remove the old Talkies entry from **Privacy & Security → Accessibility**, add the installed copy again, and relaunch it.
 

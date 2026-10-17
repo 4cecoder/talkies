@@ -274,6 +274,26 @@ struct GeneralSettingsView: View {
                     .foregroundColor(.secondary)
             }
 
+            Section(header: Text("Speech Engine")) {
+                Picker("Engine", selection: Binding(
+                    get: { settingsService.settings.speechEngine ?? .automatic },
+                    set: { settingsService.settings.speechEngine = $0 }
+                )) {
+                    ForEach(SpeechEnginePreference.allCases, id: \.self) { preference in
+                        Text(preference.displayName).tag(preference)
+                    }
+                }
+                .help("Phonon-2 is English only. Whisper is used automatically if Phonon-2 is unavailable or fails.")
+
+                Text("The first use downloads the Phonon-2 Core ML model (about 345 MB) and prepares it for the Neural Engine once. Choose Whisper to dictate in other languages.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text("Phonon-2 by Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3 · CC BY 4.0")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
             Section(header: Text("Transcript Cleanup")) {
                 Toggle("Clean up with S1-mini", isOn: s1MiniCleanupEnabled)
                     .help("Run the S1-mini text normalizer on this Mac after transcription")

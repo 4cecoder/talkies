@@ -15,6 +15,8 @@ struct AppSettings: Codable {
     /// Optional for backward compatibility with existing config.json files.
     var useMinimalDictationWindow: Bool? = false
     var s1Mini: S1MiniSettings?
+    /// Optional for backward compatibility; nil means `.automatic` (Phonon-2 with Whisper fallback).
+    var speechEngine: SpeechEnginePreference?
 
     // MARK: - Plugin Settings
     var ollama: OllamaSettings = OllamaSettings()
@@ -33,6 +35,7 @@ struct AppSettings: Codable {
         case debugMode
         case useMinimalDictationWindow
         case s1Mini
+        case speechEngine
         case ollama
         case lmStudio
         case sentiment

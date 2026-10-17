@@ -9,7 +9,7 @@
 
 typedef struct TalkiesSettingsWindow TalkiesSettingsWindow;
 
-// Keep in sync with SettingsData in src/settings_window.zig.
+// Translated for Zig by the build (c_settings); mapped in src/app/daemon.zig.
 typedef struct {
     // General
     double push_to_talk_threshold; // seconds
@@ -21,7 +21,9 @@ typedef struct {
 
     // Audio + transcription
     char audio_device[256];
-    char model[32];
+    // Recognizer: 0=auto (Phonon-2, Whisper fallback) 1=phonon 2=whisper
+    int speech_engine;
+    char model[32]; // Whisper model
     char language[16];
     char vocabulary_prompt[512]; // comma-separated (one term per line in the UI)
 
@@ -107,6 +109,13 @@ void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, Talkie
 // fraction: 0..1 while downloading. detail: optional extra text (errors).
 void talkies_settings_window_set_s1_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
                                           const char *detail);
+
+// Phonon-2 recognizer model (Transcription page). Same states as S1-mini;
+// detail is shown when Phonon-2 is installed but could not load.
+void talkies_settings_window_set_phonon_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,
+                                                  TalkiesSettingsActionFn on_remove);
+void talkies_settings_window_set_phonon_state(TalkiesSettingsWindow *win, TalkiesS1State state, double fraction,
+                                              const char *detail);
 
 // System status (General page): one summary line, details on demand.
 typedef enum { TALKIES_HEALTH_OK = 0, TALKIES_HEALTH_WARN = 1, TALKIES_HEALTH_FAIL = 2 } TalkiesHealthLevel;

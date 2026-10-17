@@ -1,8 +1,9 @@
 # Talkies for Linux
 
 Local-first dictation for X11 and Wayland: hold **Right Alt**, speak, release, and the text is typed
-into the focused app. Recording, Whisper transcription, optional cleanup and text insertion all run
-on this computer. For model setup and first-run checks across platforms, see the
+into the focused app. Recording, speech recognition (Phonon-2, with Whisper as the fallback),
+optional cleanup and text insertion all run on this computer. For model setup and first-run checks
+across platforms, see the
 [first-run guide](first-run-and-troubleshooting.md).
 
 ## Features
@@ -10,8 +11,9 @@ on this computer. For model setup and first-run checks across platforms, see the
 - **Push-to-talk or toggle**: hold Right Alt to dictate, or tap it to start and tap again to stop.
 - **Types into the focused app** through `/dev/uinput`, and restores your clipboard afterwards. If
   typing isn't possible, the text is put on the clipboard instead and the panel says so.
-- **On-device Whisper** (whisper.cpp), with optional cleanup by the on-device S1-mini model (downloaded from Settings) or by a
-  local Ollama / LM Studio server.
+- **On-device recognition**: Phonon-2 (English, on CrispASR) once you download it, and Whisper
+  (whisper.cpp) for every other case. Optional cleanup by the on-device S1-mini model (downloaded
+  from Settings) or by a local Ollama / LM Studio server.
 - **Dictation panel and tray** that follow the macOS app: a small waveform pill at the top of the
   screen, a live panel while you dictate, recent-transcript history, and a status tray icon.
 - **Works across desktops**: GNOME, KDE Plasma, Hyprland, Sway and X11 window managers.
@@ -40,7 +42,8 @@ with AVX2 (2013 or newer). CI installs each package on the distributions below b
 
 Then start **Talkies** from your app menu (or run `talkies daemon`) and run `talkies doctor` if
 anything does not work. The first start downloads the Whisper model once (about 150 MB); after that
-Talkies runs fully offline.
+Talkies runs fully offline. Phonon-2 (674 MB) is downloaded only when you ask for it, under
+Settings > Transcription or with `talkies models`.
 
 The packages install a udev rule that gives the logged-in user access to `/dev/uinput`, which Talkies
 uses to type text. On Wayland, the Right Alt hotkey additionally needs read access to keyboards:
@@ -104,14 +107,36 @@ with the AppIndicator extension, waybar, AGS and similar bars.
 Settings has five pages:
 
 - **General**: mini window, launch at login, push-to-talk threshold, voice assistant mode.
-- **Transcription**: microphone, Whisper model and language, personal vocabulary (one name or
-  uncommon word per line, used as recognition hints).
+- **Transcription**: microphone, speech engine (Automatic, Phonon-2 or Whisper), the Phonon-2
+  download, Whisper model and language, personal vocabulary (one name or uncommon word per line,
+  used as Whisper recognition hints).
 - **Enhancement**: off, S1-mini (download and manage the model here, then pick writing style,
   structure and context), Ollama or LM Studio.
 - **Output**: type at the cursor or copy only, paste shortcut, clipboard restore.
 - **Advanced**: config file location and developer options.
 
 A status card at the top of Settings shows the same checks as `talkies doctor`.
+
+### Speech engines
+
+Talkies tries the recognizers in order and uses the first one that works:
+
+1. **Phonon-2**, Fermion Research's compressed NVIDIA Parakeet TDT 0.6B v3 (English only, weights
+   CC-BY-4.0), run by [CrispASR](https://github.com/CrispStrobe/CrispASR).
+2. **Whisper** (whisper.cpp), the fallback. It is always available.
+
+| `speech_engine` | Uses Phonon-2 when | Otherwise |
+| --- | --- | --- |
+| `auto` (default) | it is downloaded and the language is English (`en`, `en-US`, ...) | Whisper |
+| `phonon` | it is downloaded and the language is English or `auto` | Whisper |
+| `whisper` | never | Whisper |
+
+Talkies also falls back to Whisper for a dictation when Phonon-2 fails to load or to transcribe it.
+After a load failure, Talkies stops retrying Phonon-2 until you change the speech settings or
+restart. Choosing **Phonon-2** in Settings starts its download. **Automatic** never downloads
+anything. Phonon-2 ignores the personal vocabulary, and `talkies transcribe --format vtt|srt` always
+uses Whisper because it needs Whisper's segment timestamps. `talkies doctor` and the Settings status
+card show which engine is in use and why.
 
 ### Hotkey on X11 and Wayland
 
@@ -155,9 +180,10 @@ voice_assistant_mode = false    # speak the result (spd-say / espeak-ng) instead
 device = ""                     # PulseAudio/PipeWire source; empty = default (talkies audio-list)
 
 [transcription]
-model = "base"                  # tiny | base | small | medium | large
-language = "en"
-vocabulary_prompt = "Talkies, S1-mini"  # recognition hints, max 400 characters
+speech_engine = "auto"          # auto | phonon | whisper (see Speech engines)
+model = "base"                  # Whisper model: tiny | base | small | medium | large
+language = "en"                 # Phonon-2 needs English; other languages use Whisper
+vocabulary_prompt = "Talkies, S1-mini"  # Whisper recognition hints, max 400 characters
 
 [enhancement]
 provider = "none"               # none | s1_mini | ollama | lm_studio
@@ -184,7 +210,7 @@ those providers.
 | --- | --- |
 | `talkies daemon` | Run Talkies: panel, tray and hotkey |
 | `talkies doctor` | Check this system and suggest fixes |
-| `talkies models` | Download the Whisper model named in the config |
+| `talkies models` | Download Phonon-2 (unless `speech_engine = "whisper"`) and the configured Whisper model |
 | `talkies audio-list` / `audio-set <device>` | List or choose the microphone |
 | `talkies audio` | Record a 5-second test |
 | `talkies quick` | Record, transcribe and type once, without the daemon |
@@ -195,6 +221,12 @@ those providers.
 Whisper models are pinned to a [specific upstream revision](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1),
 checked against their exact size and SHA-256, and verified before each load; verified models work
 offline. They live in `~/.local/share/talkies/models/`.
+
+Phonon-2 is pinned the same way, to [`cstr/phonon2-GGUF`](https://huggingface.co/cstr/phonon2-GGUF/tree/3ed3e6ad6e7ce63affffeede37328ff756efaa2f)
+at revision `3ed3e6ad`: `phonon2-q8_0.gguf` (674,342,560 bytes) plus its `LICENSE` and `NOTICE`,
+each with an exact size and SHA-256. They are stored in
+`~/.local/share/talkies/models/phonon2-<revision>/` and verified before each load. Loading never
+downloads anything and nothing falls back to a network service.
 
 ## Local crash diagnostics
 
@@ -212,7 +244,10 @@ rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/talkies/diagnostics"
 ## Building from source
 
 Needs Zig master (0.18.0-dev), GTK 4, PulseAudio (or pipewire-pulse), SQLite, X11 and D-Bus
-development files, plus the pinned whisper.cpp and llama.cpp that `build-native-deps.sh` builds:
+development files, plus the pinned whisper.cpp and llama.cpp that `build-native-deps.sh` builds.
+`zig build` fetches the pinned CrispASR v0.8.43 release libraries for x86_64 or aarch64 (hash-pinned
+in `build.zig.zon`) and installs them into `zig-out/lib/crispasr/`. Pass `-Dcrispasr=false` to build
+without them, for example offline. Talkies then uses Whisper only.
 
 ```bash
 packaging/linux/build-native-deps.sh            # once; installs into /usr/local
@@ -235,10 +270,17 @@ The build is split by how often each part changes:
 | --- | --- | --- |
 | `talkies` | `src/app`, `src/engine`, `src/core` | Daemon, config, audio, Whisper, hotkey, text insertion |
 | `libtalkies-ui.so` | `src/ui` | GTK 4 panel, Settings, tray (StatusNotifierItem over D-Bus) |
-| `libtalkies-native.so` | `src/native` | S1-mini cleanup on llama.cpp |
+| `libtalkies-native.so` | `src/native` | S1-mini cleanup on llama.cpp; the CrispASR loader for Phonon-2 |
 | bundled `libwhisper`, `libllama`, `libggml*` | `deps.env` | Pinned runtimes, shared by both models |
+| `lib/crispasr/` | `build.zig.zon` | CrispASR with its own ggml, BLAS and OpenMP libraries, plus their notices |
 
 All of these resolve each other through `$ORIGIN`, so the installed tree is relocatable.
+
+CrispASR ships its own ggml under the same sonames as the bundled one, and it exports `whisper_*`
+symbols. Talkies therefore never links it. `libtalkies-native.so` loads `lib/crispasr/` with
+`dlmopen` into a separate dynamic-linker namespace, so neither library can bind to the other's
+symbols. This needs glibc. `TALKIES_CRISPASR_DIR` points Talkies at a different copy of the runtime.
+Set `TALKIES_TEST_PHONON=1` to run the Phonon-2 JFK test once the model is installed.
 
 ## Troubleshooting
 
@@ -256,7 +298,10 @@ Start with `talkies doctor`; it names the problem and the fix. Common cases:
   extension). The hotkey and panel work without one.
 - **"Address already in use" when starting.** Another daemon is running. Quit it from the tray, or
   run `linux/scripts/cleanup.sh` in a source checkout.
-- **GPU.** The packaged build runs Whisper on the CPU (AVX2). A source build can enable whisper.cpp's
+- **"Phonon-2 could not load".** `talkies doctor` shows the reason. The CrispASR runtime has to be
+  in `lib/crispasr/` next to the `talkies` binary (or in `TALKIES_CRISPASR_DIR`). Until it loads,
+  Talkies uses Whisper. To stop trying Phonon-2, set `speech_engine = "whisper"`.
+- **GPU.** Whisper (in the packaged build) and Phonon-2 run on the CPU (AVX2). A source build can enable whisper.cpp's
   Vulkan or CUDA backends in `build-native-deps.sh`.
 
 ## License

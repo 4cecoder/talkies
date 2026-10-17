@@ -74,16 +74,21 @@ internal inline fun <reified T : Enum<T>> enumValueOrDefault(value: String?, def
     value?.let { candidate -> enumValues<T>().firstOrNull { it.name == candidate } } ?: default
 
 class MainActivity : ComponentActivity() {
-    private lateinit var modelStore: WhisperTinyModelStore
-    private lateinit var speechRecognizer: SpeechRecognizer
+    private lateinit var speechModels: LocalSpeechModels
     private lateinit var cleanupModelStore: S1MiniModelStore
     private lateinit var cleanupCleaner: TranscriptCleaner
     private val audioCapture = OfflineAudioCapture()
     private var transcript by mutableStateOf("")
-    private var status by mutableStateOf("Download the local Whisper model to get started.")
+    private var status by mutableStateOf("Download a local speech model to get started.")
     private var modelReady by mutableStateOf(false)
     private var modelBusy by mutableStateOf(false)
     private var modelProgress by mutableStateOf(0f)
+    private var phononReady by mutableStateOf(false)
+    private var phononBusy by mutableStateOf(false)
+    private var phononProgress by mutableStateOf(0f)
+    private var phononSupported by mutableStateOf(true)
+    private var enginePreference by mutableStateOf(SpeechEnginePreference.AUTOMATIC)
+    private var dictationEngines by mutableStateOf(emptyList<SpeechEngine>())
     private var cleanupModelReady by mutableStateOf(false)
     private var cleanupBusy by mutableStateOf(false)
     private var cleanupProgress by mutableStateOf(0f)
@@ -96,13 +101,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        modelStore = WhisperTinyModelStore(File(filesDir, "models"))
-        speechRecognizer = WhisperTinyRecognizer(modelStore)
+        speechModels = LocalSpeechModels(filesDir)
         cleanupModelStore = S1MiniModelStore(
             File(File(filesDir, "models"), "S1-mini-${S1MiniModelStore.MODEL_REVISION}")
         )
         cleanupCleaner = S1MiniCleaner(cleanupModelStore)
-        val preferences = getSharedPreferences("talkies-settings", MODE_PRIVATE)
+        val preferences = getSharedPreferences(SpeechSettings.PREFERENCES, MODE_PRIVATE)
+        enginePreference = SpeechSettings.enginePreference(preferences)
         cleanupEnabled = preferences.getBoolean("s1-mini-enabled", false)
         cleanupStyle = enumValueOrDefault(preferences.getString("s1-mini-style", null), TranscriptStyle.SEMI_FORMAL)
         cleanupStructure = enumValueOrDefault(preferences.getString("s1-mini-structure", null), TranscriptStructure.PROSE)
@@ -139,17 +144,87 @@ class MainActivity : ComponentActivity() {
                             }) { Text("Select keyboard") }
                         }
 
-                        if (!modelReady) {
-                            Button(enabled = !modelBusy && !cleanupBusy, onClick = { downloadModel() }) {
-                                Text(if (modelBusy) "Downloading Whisper…" else "Download Whisper tiny (77 MB)")
+                        Text("Speech engine", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Automatic uses Phonon-2 when it is downloaded and falls back to Whisper tiny if " +
+                                "Phonon-2 is missing or fails. Both run only on this device.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        CleanupOptionSelector(
+                            "Speech engine", enginePreference.label,
+                            SpeechEnginePreference.entries.map { it.label },
+                            !recording && !transcribing
+                        ) { selected ->
+                            enginePreference = SpeechEnginePreference.entries.first { it.label == selected }
+                            SpeechSettings.setEnginePreference(preferences, enginePreference)
+                            refreshModelStatus(updateStatus = true)
+                        }
+
+                        Text("Phonon-2 (English, most accurate)", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Download size: ${SpeechStatusText.PHONON_DOWNLOAD_SIZE}. A large download for a " +
+                                "phone; use Wi-Fi and keep about ${SpeechStatusText.PHONON_DOWNLOAD_SIZE} free.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (!phononSupported) {
+                            Text(
+                                "Phonon-2 cannot run on this device. Talkies uses Whisper tiny.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        } else if (!phononReady) {
+                            Button(
+                                enabled = !anyDownloadBusy() && !recording && !transcribing,
+                                onClick = { downloadPhonon() }
+                            ) {
+                                Text(
+                                    if (phononBusy) "Downloading Phonon-2…"
+                                    else "Download Phonon-2 (${SpeechStatusText.PHONON_DOWNLOAD_SIZE})"
+                                )
                             }
                         } else {
-                            Text("Local Whisper model ready", style = MaterialTheme.typography.labelLarge)
+                            Text("Phonon-2 ready", style = MaterialTheme.typography.labelLarge)
+                            OutlinedButton(
+                                enabled = !anyDownloadBusy() && !recording && !transcribing,
+                                onClick = { deletePhonon() }
+                            ) { Text("Delete Phonon-2 model and attribution") }
+                        }
+                        if (phononBusy) {
+                            LinearProgressIndicator(
+                                progress = { phononProgress },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Text("Whisper tiny (smaller, multilingual)", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Download size: ${SpeechStatusText.WHISPER_DOWNLOAD_SIZE}. Used when Phonon-2 is " +
+                                "unavailable or when you choose Whisper.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (!modelReady) {
+                            Button(
+                                enabled = !anyDownloadBusy() && !recording && !transcribing,
+                                onClick = { downloadModel() }
+                            ) {
+                                Text(
+                                    if (modelBusy) "Downloading Whisper…"
+                                    else "Download Whisper tiny (${SpeechStatusText.WHISPER_DOWNLOAD_SIZE})"
+                                )
+                            }
+                        } else {
+                            Text("Whisper tiny ready", style = MaterialTheme.typography.labelLarge)
                         }
                         if (modelBusy) {
                             LinearProgressIndicator(
                                 progress = { modelProgress },
                                 modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (phononReady) {
+                            Text(
+                                "Phonon-2 by Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3 · CC-BY-4.0. " +
+                                    "Its LICENSE and NOTICE are kept beside the model.",
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
 
@@ -161,7 +236,7 @@ class MainActivity : ComponentActivity() {
                         )
                         if (!cleanupModelReady) {
                             Button(
-                                enabled = !modelBusy && !cleanupBusy && !recording && !transcribing,
+                                enabled = !anyDownloadBusy() && !recording && !transcribing,
                                 onClick = { downloadCleanupModel() }
                             ) {
                                 Text(if (cleanupBusy) "Downloading S1-mini…" else "Download S1-mini cleanup model")
@@ -179,7 +254,7 @@ class MainActivity : ComponentActivity() {
                                 Text("Clean dictation locally with S1-mini")
                             }
                             OutlinedButton(
-                                enabled = !modelBusy && !recording && !transcribing && !cleanupBusy,
+                                enabled = !anyDownloadBusy() && !recording && !transcribing,
                                 onClick = { deleteCleanupModel() }
                             ) { Text("Delete S1-mini model and attribution") }
                         }
@@ -224,7 +299,7 @@ class MainActivity : ComponentActivity() {
 
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Button(
-                                enabled = modelReady && !recording && !transcribing && !cleanupBusy,
+                                enabled = dictationEngines.isNotEmpty() && !recording && !transcribing && !anyDownloadBusy(),
                                 onClick = {
                                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                         startRecording()
@@ -237,8 +312,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        if (modelReady && !modelBusy && !cleanupBusy && !recording && !transcribing) {
-                            OutlinedButton(onClick = { deleteModel() }) { Text("Delete local model") }
+                        if (modelReady && !anyDownloadBusy() && !recording && !transcribing) {
+                            OutlinedButton(onClick = { deleteModel() }) { Text("Delete Whisper tiny model") }
                         }
 
                         TextField(
@@ -250,39 +325,111 @@ class MainActivity : ComponentActivity() {
                             placeholder = { Text("Your recognized words will appear here.") }
                         )
                         Text(
-                            "Whisper runs on this device. Internet access is used only when you choose to download the model; recording and transcription do not use a network service.",
+                            "Speech recognition runs on this device. Internet access is used only when you choose to download a model; recording and transcription do not use a network service.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
             }
         }
-        refreshModelStatus()
+        refreshModelStatus(updateStatus = true)
     }
 
-    private fun refreshModelStatus() {
+    private fun anyDownloadBusy(): Boolean = modelBusy || phononBusy || cleanupBusy
+
+    /** Re-checks installed models off the main thread. Only [updateStatus] replaces the status line. */
+    private fun refreshModelStatus(updateStatus: Boolean = false) {
+        val preference = enginePreference
         lifecycleScope.launch {
-            val installedModels = withContext(Dispatchers.IO) {
-                modelStore.isInstalled() to cleanupModelStore.isInstalled()
+            val snapshot = withContext(Dispatchers.IO) {
+                ModelSnapshot(
+                    whisperReady = speechModels.whisperStore.isInstalled(),
+                    phononReady = speechModels.phononStore.isInstalled(),
+                    phononSupported = speechModels.phononRuntimeSupported,
+                    cleanupReady = cleanupModelStore.isInstalled(),
+                    engines = speechModels.chain.plan(preference),
+                )
             }
-            modelReady = installedModels.first
-            cleanupModelReady = installedModels.second
-            status = if (modelReady) "Ready for offline dictation." else "Download the local Whisper model to get started."
+            modelReady = snapshot.whisperReady
+            phononReady = snapshot.phononReady
+            phononSupported = snapshot.phononSupported
+            cleanupModelReady = snapshot.cleanupReady
+            dictationEngines = snapshot.engines
+            if (updateStatus) status = SpeechStatusText.readiness(snapshot.engines, preference)
+        }
+    }
+
+    private data class ModelSnapshot(
+        val whisperReady: Boolean,
+        val phononReady: Boolean,
+        val phononSupported: Boolean,
+        val cleanupReady: Boolean,
+        val engines: List<SpeechEngine>,
+    )
+
+    /** Returns null when [requiredBytes] fit in app storage; otherwise a message to show. */
+    private suspend fun storageProblem(name: String, requiredBytes: Long): String? {
+        val available = withContext(Dispatchers.IO) { filesDir.usableSpace }
+        return if (available < requiredBytes) SpeechStatusText.notEnoughStorage(name, requiredBytes, available) else null
+    }
+
+    private fun downloadPhonon() {
+        if (anyDownloadBusy() || recording || transcribing) return
+        phononBusy = true
+        phononProgress = 0f
+        status = "Checking storage for Phonon-2…"
+        lifecycleScope.launch {
+            try {
+                storageProblem("Phonon-2", Phonon2ModelStore.DOWNLOAD_SIZE_BYTES)?.let {
+                    status = it
+                    return@launch
+                }
+                status = "Downloading and verifying Phonon-2 (${SpeechStatusText.PHONON_DOWNLOAD_SIZE})…"
+                speechModels.phononStore.download { progress ->
+                    runOnUiThread {
+                        phononProgress = progress.downloadedBytes.toFloat() / progress.totalBytes.toFloat()
+                        status = SpeechStatusText.downloadProgress("Phonon-2", progress.downloadedBytes, progress.totalBytes)
+                    }
+                }
+                status = "Phonon-2 verified. Dictation runs offline."
+            } catch (error: Exception) {
+                status = error.message ?: "Phonon-2 could not be downloaded or verified."
+            } finally {
+                phononBusy = false
+                refreshModelStatus()
+            }
+        }
+    }
+
+    private fun deletePhonon() {
+        if (recording || transcribing || anyDownloadBusy()) return
+        phononBusy = true
+        lifecycleScope.launch {
+            val deleted = withContext(Dispatchers.IO) {
+                runCatching { speechModels.phononStore.delete() }.getOrDefault(false)
+            }
+            phononBusy = false
+            refreshModelStatus()
+            status = if (deleted) "Phonon-2 model and attribution files deleted." else
+                "Could not fully delete Phonon-2. Check local model storage."
         }
     }
 
     private fun downloadModel() {
-        if (modelBusy || cleanupBusy || recording || transcribing) return
+        if (anyDownloadBusy() || recording || transcribing) return
         modelBusy = true
         modelProgress = 0f
-        status = "Downloading and verifying the local speech model…"
+        status = "Downloading and verifying Whisper tiny (${SpeechStatusText.WHISPER_DOWNLOAD_SIZE})…"
         lifecycleScope.launch {
             try {
-                modelStore.download { progress ->
+                storageProblem("Whisper tiny", WhisperTinyModelStore.MODEL_SIZE_BYTES)?.let {
+                    status = it
+                    return@launch
+                }
+                speechModels.whisperStore.download { progress ->
                     runOnUiThread {
                         modelProgress = progress.downloadedBytes.toFloat() / progress.totalBytes.toFloat()
-                        val downloadedMb = progress.downloadedBytes / (1024 * 1024)
-                        status = "Downloading Whisper tiny… $downloadedMb / 74 MB"
+                        status = SpeechStatusText.downloadProgress("Whisper tiny", progress.downloadedBytes, progress.totalBytes)
                     }
                 }
                 modelReady = true
@@ -291,30 +438,32 @@ class MainActivity : ComponentActivity() {
                 status = error.message ?: "The Whisper model could not be downloaded or verified."
             } finally {
                 modelBusy = false
+                refreshModelStatus()
             }
         }
     }
 
     private fun deleteModel() {
-        if (recording || transcribing || modelBusy || cleanupBusy) return
+        if (recording || transcribing || anyDownloadBusy()) return
         lifecycleScope.launch {
             modelReady = false
             val (deleted, stillInstalled) = withContext(Dispatchers.IO) {
-                val deleteSucceeded = runCatching { modelStore.delete() }.getOrDefault(false)
-                val modelIsReady = runCatching { modelStore.isInstalled() }.getOrDefault(false)
+                val deleteSucceeded = runCatching { speechModels.whisperStore.delete() }.getOrDefault(false)
+                val modelIsReady = runCatching { speechModels.whisperStore.isInstalled() }.getOrDefault(false)
                 deleteSucceeded to modelIsReady
             }
             modelReady = stillInstalled
+            refreshModelStatus()
             status = when {
-                deleted && !stillInstalled -> "Local speech model deleted."
-                stillInstalled -> "Could not delete the local speech model. It remains ready for dictation."
-                else -> "The local speech model is unavailable. Download it again before dictating."
+                deleted && !stillInstalled -> "Whisper tiny model deleted."
+                stillInstalled -> "Could not delete Whisper tiny. It remains ready for dictation."
+                else -> "Whisper tiny is unavailable. Download it again before using it."
             }
         }
     }
 
     private fun downloadCleanupModel() {
-        if (modelBusy || cleanupBusy || recording || transcribing) return
+        if (anyDownloadBusy() || recording || transcribing) return
         cleanupBusy = true
         cleanupProgress = 0f
         status = "Downloading the optional S1-mini cleanup model…"
@@ -342,7 +491,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun deleteCleanupModel() {
-        if (modelBusy || recording || transcribing || cleanupBusy) return
+        if (anyDownloadBusy() || recording || transcribing) return
         cleanupBusy = true
         lifecycleScope.launch {
             val deleted = withContext(Dispatchers.IO) {
@@ -365,7 +514,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startRecording() {
-        if (!modelReady || modelBusy || cleanupBusy || recording || transcribing) return
+        if (dictationEngines.isEmpty() || anyDownloadBusy() || recording || transcribing) return
         try {
             audioCapture.start {
                 runOnUiThread { stopRecording(maximumDurationReached = true) }
@@ -387,13 +536,15 @@ class MainActivity : ComponentActivity() {
         } else {
             "Transcribing locally…"
         }
+        val preference = enginePreference
         lifecycleScope.launch {
             var samples: FloatArray? = null
             try {
                 samples = withContext(Dispatchers.IO) { audioCapture.stop() }
-                val recognized = withContext(Dispatchers.Default) {
-                    speechRecognizer.transcribe(requireNotNull(samples))
-                }.trim()
+                val outcome = withContext(Dispatchers.Default) {
+                    speechModels.chain.transcribe(requireNotNull(samples), preference)
+                }
+                val recognized = outcome.transcript.trim()
                 if (recognized.isBlank()) {
                     status = "No speech was recognized. Try again when ready."
                 } else {
@@ -414,9 +565,10 @@ class MainActivity : ComponentActivity() {
                     }
                     transcript = appendTranscript(transcript, cleaned)
                     status = when {
-                        cleanupFailed -> "Cleanup failed; kept the raw local Whisper transcript."
-                        cleanupEnabled && cleanupModelReady -> "Transcription and S1-mini cleanup complete offline."
-                        else -> "Transcription complete. Whisper ran locally."
+                        cleanupFailed -> "Cleanup failed; kept the raw local ${outcome.engine.label} transcript."
+                        cleanupEnabled && cleanupModelReady ->
+                            "${outcome.engine.label} transcription and S1-mini cleanup complete offline."
+                        else -> SpeechStatusText.completed(outcome, preference)
                     }
                 }
             } catch (error: Exception) {
@@ -424,6 +576,7 @@ class MainActivity : ComponentActivity() {
             } finally {
                 samples?.fill(0f)
                 transcribing = false
+                refreshModelStatus()
             }
         }
     }

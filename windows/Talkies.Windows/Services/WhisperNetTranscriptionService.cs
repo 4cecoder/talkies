@@ -14,7 +14,7 @@ namespace Talkies.Windows.Services
     /// Native transcription using whisper.net (no Python). Requires a GGML model file.
     /// Supports dynamic model download if not available locally.
     /// </summary>
-    public class WhisperNetTranscriptionService : ITranscriptionService
+    public class WhisperNetTranscriptionService : ITranscriptionService, ISpeechRecognizer
     {
         private readonly WhisperModelStore _modelStore;
 
@@ -22,6 +22,30 @@ namespace Talkies.Windows.Services
         {
             _modelStore = modelStore ?? new WhisperModelStore();
             WhisperRuntimeSelection.ConfigureAutomaticFallback();
+        }
+
+        public string Id => SpeechEnginePolicy.WhisperId;
+
+        public string DisplayName => "Whisper";
+
+        /// <summary>Whisper is the final fallback; a missing model is downloaded and verified on first use.</summary>
+        public string? GetUnavailableReason() => null;
+
+        public Task<TranscriptionResult> RecognizeAsync(
+            SpeechRecognitionRequest request,
+            IProgress<TranscriptionProgress>? progress = null,
+            System.Threading.CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            return TranscribeAsync(
+                request.AudioPath,
+                request.WhisperModel,
+                request.Language,
+                request.VadEnabled,
+                request.FilterEnabled,
+                request.DecodingOptions,
+                progress);
         }
 
         public async Task<TranscriptionResult> TranscribeAsync(
@@ -42,7 +66,7 @@ namespace Talkies.Windows.Services
             }
 
             // Ensure audio is 16kHz mono PCM
-            var compatibleWav = ConvertTo16kMono(filePath);
+            var compatibleWav = Pcm16kMonoAudio.ConvertTo16kMono(filePath);
             var transcriptionWav = compatibleWav;
 
             try
@@ -201,37 +225,6 @@ namespace Talkies.Windows.Services
             }
 
             return await _modelStore.EnsureAvailableAsync(model, progress).ConfigureAwait(false);
-        }
-
-        private static string ConvertTo16kMono(string inputPath)
-        {
-            // If already 16k mono PCM, reuse
-            try
-            {
-                using var readerProbe = new WaveFileReader(inputPath);
-                if (readerProbe.WaveFormat.SampleRate == 16000 &&
-                    readerProbe.WaveFormat.Channels == 1 &&
-                    readerProbe.WaveFormat.Encoding == WaveFormatEncoding.Pcm)
-                {
-                    return inputPath;
-                }
-            }
-            catch
-            {
-                // ignore and convert
-            }
-
-            var target = Path.Combine(Path.GetTempPath(), $"talkies_conv_{Guid.NewGuid():N}.wav");
-            var targetFormat = new WaveFormat(16000, 16, 1);
-
-            using var reader = new AudioFileReader(inputPath);
-            using var resampler = new MediaFoundationResampler(reader, targetFormat)
-            {
-                ResamplerQuality = 60
-            };
-            WaveFileWriter.CreateWaveFile(target, resampler);
-            Logger.Info($"Converted audio to 16k mono -> {target}");
-            return target;
         }
 
         /// <summary>

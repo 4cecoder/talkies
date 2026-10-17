@@ -4,3 +4,6 @@
 [submodule "mobile/android/third_party/llama.cpp"]
 	path = mobile/android/third_party/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "mobile/android/third_party/CrispASR"]
+	path = mobile/android/third_party/CrispASR
+	url = https://github.com/CrispStrobe/CrispASR.git
