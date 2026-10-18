@@ -26,6 +26,9 @@ namespace Talkies.Windows.ViewModels
         private readonly Phonon2Recognizer? _phonon2Recognizer;
         private readonly IAudioDeviceService _deviceService;
         private readonly SettingsService _settingsService = new();
+        private readonly Lazy<ITranscriptHistoryStore?> _history;
+        private Views.HistoryWindow? _historyWindow;
+        private bool _historyErrorReported;
         private AppSettings _settings = new();
 
         private DateTime? _startTime;
@@ -47,6 +50,7 @@ namespace Talkies.Windows.ViewModels
         public string FilenameTemplate { get => _settings.Export.FilenameTemplate; set { _settings.Export.FilenameTemplate = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
         public bool IncludeExportTimestamps { get => _settings.Export.IncludeTimestamps; set { _settings.Export.IncludeTimestamps = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
         public bool AutoExport { get => _settings.Export.AutoExport; set { _settings.Export.AutoExport = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
+        public bool SaveTranscriptHistory { get => _settings.SaveTranscriptHistory; set { _settings.SaveTranscriptHistory = value; OnPropertyChanged(); SaveSettingsIfReady(); } }
 
         public string NewPromptName { get => _newPromptName; set { _newPromptName = value; OnPropertyChanged(); } }
         private string _newPromptName = "Custom Grammar";
@@ -291,6 +295,8 @@ namespace Talkies.Windows.ViewModels
         public ICommand BrowseExportDirectoryCommand { get; }
         public ICommand ExportDefaultCommand { get; }
         public ICommand InstallPhonon2Command { get; }
+        public ICommand ShowHistoryCommand { get; }
+        public ICommand ClearHistoryCommand { get; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -326,8 +332,12 @@ namespace Talkies.Windows.ViewModels
             ITranscriptionService transcriber,
             IAudioDeviceService deviceService,
             Phonon2ModelStore? phonon2Store = null,
-            Phonon2Recognizer? phonon2Recognizer = null)
+            Phonon2Recognizer? phonon2Recognizer = null,
+            ITranscriptHistoryStore? history = null)
         {
+            _history = history is not null
+                ? new Lazy<ITranscriptHistoryStore?>(history)
+                : new Lazy<ITranscriptHistoryStore?>(OpenDefaultHistory);
             _recorder = recorder;
             _transcriber = transcriber;
             _speechEngineSelection = transcriber as ISpeechEngineSelection;
@@ -347,6 +357,8 @@ namespace Talkies.Windows.ViewModels
             SavePromptCommand = new RelayCommand(_ => SaveCustomPrompt());
             ShowPluginsCommand = new RelayCommand(_ => ShowPluginsWindow());
             InstallPhonon2Command = new AsyncRelayCommand(_ => InstallPhonon2Async(), _ => CanInstallPhonon2);
+            ShowHistoryCommand = new RelayCommand(_ => ShowHistoryWindow());
+            ClearHistoryCommand = new AsyncRelayCommand(_ => ClearHistoryAsync());
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
@@ -680,6 +692,8 @@ namespace Talkies.Windows.ViewModels
                 });
             });
             Logger.OperationStart($"Transcription of {Path.GetFileName(e.FilePath)}");
+            var createdAt = DateTimeOffset.UtcNow;
+            var audioDurationMs = TryGetAudioDurationMs(e.FilePath);
             try
             {
                 // Create decoding options with recommended defaults
@@ -708,6 +722,7 @@ namespace Talkies.Windows.ViewModels
                     progress);
                 ReportSpeechEngineOutcome();
 
+                var rawText = result.Text;
                 var finalText = result.Text;
                 var finalSegments = result.Segments;
                 var finalVtt = result.Vtt;
@@ -930,6 +945,20 @@ namespace Talkies.Windows.ViewModels
                     {
                         _autoPastePending = false;
                     }
+                }
+
+                if (SaveTranscriptHistory && !string.IsNullOrWhiteSpace(finalText))
+                {
+                    var language = SpeechEnginePolicy.IsPhonon2Language(SelectedLanguage) && result.RecognizerId == SpeechEnginePolicy.Phonon2Id
+                        ? "en" // Phonon-2 is English-only, including when the language is "auto".
+                        : string.Equals(SelectedLanguage, "auto", StringComparison.OrdinalIgnoreCase) ? null : SelectedLanguage;
+                    await SaveToHistoryAsync(new NewTranscript(
+                        createdAt,
+                        finalText.Trim(),
+                        rawText.Trim(),
+                        audioDurationMs,
+                        TranscriptRuntime.FromRecognizerId(result.RecognizerId),
+                        language));
                 }
 
                 HotkeyStatus = "Ready";
@@ -1482,6 +1511,101 @@ namespace Talkies.Windows.ViewModels
                 or nameof(SelectedChannels))
             {
                 SaveSettings();
+            }
+        }
+
+        private static ITranscriptHistoryStore? OpenDefaultHistory()
+        {
+            try
+            {
+                return new TranscriptHistoryStore();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Opening transcript history failed: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+
+        private ITranscriptHistoryStore? GetHistoryOrReport()
+        {
+            var store = _history.Value;
+            if (store is null && !_historyErrorReported)
+            {
+                _historyErrorReported = true;
+                AddUserError($"Transcript history could not be opened at {TranscriptHistoryStore.DefaultPath}. Dictation still works; check that the folder is writable, then restart Talkies.");
+            }
+            return store;
+        }
+
+        private async System.Threading.Tasks.Task SaveToHistoryAsync(NewTranscript transcript)
+        {
+            try
+            {
+                var store = await System.Threading.Tasks.Task.Run(() => _history.Value);
+                if (store is null)
+                {
+                    GetHistoryOrReport();
+                    return;
+                }
+                var saved = await System.Threading.Tasks.Task.Run(() => store.Add(transcript));
+                // Never log transcript text; the id is enough to correlate.
+                Logger.Info($"Saved transcript {saved.Id} to history");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Saving transcript history failed: {ex.GetType().Name}: {ex.Message}");
+                AddUserError("This transcript could not be saved to history. Dictation was not affected.");
+            }
+        }
+
+        private void ShowHistoryWindow()
+        {
+            if (_historyWindow is not null)
+            {
+                if (_historyWindow.WindowState == WindowState.Minimized) _historyWindow.WindowState = WindowState.Normal;
+                _historyWindow.Activate();
+                return;
+            }
+
+            var store = GetHistoryOrReport();
+            if (store is null) return;
+            _historyWindow = new Views.HistoryWindow(new HistoryViewModel(store));
+            _historyWindow.Closed += (_, _) => _historyWindow = null;
+            _historyWindow.Show();
+            _historyWindow.Activate();
+        }
+
+        private async System.Threading.Tasks.Task ClearHistoryAsync()
+        {
+            if (!DialogHelper.ShowConfirmation("Clear transcript history", "Delete every saved transcript from this PC? This cannot be undone."))
+                return;
+            var store = GetHistoryOrReport();
+            if (store is null) return;
+            try
+            {
+                await System.Threading.Tasks.Task.Run(store.Clear);
+                DialogHelper.ShowInfo("Transcript history", "Transcript history was cleared.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Clearing transcript history failed: {ex.GetType().Name}: {ex.Message}");
+                AddUserError($"Transcript history could not be cleared ({ex.Message}). Close other Talkies windows and retry.");
+            }
+        }
+
+        /// <summary>Recorded audio length, read before recognition so it reflects what was captured.</summary>
+        private static long? TryGetAudioDurationMs(string path)
+        {
+            try
+            {
+                using var reader = new NAudio.Wave.WaveFileReader(path);
+                return (long)Math.Round(reader.TotalTime.TotalMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Could not read recording duration: {ex.GetType().Name}");
+                return null;
             }
         }
 

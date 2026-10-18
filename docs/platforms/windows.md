@@ -20,7 +20,7 @@ if ($actual -ne $expected) { throw 'Talkies setup checksum does not match SHA256
 - **Update:** Quit Talkies and run the newer setup executable. App files are replaced; settings and downloaded models are kept.
 - **Uninstall:** Select **Uninstall Talkies** from the Start menu. This removes the installed app and shortcuts but keeps settings and model files.
 
-Talkies stores settings at `%USERPROFILE%\.talkies\config.json` and Whisper models in `%USERPROFILE%\.talkies\models`. S1-mini and Phonon-2 weights, each with its upstream `LICENSE` and `NOTICE`, are stored under `%LOCALAPPDATA%\Talkies\Models`. To remove personal data as well, quit Talkies and delete those folders.
+Talkies stores settings at `%USERPROFILE%\.talkies\config.json`, Whisper models in `%USERPROFILE%\.talkies\models`, and transcript history in `%LOCALAPPDATA%\Talkies\history.sqlite`. S1-mini and Phonon-2 weights, each with its upstream `LICENSE` and `NOTICE`, are stored under `%LOCALAPPDATA%\Talkies\Models`. To remove personal data as well, quit Talkies and delete those folders.
 
 To verify an optional runtime archive, set `$asset` to its exact filename and compare it with the same release's manifest:
 
@@ -58,9 +58,33 @@ Phonon-2 is Fermion Research's compressed NVIDIA Parakeet TDT 0.6B v3 model. It 
 
 Phonon-2 runs in a separate `Talkies.Windows.exe --crispasr-worker` process that keeps the model loaded between dictations. Expect it to use up to about 1 GB of additional memory while Phonon-2 is active. The first dictation after start-up also verifies the model's SHA-256 and loads it, which takes a few seconds.
 
+### Transcript history
+
+With **Save transcript history** on (the default, under **Transcript History** in the sidebar), each finished dictation is saved after cleanup to `%LOCALAPPDATA%\Talkies\history.sqlite`, together with the recognizer output before cleanup (when it differs), the recording length, the speech runtime that produced it (Phonon-2 or Whisper), and the language when known. Nothing expires automatically. Turning the setting off stops saving new dictations; it does not delete existing history.
+
+Open **History** from the tray icon menu or **Open History** in the sidebar to browse saved transcripts newest first, search them, copy one to the clipboard, or delete one. **Clear All** (in the History window) and **Clear History** (in the sidebar) ask for confirmation, then delete every transcript and compact the database file. Transcript text is never written to the log.
+
+The database is SQLite in WAL mode and uses the schema shared by all Talkies clients, versioned with `PRAGMA user_version` (currently 1):
+
+```sql
+CREATE TABLE IF NOT EXISTS transcripts (
+  id INTEGER PRIMARY KEY,
+  uuid TEXT NOT NULL UNIQUE,     -- random lowercase UUIDv4, stable across devices
+  created_at INTEGER NOT NULL,   -- Unix epoch milliseconds, UTC
+  text TEXT NOT NULL,            -- final text that was inserted (after cleanup)
+  raw_text TEXT,                 -- recognizer output before cleanup; NULL when identical
+  duration_ms INTEGER,           -- audio length
+  runtime TEXT,                  -- 'phonon' | 'whisper'
+  language TEXT                  -- NULL when unknown
+);
+CREATE INDEX IF NOT EXISTS transcripts_created_at ON transcripts(created_at DESC);
+```
+
+A history file created by a newer Talkies version is left untouched, and the app reports that history is unavailable instead of downgrading it. To remove history manually, quit Talkies and delete `history.sqlite` and any `history.sqlite-wal` and `history.sqlite-shm` files beside it.
+
 ## Privacy and network use
 
-Audio and transcript text are processed on the device. The app does not send them to a cloud inference service. Network access is used to download missing models over HTTPS. Optional Ollama and LM Studio providers are supported only at loopback addresses, with HTTP redirects disabled.
+Audio and transcript text are processed on the device. The app does not send them to a cloud inference service, and transcript history stays in a local file. Network access is used to download missing models over HTTPS. Optional Ollama and LM Studio providers are supported only at loopback addresses, with HTTP redirects disabled.
 
 ## Troubleshooting
 
@@ -100,4 +124,4 @@ Windows CI builds and tests the application, exercises cached local-model infere
 
 ## License
 
-Talkies is licensed under the [MIT License](../../LICENSE). S1-mini model weights are separately licensed; see the model's included `LICENSE` and `NOTICE` files and the [upstream model repository](https://huggingface.co/superwhisper/s1-mini-GGUF). Phonon-2 weights are licensed under CC-BY-4.0 (derived from NVIDIA Parakeet TDT 0.6B v3); their `LICENSE` and `NOTICE` are downloaded with them from the [pinned model revision](https://huggingface.co/cstr/phonon2-GGUF/tree/3ed3e6ad6e7ce63affffeede37328ff756efaa2f). The bundled CrispASR runtime is MIT-licensed; its license and third-party notices ship in `licenses\CrispASR\`.
+Talkies is licensed under the [MIT License](../../LICENSE). S1-mini model weights are separately licensed; see the model's included `LICENSE` and `NOTICE` files and the [upstream model repository](https://huggingface.co/superwhisper/s1-mini-GGUF). Phonon-2 weights are licensed under CC-BY-4.0 (derived from NVIDIA Parakeet TDT 0.6B v3); their `LICENSE` and `NOTICE` are downloaded with them from the [pinned model revision](https://huggingface.co/cstr/phonon2-GGUF/tree/3ed3e6ad6e7ce63affffeede37328ff756efaa2f). The bundled CrispASR runtime is MIT-licensed; its license and third-party notices ship in `licenses\CrispASR\`. Transcript history uses Microsoft.Data.Sqlite (MIT) with SQLitePCLRaw (Apache-2.0) and its bundled public-domain SQLite build; see `THIRD-PARTY-NOTICES.txt`.

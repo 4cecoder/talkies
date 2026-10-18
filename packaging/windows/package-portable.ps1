@@ -50,6 +50,8 @@ foreach ($requiredFile in @(
     'Talkies.Windows.dll',
     'Talkies.Windows.deps.json',
     'Talkies.Windows.runtimeconfig.json',
+    # Native SQLite (SQLitePCLRaw.lib.e_sqlite3, win-x64) used by the transcript history.
+    'e_sqlite3.dll',
     'Resources/talkies-app-icon.ico'
 )) {
     $publishedPath = Join-Path $publishDirectory $requiredFile
@@ -146,10 +148,14 @@ foreach ($library in $assets.libraries.PSObject.Properties) {
     New-Item $packageLicenseDirectory -ItemType Directory -Force | Out-Null
 
     if ($licenseType -eq 'expression') {
-        if ($licenseValue -ne 'MIT') {
+        if ($licenseValue -eq 'MIT') {
+            $nugetAttributions.Add("$packageId $packageVersion | MIT | $copyright | $authors | $licenseUrl")
+        } elseif ($licenseValue -eq 'Apache-2.0') {
+            # SQLitePCLRaw packages (transcript history). The full license text ships once.
+            $nugetAttributions.Add("$packageId $packageVersion | Apache-2.0 (licenses/Apache-2.0-LICENSE.txt) | $copyright | $authors | $licenseUrl")
+        } else {
             throw "NuGet package $packageId $packageVersion declares unsupported license expression '$licenseValue'; add its exact license text before distributing it."
         }
-        $nugetAttributions.Add("$packageId $packageVersion | MIT | $copyright | $authors | $licenseUrl")
     } elseif ($licenseType -eq 'file') {
         $packageLicensePath = Join-Path $packageRoot $licenseValue
         if (-not (Test-Path $packageLicensePath -PathType Leaf) -or (Get-Item $packageLicensePath).Length -le 0) {
@@ -181,6 +187,8 @@ $nugetAttributions.Sort([System.StringComparer]::OrdinalIgnoreCase)
 $nugetAttributions | Set-Content -LiteralPath (Join-Path $licenseDirectory 'NuGet-ATTRIBUTIONS.txt') -Encoding utf8
 Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\MIT-LICENSE-TEXT.txt') `
     (Join-Path $licenseDirectory 'NuGet-MIT-LICENSE.txt')
+Copy-Item (Join-Path $repositoryRoot 'packaging\shared\licenses\Apache-2.0-LICENSE-TEXT.txt') `
+    (Join-Path $licenseDirectory 'Apache-2.0-LICENSE.txt')
 
 # Self-contained publish carries the runtime binaries, but does not guarantee
 # the installation-level .NET redistribution notices are in its output.
@@ -338,6 +346,7 @@ foreach ($requiredFile in @(
     'Talkies.Windows.dll',
     'Talkies.Windows.deps.json',
     'Talkies.Windows.runtimeconfig.json',
+    'e_sqlite3.dll',
     'Resources/talkies-app-icon.ico',
     'LICENSE',
     'THIRD-PARTY-NOTICES.txt'
@@ -398,6 +407,7 @@ function Assert-InstalledApplication([string]$Directory) {
         'Talkies.Windows.dll',
         'Talkies.Windows.deps.json',
         'Talkies.Windows.runtimeconfig.json',
+        'e_sqlite3.dll',
         'Resources/talkies-app-icon.ico',
         'Uninstall.exe'
     )) {

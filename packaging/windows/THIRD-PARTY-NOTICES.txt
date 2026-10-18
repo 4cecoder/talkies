@@ -40,6 +40,24 @@ included in the adjacent licenses directory:
   their CC BY 4.0 LICENSE and NOTICE (Fermion Research, derived from NVIDIA
   Parakeet TDT 0.6B v3).
   https://github.com/CrispStrobe/CrispASR
+- Microsoft.Data.Sqlite 10.0.12 (Copyright (c) Microsoft Corporation), used
+  for the on-device transcript history, is distributed under the MIT License;
+  its attribution is listed in licenses/NuGet-ATTRIBUTIONS.txt with the full
+  terms in licenses/NuGet-MIT-LICENSE.txt.
+  https://github.com/dotnet/efcore
+- SQLitePCLRaw 2.1.12 (SQLitePCLRaw.bundle_e_sqlite3, SQLitePCLRaw.core,
+  SQLitePCLRaw.provider.e_sqlite3, and SQLitePCLRaw.lib.e_sqlite3; Copyright
+  2014-2024 SourceGear, LLC; Eric Sink) is distributed under the Apache
+  License 2.0. The full license text is included as
+  licenses/Apache-2.0-LICENSE.txt.
+  https://github.com/ericsink/SQLitePCL.raw
+- The native e_sqlite3.dll shipped by SQLitePCLRaw.lib.e_sqlite3 is a build of
+  SQLite 3.53.3. SQLite is in the public domain and requires no license:
+  "The author disclaims copyright to this source code. In place of a legal
+  notice, here is a blessing: May you do good and not evil. May you find
+  forgiveness for yourself and forgive others. May you share freely, never
+  taking more than you give."
+  https://www.sqlite.org/copyright.html
 - The self-contained Microsoft .NET runtime is accompanied by the exact
   LICENSE.txt and ThirdPartyNotices.txt from the .NET installation used to
   publish the Windows build, copied under licenses/dotnet/.

@@ -21,3 +21,7 @@ when the corresponding bundled runtime is upgraded.
 - `MIT-LICENSE-TEXT.txt`: standard MIT permission and disclaimer text used
   with the exact copyright and author metadata collected from restored NuGet
   package manifests.
+- `Apache-2.0-LICENSE-TEXT.txt`: Apache License 2.0 text from
+  `ericsink/SQLitePCL.raw@v2.1.12` (`LICENSE.TXT`, identical to
+  <https://www.apache.org/licenses/LICENSE-2.0.txt>), matching the pinned
+  SQLitePCLRaw 2.1.12 packages used by the Windows transcript history.

@@ -23,6 +23,7 @@ public sealed class SpeechRecognizerChainTests
         Assert.Equal(1, phonon.Calls);
         Assert.Equal(0, whisper.Calls);
         Assert.Equal("Phonon-2", chain.LastRecognizerName);
+        Assert.Equal(SpeechEnginePolicy.Phonon2Id, result.RecognizerId);
         Assert.Null(chain.LastFallbackReason);
     }
 
@@ -52,6 +53,7 @@ public sealed class SpeechRecognizerChainTests
         Assert.Equal(0, phonon.Calls);
         Assert.Equal(1, whisper.Calls);
         Assert.Equal("Whisper", chain.LastRecognizerName);
+        Assert.Equal(SpeechEnginePolicy.WhisperId, result.RecognizerId);
         Assert.Contains("not been downloaded", chain.LastFallbackReason);
     }
 

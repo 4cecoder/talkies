@@ -90,6 +90,17 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Transcript History -->
+                <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Transcript History" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,10"/>
+                        <CheckBox Content="Save transcript history" IsChecked="{Binding SaveTranscriptHistory}" Margin="0,0,0,4" FontSize="11"/>
+                        <TextBlock Text="Finished dictations are kept on this PC until you delete them. Turning this off stops saving but keeps existing history." FontSize="10" Foreground="#aaaaaa" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <Button Content="Open History" Command="{Binding ShowHistoryCommand}" Height="32" Margin="0,0,0,8"/>
+                        <Button Content="Clear History…" Command="{Binding ClearHistoryCommand}" Height="32" AutomationProperties.Name="Clear all transcript history"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- LLM Enhancement Settings -->
                 <Border Background="#242424" Padding="12" CornerRadius="8" Margin="0,0,0,12">
                     <StackPanel>
