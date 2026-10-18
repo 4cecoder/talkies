@@ -18,6 +18,7 @@ public actor S1MiniCleaner: TranscriptCleaner {
         llama_backend_init()
     }()
     private var runtime: S1MiniRuntime?
+    private var isUnloaded = false
 
     public init() {
         modelStore = S1MiniModelStore()
@@ -35,6 +36,8 @@ public actor S1MiniCleaner: TranscriptCleaner {
         guard !trimmedTranscript.isEmpty else { return "" }
 
         let modelURL = try await modelStore.ensureModelAvailable()
+        // The app may have started quitting while the model file was being checked.
+        guard !isUnloaded else { throw S1MiniInferenceError.unloaded }
         let activeRuntime: S1MiniRuntime
         if let runtime {
             activeRuntime = runtime
@@ -64,6 +67,13 @@ public actor S1MiniCleaner: TranscriptCleaner {
             prompt: S1MiniPrompt.render(transcript: trimmedTranscript, options: options)
         )
         return TranscriptCleanupResult.resolve(original: transcript, modelOutput: modelOutput)
+    }
+
+    /// Frees the resident model and refuses later cleanups. Call before the process exits:
+    /// llama.cpp's Metal device aborts in its static destructor if model buffers are still allocated.
+    public func unload() {
+        isUnloaded = true
+        runtime = nil
     }
 
     fileprivate static var preferredMetalDevice: OpaquePointer? {
@@ -239,6 +249,7 @@ private enum S1MiniInferenceError: LocalizedError {
     case promptEvaluationFailed
     case samplerCreationFailed
     case generationFailed
+    case unloaded
 
     var errorDescription: String? {
         switch self {
@@ -249,6 +260,7 @@ private enum S1MiniInferenceError: LocalizedError {
         case .promptEvaluationFailed: "Unable to evaluate the S1-mini prompt."
         case .samplerCreationFailed: "Unable to initialize deterministic S1-mini decoding."
         case .generationFailed: "S1-mini stopped while generating the cleaned transcript."
+        case .unloaded: "S1-mini was unloaded because Talkies is quitting."
         }
     }
 }
