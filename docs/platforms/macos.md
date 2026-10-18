@@ -85,6 +85,23 @@ them, quit Talkies and remove that `Diagnostics` folder in Finder or with:
 rm -rf "$HOME/Library/Application Support/Talkies/Diagnostics"
 ```
 
+## Transcript history
+
+Each finished dictation (the final text after cleanup) is saved locally to
+`~/Library/Application Support/Talkies/history.sqlite` (owner-only, mode `0600`) when
+Settings → General → **Save transcript history** is on, which is the default. Entries never
+expire automatically. Turning the setting off stops saving new transcripts but keeps existing
+ones. Open history from the dictation panel to search, copy, or delete entries; **Clear All**
+there or **Clear History…** in Settings deletes every row and compacts the file. Transcript
+text is never written to logs.
+
+The file uses the cross-platform `transcripts` schema (`PRAGMA user_version = 1`, WAL):
+`id`, `uuid` (random lowercase UUIDv4), `created_at` (Unix epoch milliseconds, UTC), `text`,
+`raw_text` (recognizer output, `NULL` when identical to `text`), `duration_ms`, `runtime`
+(`phonon` or `whisper`), and `language` (`en` for Phonon-2, `NULL` when unknown). The store is
+`TranscriptHistoryStore` in `TalkiesCore`, built on the system SQLite library. Search uses
+SQLite `LIKE`, which ignores case for ASCII letters only.
+
 ## Usage
 
 ### First Time Setup

@@ -73,10 +73,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         observeStatusIconState()
 
         // Setup transcription completion callback
-        transcriptionService.onTranscriptionComplete = { [weak self] text in
+        transcriptionService.onTranscriptionComplete = { [weak self] dictation in
             guard let self else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let text = dictation.text
                 var finalText = text
                 var cleanupFailed = false
                 let s1MiniEnabled = self.settingsService.settings.s1Mini?.isEnabled ?? false
@@ -116,6 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.transcriptionService.statusMessage = "No usable words were recognized. Try again."
                     return
                 }
+                self.transcriptionService.saveToHistory(finalText: finalText, from: dictation)
                 if cleanupFailed {
                     self.transcriptionService.pipelineStage = .cleanupFallback
                     self.transcriptionService.statusMessage = "Cleanup failed; keeping the recognized words."
@@ -242,7 +244,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isFloatingWindowCollapsed = !expanded
         if floatingWindow == nil {
             // Create floating window
-            let window = NSWindow(
+            let window = FloatingDictationWindow(
                 contentRect: NSRect(
                     x: 0,
                     y: 0,
@@ -281,6 +283,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
+            }, onHistoryVisibilityChange: { [weak self] visible in
+                self?.setFloatingWindowAcceptsKeyFocus(visible)
             })
                 .environmentObject(audioRecorder)
                 .environmentObject(transcriptionService)
@@ -301,6 +305,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         floatingWindow?.alphaValue = 1
         floatingWindow?.orderFront(nil)
         // DO NOT call makeKeyAndOrderFront or NSApp.activate - that steals focus!
+    }
+
+    private func setFloatingWindowAcceptsKeyFocus(_ accepts: Bool) {
+        guard let window = floatingWindow as? FloatingDictationWindow else { return }
+        window.acceptsKeyFocus = accepts
+        if accepts {
+            NSApp.activate()
+            window.makeKey()
+        } else if window.isKeyWindow {
+            window.resignKey()
+            NSApp.deactivate()
+        }
     }
 
     private func resizeFloatingWindow(to size: CGSize) {
@@ -593,4 +609,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(monitor)
         }
     }
+}
+
+/// Borderless dictation panel. It refuses key status so dictation never takes focus from the
+/// app receiving text, except while transcript history (with its search field) is open.
+final class FloatingDictationWindow: NSWindow {
+    var acceptsKeyFocus = false
+    override var canBecomeKey: Bool { acceptsKeyFocus }
 }

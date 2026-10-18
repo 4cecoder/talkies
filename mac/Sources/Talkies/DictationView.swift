@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import AppKit
 import TalkiesAudio
+import TalkiesCore
 import TalkiesAccessibility
 
 struct DictationView: View {
@@ -12,6 +13,9 @@ struct DictationView: View {
     @Binding var isCollapsed: Bool
     let onToggleRecording: () -> Void
     let onResize: (CGSize) -> Void
+    /// The history search field needs keyboard focus; the host window only accepts it while
+    /// history is visible so dictation never steals focus from the target app.
+    var onHistoryVisibilityChange: (Bool) -> Void = { _ in }
 
     private var isMini: Bool { settingsService.settings.useMinimalDictationWindow ?? false }
     private var panelSize: CGSize {
@@ -74,6 +78,7 @@ struct DictationView: View {
         }
         .shadow(color: .black.opacity(0.34), radius: 28, x: 0, y: 14)
         .onChange(of: panelSize) { _, size in onResize(size) }
+        .onChange(of: showHistory) { _, visible in onHistoryVisibilityChange(visible) }
         .onChange(of: isCollapsed) { _, collapsed in
             if collapsed { showHistory = false }
         }
@@ -583,7 +588,8 @@ struct WaveformView: View {
 }
 
 struct TranscriptHistoryView: View {
-    @EnvironmentObject var transcriptionService: TranscriptionService
+    @ObservedObject private var history = TranscriptHistoryModel.shared
+    @State private var confirmClear = false
     let onClose: () -> Void
 
     var body: some View {
@@ -595,6 +601,18 @@ struct TranscriptHistoryView: View {
 
                 Spacer()
 
+                Button("Clear All") { confirmClear = true }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(history.entries.isEmpty ? 0.3 : 0.7))
+                    .disabled(history.entries.isEmpty && history.searchText.isEmpty)
+                    .confirmationDialog("Delete all saved transcripts?", isPresented: $confirmClear) {
+                        Button("Delete All", role: .destructive) { history.clearAll() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This permanently removes every transcript stored on this Mac.")
+                    }
+
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .semibold))
@@ -604,47 +622,103 @@ struct TranscriptHistoryView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close transcript history")
-
-                Button("Clear") {
-                    transcriptionService.clearTranscript()
-                }
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.7))
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+                TextField("Search transcripts", text: $history.searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white)
+                    .accessibilityLabel("Search transcript history")
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
 
             Divider()
                 .background(Color.white.opacity(0.1))
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if transcriptionService.segments.isEmpty {
-                        Text("No transcripts yet")
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if let message = history.errorMessage {
+                        Text(message)
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                    }
+                    if history.entries.isEmpty && !history.isLoading {
+                        Text(history.searchText.isEmpty ? "No transcripts yet" : "No matching transcripts")
                             .font(.system(size: 14))
                             .foregroundColor(.white.opacity(0.5))
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     } else {
-                        ForEach(transcriptionService.segments) { segment in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(segment.timestamp)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
-
-                                Text(segment.text)
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.white.opacity(0.9))
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        ForEach(history.entries) { entry in
+                            TranscriptHistoryRow(entry: entry, onDelete: { history.delete(entry) })
+                                .onAppear {
+                                    if entry.id == history.entries.last?.id { history.loadMore() }
+                                }
                         }
                     }
                 }
                 .padding(20)
             }
         }
+        .onAppear { history.reload() }
+    }
+}
+
+private struct TranscriptHistoryRow: View {
+    let entry: TranscriptRecord
+    let onDelete: () -> Void
+
+    private var metadata: String {
+        var parts = [entry.createdAt.formatted(date: .abbreviated, time: .shortened)]
+        if let runtime = entry.runtimeID?.displayName ?? entry.runtime { parts.append(runtime) }
+        if let durationMs = entry.durationMs { parts.append(String(format: "%.1fs", Double(durationMs) / 1_000)) }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(metadata)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(entry.text, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .help("Copy transcript")
+                .accessibilityLabel("Copy transcript")
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .help("Delete transcript")
+                .accessibilityLabel("Delete transcript")
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundColor(.white.opacity(0.6))
+
+            Text(entry.text)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.9))
+                .textSelection(.enabled)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
