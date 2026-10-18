@@ -59,7 +59,8 @@ struct S1MiniSettings: Codable {
 /// Keychain, not here.
 struct AgentModeSettings: Codable, Equatable {
     var isEnabled: Bool = false
-    var hotkey: AgentHotkey = .rightCommand
+    /// Unset until the user chooses one, so no ordinary shortcut starts an agent capture.
+    var hotkey: AgentHotkey?
     /// Speak status replies with the on-device AVSpeechSynthesizer.
     var speakReplies: Bool = true
 }

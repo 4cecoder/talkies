@@ -23,6 +23,8 @@ final class AgentModeController: ObservableObject {
         let deadline: Date
         /// The agent hotkey was pressed during the window: the send waits for that utterance.
         var isHeld = false
+        /// Why the send is still waiting, shown on its card.
+        var note: String?
     }
 
     struct Notice: Equatable {
@@ -48,19 +50,46 @@ final class AgentModeController: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastListError: String?
     @Published var selectedTargetID: String?
+    /// A dictation capture owns the HUD: agent notices must not cover its status.
+    @Published var isDictationInProgress = false
+    /// Display name of the configured agent key, or nil when none is chosen yet.
+    @Published var agentKeyName: String?
 
-    let connector: CmuxConnector
+    let connector: any AgentConnector
     private let gate = AgentSafetyGate.phase1
-    private let speech = AVSpeechSynthesizer()
+    private let cancelWindowSeconds: Double
+    private let speechEnabled: @MainActor () -> Bool
+    private let speaker: @MainActor (String) -> Void
+    private let confirmationSound: @MainActor () -> Void
     private var pendingTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
-    private let settingsService = SettingsService.shared
+    private var lastListErrorIsAccessDenied = false
+    private let speech = AVSpeechSynthesizer()
 
-    init(connector: CmuxConnector = CmuxConnector(socketPassword: { CmuxSocketPassword.read() })) {
+    /// - Parameters:
+    ///   - speaker: Speaks a reply; defaults to the on-device `AVSpeechSynthesizer`.
+    init(
+        connector: any AgentConnector = CmuxConnector(socketPassword: { CmuxSocketPassword.read() }),
+        cancelWindowSeconds: Double = AgentSafetyGate.cancelWindowSeconds,
+        speechEnabled: @escaping @MainActor () -> Bool = { SettingsService.shared.settings.agentMode?.speakReplies ?? true },
+        speaker: (@MainActor (String) -> Void)? = nil,
+        confirmationSound: @escaping @MainActor () -> Void = { NSSound(named: "Tink")?.play() }
+    ) {
         self.connector = connector
+        self.cancelWindowSeconds = cancelWindowSeconds
+        self.speechEnabled = speechEnabled
+        self.confirmationSound = confirmationSound
+        let synthesizer = speech
+        self.speaker = speaker ?? { text in
+            synthesizer.stopSpeaking(at: .immediate)
+            synthesizer.speak(AVSpeechUtterance(string: text))
+        }
     }
 
     var isActive: Bool { phase != .idle }
+
+    /// Whether the HUD should show the agent panel now.
+    var showsPanel: Bool { isActive && !isDictationInProgress }
 
     var selectedTarget: AgentRef? {
         agents.first { $0.id == selectedTargetID }
@@ -82,19 +111,22 @@ final class AgentModeController: ObservableObject {
         do {
             agents = try await connector.list()
             lastListError = nil
+            lastListErrorIsAccessDenied = false
             if let selectedTargetID, !agents.contains(where: { $0.id == selectedTargetID }) {
                 self.selectedTargetID = nil
             }
             return true
         } catch {
             lastListError = error.localizedDescription
+            lastListErrorIsAccessDenied = Self.isAccessDenied(error)
             return false
         }
     }
 
     func select(_ agent: AgentRef) {
         selectedTargetID = agent.id
-        if case .choosing(let candidates, let intent) = phase, candidates.contains(agent) {
+        // Match by id: the listed status may have changed since the choice was offered.
+        if case .choosing(let candidates, let intent) = phase, candidates.contains(where: { $0.id == agent.id }) {
             Task { await run(intent, on: agent) }
         }
     }
@@ -104,23 +136,26 @@ final class AgentModeController: ObservableObject {
     func beginListening() {
         speech.stopSpeaking(at: .immediate)
         noticeTask?.cancel()
-        if var pending = currentPending {
-            // Hold the pending send so the next utterance ("cancel", "send") can decide it.
-            pendingTask?.cancel()
-            pendingTask = nil
-            pending.isHeld = true
-            phase = .pending(pending)
-            return
-        }
+        isDictationInProgress = false
+        if holdPending() { return }
         phase = .listening
     }
 
+    /// Stops a pending send's countdown. A held send waits for an explicit Send or Cancel.
+    @discardableResult
+    func holdPending() -> Bool {
+        guard var pending = currentPending else { return false }
+        pendingTask?.cancel()
+        pendingTask = nil
+        pending.isHeld = true
+        phase = .pending(pending)
+        return true
+    }
+
+    /// The capture was empty, failed, or was discarded. A held send stays held: it is never
+    /// restarted or sent without an explicit Send.
     func captureEndedWithoutSpeech() {
         if phase == .listening { phase = .idle }
-        if let pending = currentPending, pending.isHeld {
-            // Nothing was said: restart a fresh cancel window rather than sending at once.
-            startCancelWindow(pending.kind, agent: pending.agent, seconds: AgentSafetyGate.cancelWindowSeconds)
-        }
     }
 
     func dismiss() {
@@ -130,18 +165,31 @@ final class AgentModeController: ObservableObject {
         phase = .idle
     }
 
+    /// A dictation capture started: hold any pending send so it can't fire unseen, and keep
+    /// agent notices from covering the dictation status.
+    func dictationStarted() {
+        holdPending()
+        isDictationInProgress = true
+    }
+
     // MARK: - Utterances
 
     func handle(_ text: String) async {
         // "cancel" and "send" act on a pending send at once, before any cmux call.
-        if case .command(let command, _) = AgentIntentParser(agents: agents).parse(text).intent,
-           command == .cancel || command == .send {
-            if currentPending == nil {
+        let quick = AgentIntentParser(agents: agents).parse(text)
+        if case .command(let command, _) = quick.intent, command == .cancel || command == .send {
+            guard let pending = currentPending else {
                 report(command == .cancel ? "Nothing to cancel." : "Nothing is waiting to send.", tone: .info)
-            } else if command == .cancel {
+                return
+            }
+            if command == .cancel {
                 cancelPending(announce: true)
-            } else {
+            } else if addresses(quick.address, pending.agent) {
                 await firePendingNow()
+            } else {
+                // "Borealis, send" must not deliver a message addressed to Atlas.
+                holdPending()
+                report("The waiting message is for \(pending.agent.name). Say “send” or choose Send now.", tone: .warning, speak: true, keepPending: true)
             }
             return
         }
@@ -225,8 +273,8 @@ final class AgentModeController: ObservableObject {
             await runImmediately(intent, on: agent)
         case .cancelWindow(let seconds):
             switch intent {
-            case .prompt(let text): startCancelWindow(.prompt(text), agent: agent, seconds: seconds)
-            case .command(.show, _): startCancelWindow(.show, agent: agent, seconds: seconds)
+            case .prompt(let text): startCancelWindow(.prompt(text), agent: agent, seconds: min(seconds, cancelWindowSeconds))
+            case .command(.show, _): startCancelWindow(.show, agent: agent, seconds: min(seconds, cancelWindowSeconds))
             case .command(let command, _): report(AgentGateRefusal.notAvailableYet(command).message, tone: .warning)
             }
         }
@@ -303,7 +351,7 @@ final class AgentModeController: ObservableObject {
             do {
                 switch try await connector.prompt(agent, text: text) {
                 case .delivered:
-                    NSSound(named: "Tink")?.play()
+                    confirmationSound()
                     report("Sent to \(agent.name).", tone: .success)
                 case .refused(let refusal):
                     report(Self.message(for: refusal, agent: agent), tone: .warning, speak: true)
@@ -338,10 +386,14 @@ final class AgentModeController: ObservableObject {
 
     // MARK: - Feedback
 
-    private var lastListErrorIsAccessDenied: Bool {
-        lastListError.map { $0 == CmuxErrorClassifier.accessDeniedGuidance
-            || $0 == CmuxErrorClassifier.passwordRequiredGuidance
-            || $0 == CmuxErrorClassifier.passwordRejectedGuidance } ?? false
+    /// Whether an optional address names `agent` (no address counts as a match).
+    private func addresses(_ address: AgentAddress?, _ agent: AgentRef) -> Bool {
+        switch address {
+        case nil: true
+        case .agent(let id)?: id == agent.id
+        case .number(let number)?: agents.indices.contains(number - 1) && agents[number - 1].id == agent.id
+        case .ambiguous?: false
+        }
     }
 
     private static func isAccessDenied(_ error: Error) -> Bool {
@@ -349,7 +401,14 @@ final class AgentModeController: ObservableObject {
         return false
     }
 
-    private func report(_ text: String, tone: Notice.Tone, speak shouldSpeak: Bool = false, socketSetup: Bool = false) {
+    /// - Parameter keepPending: Show the text on the held send's card instead of replacing it.
+    private func report(_ text: String, tone: Notice.Tone, speak shouldSpeak: Bool = false, socketSetup: Bool = false, keepPending: Bool = false) {
+        if keepPending, var pending = currentPending {
+            pending.note = text
+            phase = .pending(pending)
+            if shouldSpeak { speak(text) }
+            return
+        }
         phase = .notice(Notice(text: text, tone: tone, needsSocketSetup: socketSetup))
         if shouldSpeak { speak(text) }
         noticeTask?.cancel()
@@ -362,9 +421,8 @@ final class AgentModeController: ObservableObject {
     }
 
     private func speak(_ text: String) {
-        guard settingsService.settings.agentMode?.speakReplies ?? true else { return }
-        speech.stopSpeaking(at: .immediate)
-        speech.speak(AVSpeechUtterance(string: text))
+        guard speechEnabled() else { return }
+        speaker(text)
     }
 
     static func activateCmux() {

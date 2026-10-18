@@ -54,6 +54,21 @@ final class CmuxConnectorTests: XCTestCase {
         XCTAssertNil(CmuxExecutableLocator.locate(environment: [:], homeDirectory: "/Users/me", isExecutable: { _ in false }))
     }
 
+    func testLocatorIgnoresRelativePathEntries() {
+        let candidates = CmuxExecutableLocator.candidates(environment: ["PATH": "bin:.:/abs/bin:"], homeDirectory: "/Users/me")
+        XCTAssertTrue(candidates.allSatisfy { $0.hasPrefix("/") })
+        XCTAssertTrue(candidates.contains("/abs/bin/cmux"))
+        XCTAssertNil(CmuxExecutableLocator.locate(environment: ["PATH": "bin"], homeDirectory: "/Users/me", isExecutable: { $0 == "bin/cmux" }))
+    }
+
+    func testListingCapsParallelCmuxCalls() async throws {
+        let runner = try FakeCmux()
+        _ = try await CmuxConnector(executable: FakeCmux.executable, runner: runner).list()
+        XCTAssertEqual(runner.calls.filter { $0.arguments.first == "rpc" }.count, 6)
+        XCTAssertLessThanOrEqual(runner.peakConcurrentRPCs, CmuxConnector.maxConcurrentCalls)
+        XCTAssertGreaterThan(runner.peakConcurrentRPCs, 1, "Calls still run in parallel")
+    }
+
     // MARK: - JSON parsing
 
     func testParsesRecordedTree() throws {
@@ -304,6 +319,11 @@ final class FakeCmux: CommandRunner, @unchecked Sendable {
     private let states: [String: Data]
     private let globalFailure: String?
     private let messageFailure: String?
+    private var currentRPCs = 0
+    private var peakRPCs = 0
+
+    /// Most `rpc` calls that were in flight at the same time.
+    var peakConcurrentRPCs: Int { lock.withLock { peakRPCs } }
 
     init(globalFailure: String? = nil, messageFailure: String? = nil) throws {
         tree = try CmuxConnectorTests.fixture("tree-all.json")
@@ -331,6 +351,12 @@ final class FakeCmux: CommandRunner, @unchecked Sendable {
         case "--json" where arguments.contains("list-notifications"):
             return CommandOutput(exitCode: 0, standardOutput: notifications)
         case "rpc":
+            lock.withLock {
+                currentRPCs += 1
+                peakRPCs = max(peakRPCs, currentRPCs)
+            }
+            try await Task.sleep(for: .milliseconds(30))
+            lock.withLock { currentRPCs -= 1 }
             let params = try JSONSerialization.jsonObject(with: Data(arguments[2].utf8)) as? [String: String]
             if let id = params?["surface_id"], let state = states[id] {
                 return CommandOutput(exitCode: 0, standardOutput: state)

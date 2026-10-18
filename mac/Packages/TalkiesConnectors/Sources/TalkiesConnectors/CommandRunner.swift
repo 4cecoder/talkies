@@ -38,6 +38,8 @@ public enum CommandRunnerError: Error, Equatable, Sendable {
     case executableMissing(String)
     case launchFailed(String)
     case timedOut
+    /// Writing standard input failed (for example EPIPE when the child exited without reading it).
+    case standardInputFailed(String)
 }
 
 public protocol CommandRunner: Sendable {
@@ -60,9 +62,14 @@ public struct ProcessCommandRunner: CommandRunner {
         }
     }
 
+
     private final class Buffer: @unchecked Sendable {
         var data = Data()
+        var writeError: Error?
     }
+
+    /// Grace period after SIGTERM before SIGKILL, and after SIGKILL before giving up.
+    static let terminationGrace: TimeInterval = 2
 
     private static func runBlocking(_ invocation: CommandInvocation) throws -> CommandOutput {
         guard FileManager.default.isExecutableFile(atPath: invocation.executable.path) else {
@@ -80,15 +87,19 @@ public struct ProcessCommandRunner: CommandRunner {
         let input = invocation.standardInput.map { _ in Pipe() }
         process.standardInput = input ?? FileHandle.nullDevice
 
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+
         do {
             try process.run()
         } catch {
             throw CommandRunnerError.launchFailed(error.localizedDescription)
         }
+        let deadline = DispatchTime.now() + invocation.timeout
 
         // Drain both pipes concurrently so a large reply cannot block the child.
         let group = DispatchGroup()
-        let stdout = Buffer(), stderr = Buffer()
+        let stdout = Buffer(), stderr = Buffer(), stdin = Buffer()
         for (pipe, buffer) in [(output, stdout), (error, stderr)] {
             group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -97,19 +108,44 @@ public struct ProcessCommandRunner: CommandRunner {
             }
         }
         if let input, let data = invocation.standardInput {
+            // Only the child may hold the read end, so its exit makes further writes fail.
+            try? input.fileHandleForReading.close()
             let handle = input.fileHandleForWriting
+            // A child that exits before reading stdin (socket refused, bad target) must not raise
+            // SIGPIPE in Talkies. With F_SETNOSIGPIPE the write fails with EPIPE instead.
+            _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
+            group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
-                try? handle.write(contentsOf: data)
+                do {
+                    try handle.write(contentsOf: data)
+                } catch {
+                    stdin.writeError = error
+                }
                 try? handle.close()
+                group.leave()
             }
         }
 
-        if group.wait(timeout: .now() + invocation.timeout) == .timedOut {
-            process.terminate()
-            _ = group.wait(timeout: .now() + 2)
+        guard group.wait(timeout: deadline) == .success, exited.wait(timeout: deadline) == .success else {
+            stop(process, exited: exited)
             throw CommandRunnerError.timedOut
         }
-        process.waitUntilExit()
-        return CommandOutput(exitCode: process.terminationStatus, standardOutput: stdout.data, standardError: stderr.data)
+
+        let result = CommandOutput(exitCode: process.terminationStatus, standardOutput: stdout.data, standardError: stderr.data)
+        if result.exitCode == 0, let writeError = stdin.writeError {
+            // The child succeeded without reading its input, so the input was not delivered.
+            throw CommandRunnerError.standardInputFailed(writeError.localizedDescription)
+        }
+        // A non-zero exit already explains the failure (for example cmux refusing the socket).
+        return result
+    }
+
+    /// SIGTERM, then SIGKILL after a grace period. Never waits indefinitely.
+    private static func stop(_ process: Process, exited: DispatchSemaphore) {
+        guard process.isRunning else { return }
+        process.terminate()
+        if exited.wait(timeout: .now() + terminationGrace) == .success { return }
+        kill(process.processIdentifier, SIGKILL)
+        _ = exited.wait(timeout: .now() + terminationGrace)
     }
 }

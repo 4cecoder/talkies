@@ -145,8 +145,8 @@ app you're in. It is off by default and uses its own key, so the dictation key k
 behavior and never runs commands. Command-shaped text dictated with the dictation key, such as
 "approve", is inserted as typed.
 
-1. Open Settings → **Agents**, turn on **Enable agent mode**, and choose an **Agent key** (Right
-   Command by default). It can't be the dictation key.
+1. Open Settings → **Agents**, turn on **Enable agent mode**, and choose an **Agent key**. No key is
+   set until you choose one, and it can't be the dictation key.
 2. Let Talkies reach cmux's socket. By default cmux accepts commands only from programs started
    inside cmux, and Talkies shows "cmux only accepts commands from programs started inside cmux"
    until you change that. In cmux, open Settings → Automation and set **Socket Control Mode** to
@@ -154,8 +154,10 @@ behavior and never runs commands. Command-shaped text dictated with the dictatio
    the Keychain and passes it to the cmux CLI only through `CMUX_SOCKET_PASSWORD`, never as an
    argument. **Automation mode** also works and needs no password. Use **Test Connection** to check;
    it only lists agents.
-3. Hold the agent key and speak. Start with an agent's name, or pick a target from the HUD's target
-   menu or the menu bar's **Agent Target** submenu.
+3. Hold the agent key while you speak, then release it. Start with an agent's name, or pick a target
+   from the HUD's target menu or the menu bar's **Agent Target** submenu. Agent mode is hold-to-talk
+   only: a short tap, or a press that becomes a shortcut such as ⌘C or ⌘Tab, is discarded without
+   transcribing anything.
 
 What you can say:
 
@@ -179,6 +181,16 @@ How targets work:
   agent, and says why. It never types into the terminal and never passes `--force`.
 - cmux is called with argument arrays through `Process`, never a shell, and prompt text goes to
   `cmux agent message <surface> -` on standard input.
+
+Agent-mode text is parsed exactly as recognized. S1-mini cleanup and the Ollama and LM Studio
+plugins apply only to dictation, so a rewrite can't change what is sent or which command runs.
+Each recording keeps its own mode and insertion target from the moment its key is pressed, so a
+dictation that is still transcribing is inserted where you started it even if you press the agent
+key in the meantime.
+
+If you press the agent key or start dictating while a send is counting down, the send is held. It
+then waits for an explicit **Send now**, **Cancel**, or a spoken "send" or "cancel", and it is
+never sent automatically. A spoken "send" that names a different agent doesn't release it.
 
 Replies are spoken with the on-device `AVSpeechSynthesizer`; turn off **Speak status replies** to
 see them only in the HUD. Agent-mode utterances appear in the HUD's transcript list like other

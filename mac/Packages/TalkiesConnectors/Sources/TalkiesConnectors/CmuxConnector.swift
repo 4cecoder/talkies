@@ -16,6 +16,8 @@ public struct CmuxConnector: AgentConnector {
     public let id = "cmux"
     public let displayName = "cmux"
     public let capabilities: AgentCapabilities = [.list, .read, .prompt, .show]
+    /// Upper bound on parallel `surface.input_state` calls while listing.
+    static let maxConcurrentCalls = 4
 
     private let executable: URL?
     private let runner: any CommandRunner
@@ -47,7 +49,9 @@ public struct CmuxConnector: AgentConnector {
             .map(\.id)
 
         let states = try await withThrowingTaskGroup(of: (String, CmuxInputState?).self) { group in
-            for surfaceID in surfaceIDs {
+            var remaining = surfaceIDs[...]
+            func addNext() {
+                guard let surfaceID = remaining.popFirst() else { return }
                 group.addTask {
                     do {
                         return (surfaceID, try await inputState(surfaceID: surfaceID))
@@ -58,9 +62,12 @@ public struct CmuxConnector: AgentConnector {
                     }
                 }
             }
+            // At most `maxConcurrentCalls` cmux processes run at once.
+            for _ in 0..<Self.maxConcurrentCalls { addNext() }
             var states: [String: CmuxInputState] = [:]
-            for try await (surfaceID, state) in group {
+            while let (surfaceID, state) = try await group.next() {
                 if let state { states[surfaceID] = state }
+                addNext()
             }
             return states
         }
@@ -211,6 +218,8 @@ public struct CmuxConnector: AgentConnector {
             throw AgentConnectorError.timedOut(tool: displayName)
         } catch CommandRunnerError.launchFailed(let message) {
             throw AgentConnectorError.commandFailed(tool: displayName, message: message)
+        } catch CommandRunnerError.standardInputFailed(let message) {
+            throw AgentConnectorError.commandFailed(tool: displayName, message: "it exited without reading the message (\(message))")
         }
 
         guard output.exitCode == 0 else {

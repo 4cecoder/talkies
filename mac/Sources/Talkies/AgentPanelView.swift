@@ -97,13 +97,16 @@ struct AgentPanelView: View {
     }
 
     private var listeningHint: String {
+        guard let keyName = controller.agentKeyName else {
+            return "Choose an agent key in Settings → Agents, then hold it while you speak."
+        }
         if audioRecorder.isRecording {
             return "Listening… say a name first, like “Atlas, run the tests”, or ask “What's Atlas doing?”"
         }
         if let target = controller.selectedTarget {
-            return "Hold the agent key to talk to \(target.name), or start with another agent's name."
+            return "Hold \(keyName) to talk to \(target.name), or start with another agent's name."
         }
-        return "Hold the agent key and start with an agent's name."
+        return "Hold \(keyName) while you speak, and start with an agent's name."
     }
 
     private func label(for agent: AgentRef) -> String {
@@ -132,7 +135,7 @@ private struct PendingSendView: View {
                 }
             }
             if pending.isHeld {
-                Text("Waiting for you. Say “cancel” or “send”, or use the buttons.")
+                Text(pending.note ?? "Waiting for you. Say “cancel” or “send”, or use the buttons.")
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.6))
             } else {

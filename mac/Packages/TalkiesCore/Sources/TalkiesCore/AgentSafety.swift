@@ -108,6 +108,8 @@ public struct AgentSafetyGate: Sendable {
     /// - Parameters:
     ///   - capabilities: The addressed connector's capabilities.
     ///   - targetAutoApproves: The target runs tools without asking, so a prompt is effectively a command.
+    ///     Phase 1 limit: no connector reports this yet, so callers always pass `false`. The tier-2
+    ///     path is implemented and tested so it is ready when connectors can detect auto-approve modes.
     public func evaluate(_ intent: AgentIntent, capabilities: AgentCapabilities, targetAutoApproves: Bool = false) -> AgentGateDecision {
         switch intent {
         case .prompt:
@@ -204,6 +206,41 @@ public enum AgentHotkey: Int, CaseIterable, Codable, Sendable, Identifiable {
     case rightShift = 60
 
     public var id: Int { rawValue }
+
+    /// Device-independent family bit (`NSEvent.ModifierFlags`) of this key.
+    public var familyFlagMask: UInt {
+        switch self {
+        case .leftOption, .rightOption: 1 << 19
+        case .rightCommand: 1 << 20
+        case .rightControl: 1 << 18
+        case .rightShift: 1 << 17
+        }
+    }
+
+    /// Shift, Control, Option, and Command family bits. Caps Lock and Fn are ignored.
+    public static let modifierFamiliesMask: UInt = (1 << 17) | (1 << 18) | (1 << 19) | (1 << 20)
+
+    /// Whether `rawFlags` (an `NSEvent.modifierFlags.rawValue`) has this key down and no other
+    /// modifier. Agent mode ignores a press that is part of a shortcut such as ⌘C or ⌘Tab.
+    public func isSolePress(rawFlags: UInt) -> Bool {
+        rawFlags & deviceFlagMask != 0 && rawFlags & Self.modifierFamiliesMask == familyFlagMask
+            && rawFlags & otherDeviceBitsInFamily == 0
+    }
+
+    /// The opposite-side key of the same family (for example Left Command for Right Command).
+    private var otherDeviceBitsInFamily: UInt {
+        switch self {
+        case .leftOption: 0x0000_0040
+        case .rightOption: 0x0000_0020
+        case .rightCommand: 0x0000_0008
+        case .rightControl: 0x0000_0001
+        case .rightShift: 0x0000_0002
+        }
+    }
+
+    /// Minimum hold for an agent capture. Agent mode is hold-to-talk only: a shorter press is
+    /// discarded instead of leaving the microphone open.
+    public static let minimumHoldSeconds = 0.35
 
     public var keyCode: Int { rawValue }
 

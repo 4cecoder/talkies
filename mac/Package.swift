@@ -44,6 +44,15 @@ let package = Package(
             path: "Tests/TalkiesCoreTests"
         ),
         .testTarget(
+            name: "TalkiesAppTests",
+            dependencies: [
+                "Talkies",
+                .product(name: "TalkiesCore", package: "TalkiesCore"),
+                .product(name: "TalkiesConnectors", package: "TalkiesConnectors"),
+            ],
+            path: "Tests/TalkiesAppTests"
+        ),
+        .testTarget(
             name: "TalkiesConnectorsTests",
             dependencies: [
                 .product(name: "TalkiesConnectors", package: "TalkiesConnectors"),

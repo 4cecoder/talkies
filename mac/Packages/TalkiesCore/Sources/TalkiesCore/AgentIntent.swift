@@ -294,24 +294,3 @@ public struct AgentIntentParser: Sendable {
         return capitalizeFirst(rest)
     }
 }
-
-/// How a recorded utterance is used. The dictation hotkey always inserts text verbatim;
-/// only the agent hotkey parses commands.
-public enum CaptureMode: String, Codable, Sendable {
-    case dictation
-    case agent
-}
-
-public enum CaptureRoute: Equatable, Sendable {
-    case insert(String)
-    case agent(AgentUtterance)
-}
-
-public enum CaptureRouter {
-    public static func route(_ text: String, mode: CaptureMode, parser: AgentIntentParser) -> CaptureRoute {
-        switch mode {
-        case .dictation: .insert(text)
-        case .agent: .agent(parser.parse(text))
-        }
-    }
-}

@@ -22,16 +22,25 @@ final class AgentIntentFixtureTests: XCTestCase {
                 caseCount += 1
                 let label = "\(file.lastPathComponent): \"\(testCase.utterance)\""
                 let mode = CaptureMode(rawValue: testCase.mode ?? "agent") ?? .agent
-                let route = CaptureRouter.route(testCase.utterance, mode: mode, parser: parser)
+                // Route exactly as the app does: through a capture ticket, then parse agent text.
+                var ledger = CaptureLedger<String>()
+                let ticket = ledger.begin(mode, destination: "focused field")
+                let outcome = ledger.finish(ticket, text: testCase.utterance)
 
                 if let insert = testCase.insert {
-                    XCTAssertEqual(route, .insert(insert), label)
+                    guard case .insert(let text, let destination) = outcome else {
+                        XCTFail("\(label) was not inserted")
+                        continue
+                    }
+                    XCTAssertEqual(text, insert, label)
+                    XCTAssertEqual(destination, "focused field", label)
                     continue
                 }
-                guard case .agent(let utterance) = route else {
-                    XCTFail("\(label) was not parsed in agent mode")
+                guard case .agent(let agentText) = outcome else {
+                    XCTFail("\(label) was not routed to agent mode")
                     continue
                 }
+                let utterance = parser.parse(agentText)
                 XCTAssertEqual(Self.describe(utterance.address), testCase.address?.expected ?? "none", "\(label) address")
                 switch utterance.intent {
                 case .prompt(let text):

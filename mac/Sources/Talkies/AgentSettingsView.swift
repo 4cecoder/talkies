@@ -30,12 +30,18 @@ struct AgentSettingsView: View {
             Section(header: Text("Agent Mode")) {
                 Toggle("Enable agent mode", isOn: binding(\.isEnabled))
                 Picker("Agent key", selection: binding(\.hotkey)) {
+                    Text("Not set").tag(AgentHotkey?.none)
                     ForEach(AgentHotkey.allCases) { key in
-                        Text(key.displayName).tag(key)
+                        Text(key.displayName).tag(AgentHotkey?.some(key))
                     }
                 }
                 .disabled(!agentMode.isEnabled)
-                if agentMode.hotkey.conflicts(with: dictationKey) {
+                if agentMode.isEnabled && agentMode.hotkey == nil {
+                    Label("Choose an agent key to start using agent mode.", systemImage: "keyboard")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                if agentMode.hotkey?.conflicts(with: dictationKey) == true {
                     Label("This is also the dictation key. Choose a different agent key.", systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundColor(.orange)
@@ -43,7 +49,8 @@ struct AgentSettingsView: View {
                 Toggle("Speak status replies", isOn: binding(\.speakReplies))
                     .disabled(!agentMode.isEnabled)
                 Text("""
-                    Hold the agent key and start with an agent's name: “Atlas, run the tests” or “What's Atlas doing?”. \
+                    Hold the agent key while you speak and start with an agent's name: “Atlas, run the tests” or \
+                    “What's Atlas doing?”. A short tap, or a press that is part of a shortcut such as ⌘C, is ignored. \
                     The dictation key is unchanged and never runs commands. Prompts wait two seconds so you can cancel \
                     with Esc. Approvals aren't available by voice. Replies are spoken with the on-device macOS voice.
                     """)

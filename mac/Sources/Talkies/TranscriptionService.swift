@@ -94,10 +94,10 @@ class TranscriptionService: ObservableObject {
         SettingsService.shared.settings.speechEngine ?? .automatic
     }
 
-    var onTranscriptionComplete: ((String) -> Void)?
-    /// Extra recognition terms for the current capture only, such as live agent names in agent
-    /// mode. They are never saved to the user's vocabulary.
-    var sessionVocabulary: [String] = []
+    /// Called with the recognized text and the ticket of the capture that produced it.
+    var onTranscriptionComplete: ((String, CaptureTicket?) -> Void)?
+    /// Called when a capture produced no usable text or failed.
+    var onTranscriptionEndedWithoutText: ((CaptureTicket?) -> Void)?
 
     // Statistics
     var totalWords: Int {
@@ -129,7 +129,9 @@ class TranscriptionService: ObservableObject {
         transcriptionTask = nil
     }
 
-    func transcribeAudioFile(_ audioURL: URL) async {
+    /// - Parameter extraVocabulary: Recognition terms for this capture only, such as live agent
+    ///   names in agent mode. They are never saved to the user's vocabulary.
+    func transcribeAudioFile(_ audioURL: URL, ticket: CaptureTicket? = nil, extraVocabulary: [String] = []) async {
         defer { try? FileManager.default.removeItem(at: audioURL) }
 
         await MainActor.run {
@@ -152,7 +154,7 @@ class TranscriptionService: ObservableObject {
             let result = try await recognizers.transcribe(
                 audioURL,
                 preference: speechEngine,
-                vocabulary: (SettingsService.shared.settings.vocabulary ?? []) + sessionVocabulary,
+                vocabulary: (SettingsService.shared.settings.vocabulary ?? []) + extraVocabulary,
                 onRuntimeChange: { [weak self] runtime in
                     self?.activeRuntime = runtime
                 },
@@ -186,11 +188,12 @@ class TranscriptionService: ObservableObject {
                 guard !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     self.pipelineStage = .noSpeech
                     self.statusMessage = "No speech was detected"
+                    self.onTranscriptionEndedWithoutText?(ticket)
                     return
                 }
 
                 // Trigger callback with transcribed text
-                self.onTranscriptionComplete?(fullText)
+                self.onTranscriptionComplete?(fullText, ticket)
             }
         } catch {
             print("❌ Transcription error: \(error)")
@@ -201,6 +204,7 @@ class TranscriptionService: ObservableObject {
                 self.isTranscribing = false
                 self.transcriptionProgress = nil
                 self.pipelineStage = .error("Transcription failed")
+                self.onTranscriptionEndedWithoutText?(ticket)
             }
         }
     }
@@ -256,9 +260,9 @@ class TranscriptionService: ObservableObject {
         error = nil
     }
     
-    func setAudioFileURL(_ url: URL) {
+    func setAudioFileURL(_ url: URL, ticket: CaptureTicket? = nil, extraVocabulary: [String] = []) {
         Task {
-            await transcribeAudioFile(url)
+            await transcribeAudioFile(url, ticket: ticket, extraVocabulary: extraVocabulary)
         }
     }
 

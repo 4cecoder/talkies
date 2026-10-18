@@ -13,7 +13,8 @@ public enum CmuxExecutableLocator {
             (homeDirectory as NSString).appendingPathComponent("Applications/cmux.app/Contents/Resources/bin/cmux"),
         ]
         let searchPath = (environment["PATH"] ?? "").split(separator: ":").map(String.init) + ["/opt/homebrew/bin", "/usr/local/bin"]
-        for directory in searchPath where !directory.isEmpty {
+        // Only absolute entries: a relative PATH entry would resolve against the working directory.
+        for directory in searchPath where directory.hasPrefix("/") {
             paths.append((directory as NSString).appendingPathComponent("cmux"))
         }
         var seen = Set<String>()

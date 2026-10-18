@@ -162,12 +162,88 @@ final class AgentHotkeyTests: XCTestCase {
         XCTAssertEqual(Set(masks).count, masks.count)
     }
 
+    func testSolePressIgnoresShortcuts() {
+        let rightCommandDown: UInt = (1 << 20) | 0x10
+        XCTAssertTrue(AgentHotkey.rightCommand.isSolePress(rawFlags: rightCommandDown))
+        XCTAssertTrue(AgentHotkey.rightCommand.isSolePress(rawFlags: rightCommandDown | (1 << 16)), "Caps Lock is ignored")
+        XCTAssertFalse(AgentHotkey.rightCommand.isSolePress(rawFlags: rightCommandDown | (1 << 17) | 0x2), "⌘⇧ is a shortcut")
+        XCTAssertFalse(AgentHotkey.rightCommand.isSolePress(rawFlags: rightCommandDown | 0x8), "Both Command keys")
+        XCTAssertFalse(AgentHotkey.rightCommand.isSolePress(rawFlags: 1 << 20), "Left Command only")
+        XCTAssertTrue(AgentHotkey.leftOption.isSolePress(rawFlags: (1 << 19) | 0x20))
+        XCTAssertFalse(AgentHotkey.leftOption.isSolePress(rawFlags: (1 << 19) | 0x20 | (1 << 18) | 0x1))
+    }
+}
+
+final class CaptureLedgerTests: XCTestCase {
+    func testDictationReleasedThenAgentPressedDuringTranscription() {
+        var ledger = CaptureLedger<String>()
+        let dictation = ledger.begin(.dictation, destination: "Mail")
+        // The dictation is still transcribing when the agent key starts a new capture.
+        let agent = ledger.begin(.agent, destination: "Terminal")
+
+        guard case .insert(let text, let destination) = ledger.finish(dictation, text: "Dear team, approve the budget") else {
+            return XCTFail("The older dictation must still be inserted")
+        }
+        XCTAssertEqual(text, "Dear team, approve the budget")
+        XCTAssertEqual(destination, "Mail")
+        guard case .agent(let agentText) = ledger.finish(agent, text: "Atlas, run the tests") else {
+            return XCTFail("The agent capture must go to agent mode")
+        }
+        XCTAssertEqual(agentText, "Atlas, run the tests")
+    }
+
+    func testAgentReleasedThenDictationPressed() {
+        var ledger = CaptureLedger<String>()
+        let agent = ledger.begin(.agent)
+        let dictation = ledger.begin(.dictation, destination: "Notes")
+
+        guard case .agent = ledger.finish(agent, text: "Atlas, run the tests") else {
+            return XCTFail("Agent text must never be typed into the focused app")
+        }
+        guard case .insert(_, let destination) = ledger.finish(dictation, text: "Buy milk") else {
+            return XCTFail("Expected insertion")
+        }
+        XCTAssertEqual(destination, "Notes")
+    }
+
+    func testTwoQuickAgentCapturesNeverInsert() {
+        var ledger = CaptureLedger<String>()
+        let first = ledger.begin(.agent, destination: "ignored")
+        let second = ledger.begin(.agent)
+        // Results arrive out of order.
+        guard case .agent = ledger.finish(second, text: "Borealis, status") else { return XCTFail("second") }
+        guard case .agent = ledger.finish(first, text: "Atlas, run the tests") else { return XCTFail("first") }
+        XCTAssertEqual(ledger.openCount, 0)
+    }
+
+    func testAgentCapturesCarryNoDestination() {
+        var ledger = CaptureLedger<String>()
+        let agent = ledger.begin(.agent, destination: "Mail")
+        XCTAssertEqual(ledger.mode(of: agent), .agent)
+        guard case .agent = ledger.finish(agent, text: "hi") else { return XCTFail("agent") }
+    }
+
+    func testCancelledAndFinishedCapturesAreDropped() {
+        var ledger = CaptureLedger<String>()
+        let aborted = ledger.begin(.agent)
+        ledger.cancel(aborted)
+        XCTAssertNil(ledger.mode(of: aborted))
+        guard case .dropped = ledger.finish(aborted, text: "Atlas, run the tests") else { return XCTFail("aborted") }
+
+        let once = ledger.begin(.dictation, destination: "Mail")
+        _ = ledger.finish(once, text: "a")
+        guard case .dropped = ledger.finish(once, text: "a") else { return XCTFail("replayed") }
+    }
+
+    func testFinishWithoutTextReportsMode() {
+        var ledger = CaptureLedger<String>()
+        let agent = ledger.begin(.agent)
+        XCTAssertEqual(ledger.finishWithoutText(agent), .agent)
+        XCTAssertNil(ledger.finishWithoutText(agent))
+    }
+
     func testDictationModeNeverParsesCommands() {
-        let parser = AgentIntentParser(candidates: [AgentNameCandidate(id: "atlas", names: ["Atlas"])])
-        XCTAssertEqual(CaptureRouter.route("Atlas, approve", mode: .dictation, parser: parser), .insert("Atlas, approve"))
-        XCTAssertEqual(
-            CaptureRouter.route("Atlas, approve", mode: .agent, parser: parser),
-            .agent(AgentUtterance(address: .agent(id: "atlas"), intent: .command(.approve, argument: nil)))
-        )
+        XCTAssertEqual(CaptureRouter.route("Atlas, approve", mode: .dictation), .insert("Atlas, approve"))
+        XCTAssertEqual(CaptureRouter.route("Atlas, approve", mode: .agent), .agent("Atlas, approve"))
     }
 }
