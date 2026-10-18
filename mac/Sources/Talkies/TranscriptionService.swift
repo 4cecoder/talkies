@@ -95,6 +95,9 @@ class TranscriptionService: ObservableObject {
     }
 
     var onTranscriptionComplete: ((String) -> Void)?
+    /// Extra recognition terms for the current capture only, such as live agent names in agent
+    /// mode. They are never saved to the user's vocabulary.
+    var sessionVocabulary: [String] = []
 
     // Statistics
     var totalWords: Int {
@@ -149,7 +152,7 @@ class TranscriptionService: ObservableObject {
             let result = try await recognizers.transcribe(
                 audioURL,
                 preference: speechEngine,
-                vocabulary: SettingsService.shared.settings.vocabulary ?? [],
+                vocabulary: (SettingsService.shared.settings.vocabulary ?? []) + sessionVocabulary,
                 onRuntimeChange: { [weak self] runtime in
                     self?.activeRuntime = runtime
                 },

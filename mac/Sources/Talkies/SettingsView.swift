@@ -82,6 +82,7 @@ struct SettingsView: View {
 
     enum SettingsSidebarItem: Hashable, Identifiable {
         case general
+        case agents
         case plugins
         case plugin(id: String)
         case advanced
@@ -89,6 +90,7 @@ struct SettingsView: View {
         var id: String {
             switch self {
             case .general: return "general"
+            case .agents: return "agents"
             case .plugins: return "plugins"
             case .plugin(let id): return "plugin-\(id)"
             case .advanced: return "advanced"
@@ -112,6 +114,9 @@ struct SettingsView: View {
                 Section {
                     Label("General", systemImage: "gearshape")
                         .tag(SettingsSidebarItem.general)
+
+                    Label("Agents", systemImage: "person.wave.2")
+                        .tag(SettingsSidebarItem.agents)
 
                     Label("Plugins", systemImage: "puzzlepiece.extension")
                         .tag(SettingsSidebarItem.plugins)
@@ -141,6 +146,8 @@ struct SettingsView: View {
                     switch selectedItem {
                     case .general:
                         GeneralSettingsView()
+                    case .agents:
+                        AgentSettingsView()
                     case .plugins:
                         PluginsSettingsView()
                             .environmentObject(pluginManager)

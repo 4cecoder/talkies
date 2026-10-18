@@ -19,7 +19,7 @@ struct TalkiesApp: App {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let s1MiniCleaner = S1MiniCleaner()
     private let fallbackSpeechSynthesizer = AVSpeechSynthesizer()
     var statusItem: NSStatusItem?
@@ -36,6 +36,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var activationKeyWasPressed = false
     private var insertionDestination: TextInsertionDestination?
     private var statusIconSubscriptions = Set<AnyCancellable>()
+
+    // Agent mode: a separate hotkey whose utterances go to agents, never into the focused field.
+    let agentController = AgentModeController()
+    private var captureMode: CaptureMode = .dictation
+    var agentKeyWasPressed = false
+    private var escapeMonitors: [Any] = []
+    private let agentTargetMenu = NSMenu(title: "Agent Target")
 
     // Settings service
     var settingsService = SettingsService.shared
@@ -110,6 +117,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     catch { cleanupFailed = true; print("⚠️ LM Studio enhancement failed: \(error.localizedDescription)") }
                 }
 
+                if self.captureMode == .agent {
+                    self.finishAgentCapture(finalText)
+                    return
+                }
+
                 self.transcriptionService.currentText = finalText
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     self.transcriptionService.pipelineStage = .noSpeech
@@ -162,6 +174,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup global keyboard shortcut (Cmd+Shift+Space)
         setupKeyboardShortcut()
+        setupAgentMode()
         setupFloatingWindowDismissal()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             self?.showWindow(expanded: false)
@@ -194,13 +207,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupStatusBarMenu() {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open Talkies", action: #selector(showWindowFromMenu), keyEquivalent: ""))
+        let agentTargetItem = NSMenuItem(title: "Agent Target", action: nil, keyEquivalent: "")
+        agentTargetMenu.delegate = self
+        agentTargetItem.submenu = agentTargetMenu
+        menu.addItem(agentTargetItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Talkies", action: #selector(quitApp), keyEquivalent: "q"))
 
         // Set target for menu items
-        for item in menu.items {
+        for item in menu.items where item.submenu == nil {
             item.target = self
         }
 
@@ -277,7 +294,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 get: { [weak self] in self?.isFloatingWindowCollapsed ?? true },
                 set: { [weak self] collapsed in self?.isFloatingWindowCollapsed = collapsed }
             )
-            let contentView = DictationView(isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
+            let contentView = DictationView(agentController: agentController, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
@@ -393,6 +410,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var canCollapseFloatingWindow: Bool {
         guard !audioRecorder.isRecording else { return false }
+        switch agentController.phase {
+        case .pending, .working, .choosing: return false
+        case .idle, .listening, .notice: break
+        }
         switch transcriptionService.pipelineStage {
         case .idle, .complete, .cleanupFallback, .clipboardFallback, .noSpeech, .error:
             return true
@@ -407,11 +428,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let handler: (NSEvent) -> Void = { [weak self] event in
             let keyCode = event.keyCode
             let isPressed = event.modifierFlags.contains(.option)
+            let deviceFlags = event.modifierFlags.rawValue
 
             // Dispatch all main-actor-isolated property access to main thread
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 let selectedKeyCode = self.settingsService.settings.activationKey?.rawValue ?? ActivationKey.rightOption.rawValue
+                if let agentHotkey = self.agentHotkey, Int(keyCode) == agentHotkey.keyCode {
+                    let agentKeyPressed = deviceFlags & agentHotkey.deviceFlagMask != 0
+                    if agentKeyPressed && !self.agentKeyWasPressed {
+                        self.handleKeyPressDown(mode: .agent)
+                    } else if !agentKeyPressed && self.agentKeyWasPressed {
+                        self.handleKeyRelease()
+                    }
+                    self.agentKeyWasPressed = agentKeyPressed
+                    return
+                }
                 guard Int(keyCode) == selectedKeyCode else { return }
 
                 print("🔑 Activation key event - isPressed: \(isPressed), wasPressed: \(self.activationKeyWasPressed)")
@@ -444,7 +476,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func handleKeyPressDown() {
+    func handleKeyPressDown(mode: CaptureMode = .dictation) {
         print("🎯 handleKeyPressDown - START")
         print("   isRecording: \(audioRecorder.isRecording)")
 
@@ -476,7 +508,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start recording immediately
         print("▶️ Starting recording - calling startRecordingWithCallback()")
-        startRecordingWithCallback()
+        startRecordingWithCallback(mode: mode)
         print("   startRecordingWithCallback() completed")
 
         // Schedule a check to see if this becomes push-to-talk mode
@@ -484,7 +516,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
 
             // If key is still held down after threshold, it's push-to-talk mode
-            if self.activationKeyWasPressed && self.isWaitingForRelease {
+            let keyHeld = mode == .agent ? self.agentKeyWasPressed : self.activationKeyWasPressed
+            if keyHeld && self.isWaitingForRelease {
                 print("🎤 Switched to PUSH-TO-TALK mode (held > \(self.pushToTalkThreshold)s)")
                 self.isPushToTalkMode = true
             }
@@ -516,8 +549,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isWaitingForRelease = false
     }
 
-    func startRecordingWithCallback() {
+    func startRecordingWithCallback(mode: CaptureMode = .dictation) {
         print("   startRecordingWithCallback - setting up callback")
+        captureMode = mode
 
         guard audioRecorder.hasPermission else {
             transcriptionService.pipelineStage = .requestingMicrophonePermission
@@ -527,10 +561,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Set pipeline stage to recording
-        insertionDestination = TextInserter.shared.captureDestination()
         transcriptionService.currentText = ""
         transcriptionService.pipelineStage = .recording
-        transcriptionService.statusMessage = "Listening… audio stays on this Mac."
+        switch mode {
+        case .dictation:
+            insertionDestination = TextInserter.shared.captureDestination()
+            transcriptionService.sessionVocabulary = []
+            transcriptionService.statusMessage = "Listening… audio stays on this Mac."
+            if case .pending = agentController.phase {} else { agentController.dismiss() }
+        case .agent:
+            // Agent mode never inserts text, so the focused field is not captured.
+            insertionDestination = nil
+            transcriptionService.sessionVocabulary = agentController.spokenNames
+            transcriptionService.statusMessage = "Listening for an agent command… audio stays on this Mac."
+            agentController.beginListening()
+        }
 
         audioRecorder.onRecordingComplete = { [weak self] audioURL in
             print("   🎙️ Recording complete callback triggered")
@@ -579,6 +624,129 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    // MARK: - Agent mode
+
+    /// The agent hotkey when agent mode is on and it is not the dictation key.
+    private var agentHotkey: AgentHotkey? {
+        guard let agentMode = settingsService.settings.agentMode, agentMode.isEnabled else { return nil }
+        let dictationKey = settingsService.settings.activationKey ?? .rightOption
+        return agentMode.hotkey.conflicts(with: dictationKey) ? nil : agentMode.hotkey
+    }
+
+    private func setupAgentMode() {
+        // Esc cancels a pending tier-1 send. Global key monitoring needs Accessibility approval;
+        // the HUD's Cancel button works without it.
+        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
+            guard event.keyCode == 53 else { return }
+            Task { @MainActor [weak self] in self?.agentController.cancelPending() }
+        }
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape) {
+            escapeMonitors.append(monitor)
+        }
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
+            cancelOnEscape(event)
+            return event
+        }) {
+            escapeMonitors.append(monitor)
+        }
+
+        // A capture with no usable speech, or a failed one, never reaches the completion callback.
+        transcriptionService.$pipelineStage
+            .sink { [weak self] stage in
+                Task { @MainActor [weak self] in
+                    guard let self, self.captureMode == .agent else { return }
+                    switch stage {
+                    case .noSpeech, .error:
+                        self.captureMode = .dictation
+                        self.transcriptionService.sessionVocabulary = []
+                        self.agentController.captureEndedWithoutSpeech()
+                    default:
+                        break
+                    }
+                }
+            }
+            .store(in: &statusIconSubscriptions)
+
+        if settingsService.settings.agentMode?.isEnabled == true {
+            Task { await agentController.refreshAgents() }
+        }
+    }
+
+    /// Agent-mode text is parsed for an agent and is never inserted into the focused field.
+    /// It still lands in the transcript list like any dictation.
+    private func finishAgentCapture(_ text: String) {
+        captureMode = .dictation
+        transcriptionService.sessionVocabulary = []
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        transcriptionService.currentText = trimmed
+        guard !trimmed.isEmpty else {
+            transcriptionService.pipelineStage = .noSpeech
+            transcriptionService.statusMessage = "No usable words were recognized. Try again."
+            agentController.captureEndedWithoutSpeech()
+            return
+        }
+        transcriptionService.pipelineStage = .complete
+        transcriptionService.statusMessage = "Agent mode: \(trimmed)"
+        Task { await agentController.handle(trimmed) }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === agentTargetMenu else { return }
+        rebuildAgentTargetMenu()
+        guard settingsService.settings.agentMode?.isEnabled == true else { return }
+        Task { [weak self] in
+            guard let self, await self.agentController.refreshAgents() else { return }
+            self.rebuildAgentTargetMenu()
+        }
+    }
+
+    private func rebuildAgentTargetMenu() {
+        agentTargetMenu.removeAllItems()
+        guard settingsService.settings.agentMode?.isEnabled == true else {
+            let item = NSMenuItem(title: "Turn On Agent Mode in Settings…", action: #selector(showSettings), keyEquivalent: "")
+            item.target = self
+            agentTargetMenu.addItem(item)
+            return
+        }
+        let agents = agentController.agents
+        if agents.isEmpty {
+            let item = NSMenuItem(title: agentController.lastListError ?? "No cmux agents found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            agentTargetMenu.addItem(item)
+        }
+        var lastWorkspace: String?
+        for (index, agent) in agents.enumerated() {
+            if index == 0 || agent.workspace != lastWorkspace {
+                if index > 0 { agentTargetMenu.addItem(.separator()) }
+                let header = NSMenuItem(title: agent.workspace ?? "cmux", action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                agentTargetMenu.addItem(header)
+                lastWorkspace = agent.workspace
+            }
+            let item = NSMenuItem(title: "\(index + 1). \(agent.name) · \(agent.status.spokenPhrase)", action: #selector(selectAgentTarget(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = agent.id
+            item.state = agent.id == agentController.selectedTargetID ? .on : .off
+            item.indentationLevel = 1
+            agentTargetMenu.addItem(item)
+        }
+        agentTargetMenu.addItem(.separator())
+        let refresh = NSMenuItem(title: "Refresh Agents", action: #selector(refreshAgentTargets), keyEquivalent: "")
+        refresh.target = self
+        agentTargetMenu.addItem(refresh)
+    }
+
+    @objc private func selectAgentTarget(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let agent = agentController.agents.first(where: { $0.id == id }) else { return }
+        agentController.select(agent)
+    }
+
+    @objc private func refreshAgentTargets() {
+        Task { await agentController.refreshAgents() }
+    }
+
+
     func applicationWillTerminate(_ notification: Notification) {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
@@ -590,6 +758,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = localClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        for monitor in escapeMonitors {
             NSEvent.removeMonitor(monitor)
         }
     }

@@ -17,6 +17,8 @@ struct AppSettings: Codable {
     var s1Mini: S1MiniSettings?
     /// Optional for backward compatibility; nil means `.automatic` (Phonon-2 with Whisper fallback).
     var speechEngine: SpeechEnginePreference?
+    /// Optional for backward compatibility; nil means agent mode is off.
+    var agentMode: AgentModeSettings?
 
     // MARK: - Plugin Settings
     var ollama: OllamaSettings = OllamaSettings()
@@ -36,6 +38,7 @@ struct AppSettings: Codable {
         case useMinimalDictationWindow
         case s1Mini
         case speechEngine
+        case agentMode
         case ollama
         case lmStudio
         case sentiment
@@ -49,6 +52,16 @@ struct S1MiniSettings: Codable {
     var style: TranscriptStyle = .semiFormal
     var structure: TranscriptStructure = .prose
     var context: TranscriptContext = .general
+}
+
+/// Agent mode: a separate hotkey whose utterances are parsed as agent commands or prompts.
+/// The dictation hotkey never parses commands. The cmux socket password is stored in the
+/// Keychain, not here.
+struct AgentModeSettings: Codable, Equatable {
+    var isEnabled: Bool = false
+    var hotkey: AgentHotkey = .rightCommand
+    /// Speak status replies with the on-device AVSpeechSynthesizer.
+    var speakReplies: Bool = true
 }
 
 // MARK: - Ollama Settings
