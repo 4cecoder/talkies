@@ -33,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var localClickMonitor: Any?
     private var isDismissingFloatingWindow = false
     private var isFloatingWindowCollapsed = true
+    private let floatingPanelState = FloatingPanelState()
     var activationKeyWasPressed = false
     private var insertionDestination: TextInsertionDestination?
     private var statusIconSubscriptions = Set<AnyCancellable>()
@@ -279,12 +280,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 get: { [weak self] in self?.isFloatingWindowCollapsed ?? true },
                 set: { [weak self] collapsed in self?.isFloatingWindowCollapsed = collapsed }
             )
-            let contentView = DictationView(isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
+            let contentView = DictationView(panelState: floatingPanelState, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
             }, onHistoryVisibilityChange: { [weak self] visible in
-                self?.setFloatingWindowAcceptsKeyFocus(visible)
+                if visible { self?.takeKeyFocusForHistory() } else { self?.closeTranscriptHistory() }
             })
                 .environmentObject(audioRecorder)
                 .environmentObject(transcriptionService)
@@ -307,16 +308,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // DO NOT call makeKeyAndOrderFront or NSApp.activate - that steals focus!
     }
 
-    private func setFloatingWindowAcceptsKeyFocus(_ accepts: Bool) {
-        guard let window = floatingWindow as? FloatingDictationWindow else { return }
-        window.acceptsKeyFocus = accepts
-        if accepts {
-            NSApp.activate()
-            window.makeKey()
-        } else if window.isKeyWindow {
-            window.resignKey()
-            NSApp.deactivate()
+    /// Transcript history has a search field, so the panel takes key focus while it is open.
+    /// The app that had focus is remembered first so dictation can return to it.
+    private func takeKeyFocusForHistory() {
+        guard let window = floatingWindow as? FloatingDictationWindow, !window.acceptsKeyFocus else { return }
+        TextInserter.shared.rememberDestinationBeforeTakingFocus()
+        window.acceptsKeyFocus = true
+        NSApp.activate()
+        window.makeKey()
+    }
+
+    /// Closes transcript history and gives keyboard focus back to the app that had it before.
+    /// Idempotent. Returns that app when history was holding focus, so a recording that starts
+    /// now targets it even though macOS finishes the app switch asynchronously.
+    /// Pass `returnFocus: false` when the user is moving focus elsewhere themselves (a click
+    /// outside the panel), so Talkies does not pull the old app back to the front.
+    @discardableResult
+    private func closeTranscriptHistory(returnFocus: Bool = true) -> TextInsertionDestination? {
+        floatingPanelState.isHistoryVisible = false
+        guard let window = floatingWindow as? FloatingDictationWindow, window.acceptsKeyFocus else { return nil }
+        window.acceptsKeyFocus = false
+        if window.isKeyWindow { window.resignKey() }
+        guard returnFocus else {
+            TextInserter.shared.forgetRememberedDestination()
+            return nil
         }
+        let destination = TextInserter.shared.returnFocusToRememberedDestination()
+        if destination == nil { NSApp.deactivate() }
+        return destination
     }
 
     private func resizeFloatingWindow(to size: CGSize) {
@@ -374,6 +393,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
     func hideWindow() {
         guard let window = floatingWindow, window.isVisible, !isDismissingFloatingWindow else { return }
+        closeTranscriptHistory()
         isDismissingFloatingWindow = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
@@ -397,6 +417,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let click = NSEvent.mouseLocation
             guard !window.frame.contains(click) else { return }
+            self.closeTranscriptHistory(returnFocus: false)
             self.collapseWindow()
         }
 
@@ -542,8 +563,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Set pipeline stage to recording
-        insertionDestination = TextInserter.shared.captureDestination()
+        // History holds key focus for its search field. Close it and hand focus back before
+        // choosing where the transcript goes, so text never lands inside Talkies.
+        let returnedDestination = closeTranscriptHistory()
+        insertionDestination = returnedDestination ?? TextInserter.shared.captureDestination()
         transcriptionService.currentText = ""
         transcriptionService.pipelineStage = .recording
         transcriptionService.statusMessage = "Listening… audio stays on this Mac."
@@ -616,4 +639,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 final class FloatingDictationWindow: NSWindow {
     var acceptsKeyFocus = false
     override var canBecomeKey: Bool { acceptsKeyFocus }
+}
+
+/// Floating-panel UI state the app delegate must change directly (for example, closing
+/// history when a recording starts from the global shortcut).
+@MainActor
+final class FloatingPanelState: ObservableObject {
+    @Published var isHistoryVisible = false
 }

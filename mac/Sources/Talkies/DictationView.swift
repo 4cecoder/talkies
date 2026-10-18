@@ -9,13 +9,18 @@ struct DictationView: View {
     @EnvironmentObject var audioRecorder: AudioRecorder
     @EnvironmentObject var transcriptionService: TranscriptionService
     @ObservedObject private var settingsService = SettingsService.shared
-    @State private var showHistory = false
+    @ObservedObject var panelState: FloatingPanelState
     @Binding var isCollapsed: Bool
     let onToggleRecording: () -> Void
     let onResize: (CGSize) -> Void
     /// The history search field needs keyboard focus; the host window only accepts it while
     /// history is visible so dictation never steals focus from the target app.
     var onHistoryVisibilityChange: (Bool) -> Void = { _ in }
+
+    private var showHistory: Bool {
+        get { panelState.isHistoryVisible }
+        nonmutating set { panelState.isHistoryVisible = newValue }
+    }
 
     private var isMini: Bool { settingsService.settings.useMinimalDictationWindow ?? false }
     private var panelSize: CGSize {
