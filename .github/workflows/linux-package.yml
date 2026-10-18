@@ -195,7 +195,7 @@ jobs:
           cd /build
           sudo -u builder makepkg -si --noconfirm
           talkies --version
-          talkies update --check 2>&1 | tee /dev/stderr | grep -F ', AUR package talkies-bin'
+          TALKIES_NO_UPDATE_CHECK=1 talkies update --check 2>&1 | tee /dev/stderr | grep -F ', AUR package talkies-bin'
           test -f /usr/share/licenses/talkies-bin/LICENSE
 
   gentoo-test:

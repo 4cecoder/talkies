@@ -20,6 +20,7 @@ RDEPEND="
 	!app-accessibility/talkies
 	dev-db/sqlite:3
 	gui-libs/gtk:4
+	net-misc/curl
 	media-libs/libpulse
 	sys-apps/dbus
 	sys-devel/gcc:*[openmp]
