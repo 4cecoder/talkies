@@ -17,6 +17,9 @@ struct AppSettings: Codable {
     var s1Mini: S1MiniSettings?
     /// Optional for backward compatibility; nil means `.automatic` (Phonon-2 with Whisper fallback).
     var speechEngine: SpeechEnginePreference?
+    /// Optional for backward compatibility; nil means on. Turning it off stops saving new
+    /// transcripts but keeps existing history.
+    var saveTranscriptHistory: Bool?
     /// Optional for backward compatibility; nil means agent mode is off.
     var agentMode: AgentModeSettings?
 
@@ -38,6 +41,7 @@ struct AppSettings: Codable {
         case useMinimalDictationWindow
         case s1Mini
         case speechEngine
+        case saveTranscriptHistory
         case agentMode
         case ollama
         case lmStudio

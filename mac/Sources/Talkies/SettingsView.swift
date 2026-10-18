@@ -178,6 +178,7 @@ struct SettingsView: View {
 // MARK: - General Settings
 struct GeneralSettingsView: View {
     @ObservedObject private var settingsService = SettingsService.shared
+    @State private var confirmClearHistory = false
 
     private var threshold: Binding<Double> {
         Binding(
@@ -342,6 +343,25 @@ struct GeneralSettingsView: View {
                     .accessibilityLabel("Personal vocabulary, one term per line")
 
                 Text("Add names and uncommon terms, one per line. WhisperKit uses these as local recognition hints; terms stay in this Mac's settings file.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("Transcript History")) {
+                Toggle("Save transcript history", isOn: Binding(
+                    get: { settingsService.settings.saveTranscriptHistory ?? true },
+                    set: { settingsService.settings.saveTranscriptHistory = $0 }
+                ))
+
+                Button("Clear History…", role: .destructive) { confirmClearHistory = true }
+                    .confirmationDialog("Delete all saved transcripts?", isPresented: $confirmClearHistory) {
+                        Button("Delete All", role: .destructive) { TranscriptHistoryModel.shared.clearAll() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This permanently removes every transcript stored on this Mac.")
+                    }
+
+                Text("Finished dictations are kept on this Mac in ~/Library/Application Support/Talkies/history.sqlite until you delete them. Turning this off stops saving new transcripts; existing history stays until you clear it.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

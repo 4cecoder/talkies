@@ -30,6 +30,8 @@ const vad = @import("engine").vad;
 const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
+const history = @import("history.zig");
+const updater = @import("updater.zig");
 const trigger_mod = @import("trigger.zig");
 const build_options = @import("build_options");
 
@@ -65,6 +67,9 @@ const idle_after_result_headless_ms: c_uint = 3000;
 const level_broadcast_interval_ms: i64 = 50;
 /// HUD waveform refresh while recording (~30 fps).
 const level_interval_ms: c_uint = 33;
+/// First update check once startup has settled, then daily.
+const update_first_check_ms: c_uint = 60 * 1000;
+const update_interval_ms: c_uint = 24 * 60 * 60 * 1000;
 
 /// Mirrors TalkiesHudStage in hud_gtk.h and PipelineStage on macOS.
 pub const Stage = enum(u8) {
@@ -139,6 +144,11 @@ const Job = struct {
     notice_buf: [200]u8 = undefined,
     notice_len: usize = 0,
     duration_ms: i64 = 0,
+    /// Recognizer output when the enhancer changed it (history's raw_text).
+    raw_text: ?[]u8 = null,
+    backend: ?speech.Backend = null,
+    /// Length of the recording, for history.
+    audio_ms: i64 = 0,
     /// Snapshot of YAP routing at spawn time (main thread owns yap state).
     route_to_yap: bool = false,
     /// S1-mini weights present; otherwise cleanup is skipped, never fetched.
@@ -167,6 +177,10 @@ const Job = struct {
 
     fn notice(self: *const Job) ?[]const u8 {
         return if (self.notice_len == 0) null else self.notice_buf[0..self.notice_len];
+    }
+
+    fn historyMeta(self: *const Job) HistoryMeta {
+        return .{ .raw_text = self.raw_text, .duration_ms = self.audio_ms, .runtime = self.backend };
     }
 
     fn run(self: *Job) void {
@@ -213,6 +227,7 @@ const Job = struct {
         };
         const raw = transcript.text;
         defer allocator.free(raw);
+        self.backend = transcript.backend;
         utils.logDebug("Transcribed with {s}", .{transcript.backend.displayName()});
         const trimmed = std.mem.trim(u8, raw, &std.ascii.whitespace);
         if (trimmed.len == 0) {
@@ -225,6 +240,7 @@ const Job = struct {
             return;
         };
         self.text = text;
+        if (!std.mem.eql(u8, text, trimmed)) self.raw_text = allocator.dupe(u8, trimmed) catch null;
 
         if (self.route_to_yap) {
             self.outcome = .yap;
@@ -383,6 +399,24 @@ const Capture = struct {
     }
 };
 
+/// What history stores beside the final text.
+const HistoryMeta = struct {
+    raw_text: ?[]const u8 = null,
+    duration_ms: ?i64 = null,
+    runtime: ?speech.Backend = null,
+};
+
+/// Language recorded with a transcript: Phonon-2 is English-only; Whisper
+/// uses the configured language, unknown when it auto-detects.
+pub fn historyLanguage(configured: []const u8, runtime: ?speech.Backend) ?[]const u8 {
+    if (runtime == .phonon) return "en";
+    if (configured.len == 0 or std.mem.eql(u8, configured, "auto")) return null;
+    return configured;
+}
+
+/// Updater progress, written by its worker thread and read by the main loop.
+const UpdateState = enum(u8) { idle, checking, current, available, installing, installed, failed };
+
 /// Download state of an on-device model (S1-mini, Phonon-2). Values match
 /// TalkiesS1State in settings_gtk.h.
 const S1State = enum(u8) { missing, downloading, ready, failed };
@@ -421,6 +455,8 @@ pub const Daemon = struct {
     phase: Phase = .starting,
     capture: ?*Capture = null,
     record_start_ms: i64 = 0,
+    /// Length of the last finished recording.
+    capture_ms: i64 = 0,
     last_level_broadcast_ms: i64 = 0,
     level_timer: c_uint = 0,
     stop_timer: c_uint = 0,
@@ -431,6 +467,8 @@ pub const Daemon = struct {
     /// Latest system check; drives the tray tooltip and Settings status.
     health_report: ?health.Report = null,
     last_transcript: ?[:0]u8 = null,
+    /// Persistent transcript history; null when it could not be opened.
+    history_store: ?history.Store = null,
 
     s1_state: std.atomic.Value(u8) = .init(@intFromEnum(S1State.missing)),
     s1_thread: ?std.Thread = null,
@@ -441,6 +479,25 @@ pub const Daemon = struct {
     phonon_timer: c_uint = 0,
     /// Reload the recognizer once no job runs (after a Phonon-2 download).
     speech_reload_pending: bool = false,
+
+    // In-app updater (updater.zig). Checks and installs run on a worker; it
+    // owns the fields below while `update_thread` is set.
+    update_build: updater.Build = undefined,
+    update_exe: ?[]u8 = null,
+    /// Points into `update_exe`.
+    update_install: updater.Install = .unknown,
+    update_state: std.atomic.Value(u8) = .init(@intFromEnum(UpdateState.idle)),
+    update_thread: ?std.Thread = null,
+    update_timer: c_uint = 0,
+    update_available: ?updater.Available = null,
+    update_error: anyerror = error.Unknown,
+    /// Binary of the installed update; the daemon exec's it once idle.
+    update_new_exe: ?[]u8 = null,
+    /// The release last announced, so a daily check does not repeat it.
+    update_notified_buf: [64]u8 = undefined,
+    update_notified_len: usize = 0,
+    /// Set when the loop should end by relaunching this binary.
+    restart_exe: ?[]u8 = null,
 
     // UI requests raised from GTK / D-Bus callbacks, handled in tick().
     request_toggle: bool = false,
@@ -476,6 +533,11 @@ pub const Daemon = struct {
         }
         if (self.s1_thread) |t| t.join();
         if (self.phonon_thread) |t| t.join();
+        if (self.update_thread) |t| t.join();
+        c_loop.talkies_loop_remove(self.update_timer);
+        if (self.update_available) |*a| a.deinit();
+        if (self.update_new_exe) |e| self.allocator.free(e);
+        if (self.update_exe) |e| self.allocator.free(e);
         self.endYapSession();
         if (self.tray) |t| c_tray.talkies_tray_destroy(t);
         if (self.settings_win) |w| c_settings.talkies_settings_window_destroy(w);
@@ -484,6 +546,7 @@ pub const Daemon = struct {
         if (self.hotkey_listener) |*l| l.deinit();
         self.evdev.deinit();
         if (self.last_transcript) |t| self.allocator.free(t);
+        if (self.history_store) |*h| h.close();
         if (self.health_report) |*r| r.deinit();
         if (self.pending_cfg) |*p| p.deinit();
         self.recorder.deinit();
@@ -871,6 +934,7 @@ pub const Daemon = struct {
         const failed = cap.failed.load(.acquire);
         self.allocator.destroy(cap);
         self.capture = null;
+        self.capture_ms = utils.monotonicMilliseconds() - self.record_start_ms;
         c_loop.talkies_loop_remove(self.level_timer);
         c_loop.talkies_loop_remove(self.stop_timer);
         self.level_timer = 0;
@@ -896,6 +960,7 @@ pub const Daemon = struct {
             .daemon = self,
             .route_to_yap = self.yap_win != null or self.cfg.yap_mode_enabled,
             .s1_ready = self.s1Ready(),
+            .audio_ms = self.capture_ms,
         };
         job.thread = try std.Thread.spawn(.{}, Job.run, .{job});
         self.job = job;
@@ -903,6 +968,7 @@ pub const Daemon = struct {
 
     fn freeJob(self: *Daemon, job: *Job) void {
         if (job.text) |t| self.allocator.free(t);
+        if (job.raw_text) |t| self.allocator.free(t);
         self.allocator.destroy(job);
     }
 
@@ -923,7 +989,7 @@ pub const Daemon = struct {
         switch (job.outcome) {
             .delivered => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
+                self.rememberTranscript(text, job.historyMeta());
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.log(.info, "Delivered {d} chars in {d}ms", .{ text.len, job.duration_ms });
                 if (self.status_win) |win| win.setLastTranscription(text);
@@ -935,7 +1001,7 @@ pub const Daemon = struct {
             },
             .manual_paste => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
+                self.rememberTranscript(text, job.historyMeta());
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.log(.warn, "Manual paste needed: {s}", .{job.notice() orelse ""});
                 self.enterResult(.clipboard_fallback, job.notice());
@@ -951,22 +1017,80 @@ pub const Daemon = struct {
             },
             .yap => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
-                try self.handleYapTranscript(text);
+                try self.handleYapTranscript(text, job.historyMeta());
             },
         }
         try self.applyPendingConfig();
     }
 
-    fn rememberTranscript(self: *Daemon, text: []const u8) void {
+    /// Show the latest transcript and add it to the history page. With
+    /// `meta` it is final text and is saved when "Save transcript history"
+    /// is on; null shows it for this session only (YAP drafts).
+    fn rememberTranscript(self: *Daemon, text: []const u8, meta: ?HistoryMeta) void {
         const copy = utils.dupeZ(self.allocator, text) catch return;
         if (self.last_transcript) |old| self.allocator.free(old);
         self.last_transcript = copy;
+        const created_ms = std.Io.Timestamp.now(utils.io(), .real).toMilliseconds();
+        const id = if (meta) |m| self.saveHistory(text, m, created_ms) else 0;
         if (self.hud) |hud| {
             c_hud.talkies_hud_set_transcript(hud, copy.ptr);
-            c_hud.talkies_hud_add_history(hud, copy.ptr);
+            c_hud.talkies_hud_add_history(hud, id, created_ms, copy.ptr);
         }
+    }
+
+    /// Returns the new row id, or 0 when nothing was saved.
+    fn saveHistory(self: *Daemon, text: []const u8, meta: HistoryMeta, created_ms: i64) i64 {
+        if (!self.cfg.save_history or text.len == 0) return 0;
+        const store = if (self.history_store) |*s| s else return 0;
+        return store.insert(.{
+            .text = text,
+            .raw_text = meta.raw_text,
+            .duration_ms = meta.duration_ms,
+            .runtime = if (meta.runtime) |r| @tagName(r) else null,
+            .language = historyLanguage(self.cfg.language, meta.runtime),
+            .created_at_ms = created_ms,
+        }) catch |err| {
+            // Never the text itself: transcripts stay out of logs.
+            self.log(.err, "Could not save the transcript to history: {}", .{err});
+            return 0;
+        };
+    }
+
+    fn onHistoryQuery(search: [*c]const u8, offset: c_int, limit: c_int, user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        const hud = self.hud orelse return;
+        var more = false;
+        defer c_hud.talkies_hud_history_finish(hud, @intFromBool(more));
+        const store = if (self.history_store) |*s| s else return;
+        var page = store.list(self.allocator, .{
+            .search = if (search != null) std.mem.span(search) else null,
+            .offset = toU32(offset),
+            .limit = toU32(limit),
+        }) catch |err| {
+            self.log(.err, "Could not read transcript history: {}", .{err});
+            return;
+        };
+        defer page.deinit();
+        for (page.entries) |entry| {
+            const text = utils.dupeZ(page.arena.allocator(), entry.text) catch return;
+            c_hud.talkies_hud_history_append(hud, entry.id, entry.created_at_ms, text.ptr);
+        }
+        more = page.has_more;
+    }
+
+    fn onHistoryDelete(id: c_longlong, user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        const store = if (self.history_store) |*s| s else return;
+        _ = store.delete(id) catch |err| self.log(.err, "Could not delete the transcript: {}", .{err});
+    }
+
+    fn onHistoryClear(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        if (self.last_transcript) |t| self.allocator.free(t);
+        self.last_transcript = null;
+        const store = if (self.history_store) |*s| s else return;
+        store.clear() catch |err| self.log(.err, "Could not clear transcript history: {}", .{err});
     }
 
     // -----------------------------------------------------------------
@@ -1086,7 +1210,12 @@ pub const Daemon = struct {
             c_tray.TALKIES_TRAY_OPEN => self.request_expand_hud = true,
             c_tray.TALKIES_TRAY_TOGGLE_RECORD => self.request_toggle = true,
             c_tray.TALKIES_TRAY_SETTINGS => self.request_settings = true,
-            c_tray.TALKIES_TRAY_QUIT => self.quit = true,
+            c_tray.TALKIES_TRAY_QUIT => {
+                // Quitting wins over relaunching into an installed update.
+                if (self.restart_exe) |exe| self.allocator.free(exe);
+                self.restart_exe = null;
+                self.quit = true;
+            },
             else => {},
         }
     }
@@ -1295,6 +1424,179 @@ pub const Daemon = struct {
     }
 
     // -----------------------------------------------------------------
+    // Updates (one HTTPS GET to GitHub; install only on approval)
+    // -----------------------------------------------------------------
+
+    fn updateState(self: *Daemon) UpdateState {
+        return @enumFromInt(self.update_state.load(.acquire));
+    }
+
+    fn initUpdater(self: *Daemon) void {
+        self.update_build = updater.currentBuild();
+        self.update_exe = updater.currentExe(self.allocator) catch |err| blk: {
+            utils.logError("Updater: cannot locate the running binary: {}", .{err});
+            break :blk null;
+        };
+        if (self.update_exe) |exe| {
+            self.update_install = updater.detectInstall(self.allocator, .{ .exe = exe }) catch .unknown;
+        }
+        self.scheduleUpdateChecks(update_first_check_ms);
+    }
+
+    /// Arm (or disarm) the automatic checks for the current settings.
+    fn scheduleUpdateChecks(self: *Daemon, delay_ms: c_uint) void {
+        c_loop.talkies_loop_remove(self.update_timer);
+        self.update_timer = 0;
+        if (!self.cfg.check_for_updates or updater.disabledByEnv()) return;
+        if (updater.trackOf(self.update_build) == null) return;
+        self.update_timer = c_loop.talkies_loop_timeout(delay_ms, onUpdateTimer, self);
+    }
+
+    fn onUpdateTimer(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.update_timer = 0;
+        self.startUpdateCheck();
+        self.scheduleUpdateChecks(update_interval_ms);
+        return 0;
+    }
+
+    fn startUpdateCheck(self: *Daemon) void {
+        if (self.update_thread != null or self.restart_exe != null) return;
+        if (updater.trackOf(self.update_build) == null or updater.disabledByEnv()) {
+            self.pushUpdateState();
+            return;
+        }
+        if (self.update_available) |*a| a.deinit();
+        self.update_available = null;
+        self.update_state.store(@intFromEnum(UpdateState.checking), .release);
+        self.update_thread = std.Thread.spawn(.{}, updateCheckThread, .{self}) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            self.pushUpdateState();
+            return;
+        };
+        self.pushUpdateState();
+    }
+
+    fn updateCheckThread(self: *Daemon) void {
+        defer self.wake();
+        const found = updater.check(self.allocator, self.update_build) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            return;
+        };
+        self.update_available = found;
+        self.update_state.store(@intFromEnum(if (found == null) UpdateState.current else UpdateState.available), .release);
+    }
+
+    fn startUpdateInstall(self: *Daemon) void {
+        if (self.update_thread != null or self.update_available == null) return;
+        if (self.update_install.manualInstructions() != null) return;
+        // Not in the middle of a dictation: the daemon restarts afterwards.
+        if (!self.phase.isQuiescent() or self.job != null or self.capture != null) return;
+        self.update_state.store(@intFromEnum(UpdateState.installing), .release);
+        self.update_thread = std.Thread.spawn(.{}, updateInstallThread, .{self}) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            self.pushUpdateState();
+            return;
+        };
+        self.log(.info, "Installing the update ({s})...", .{self.update_install.describe()});
+        self.pushUpdateState();
+    }
+
+    fn updateInstallThread(self: *Daemon) void {
+        defer self.wake();
+        const exe = updater.install(self.allocator, &self.update_available.?, self.update_install) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            return;
+        };
+        self.update_new_exe = exe;
+        self.update_state.store(@intFromEnum(UpdateState.installed), .release);
+    }
+
+    fn collectUpdate(self: *Daemon) void {
+        const thread = self.update_thread orelse return;
+        const state = self.updateState();
+        if (state == .checking or state == .installing) return;
+        thread.join();
+        self.update_thread = null;
+        switch (state) {
+            .available => self.announceUpdate(),
+            .installed => {
+                self.log(.info, "Update installed; restarting Talkies", .{});
+                self.restart_exe = self.update_new_exe;
+                self.update_new_exe = null;
+            },
+            .failed => self.log(.warn, "Update {s} failed: {}", .{ if (self.update_available == null) "check" else "install", self.update_error }),
+            else => {},
+        }
+        self.pushUpdateState();
+    }
+
+    /// Desktop notification, once per release.
+    fn announceUpdate(self: *Daemon) void {
+        const available = if (self.update_available) |*a| a else return;
+        var label_buf: [64]u8 = undefined;
+        const label = available.label(&label_buf);
+        self.log(.info, "Talkies {s} is available", .{label});
+        const n = @min(label.len, self.update_notified_buf.len);
+        if (std.mem.eql(u8, self.update_notified_buf[0..self.update_notified_len], label[0..n])) return;
+        @memcpy(self.update_notified_buf[0..n], label[0..n]);
+        self.update_notified_len = n;
+        var body_buf: [320]u8 = undefined;
+        const body = std.fmt.bufPrint(&body_buf, "Talkies {s} is available. {s}", .{
+            label,
+            self.update_install.manualInstructions() orelse "Open Settings > General to install it.",
+        }) catch return;
+        notifyDesktop(self.allocator, "Talkies update available", body);
+    }
+
+    fn pushUpdateState(self: *Daemon) void {
+        const win = self.settings_win orelse return;
+        var buf: [512]u8 = undefined;
+        var label_buf: [64]u8 = undefined;
+        const build = self.update_build;
+        const method = self.update_install.describe();
+        const state = self.updateState();
+        // The worker writes update_available while it checks.
+        const label: []const u8 = if (state == .checking) "" else if (self.update_available) |*a| a.label(&label_buf) else "";
+        const status = switch (state) {
+            .idle => if (updater.disabledByEnv())
+                bufPrintZ(&buf, "Update checks are turned off ({s} is set).", .{updater.disable_env})
+            else if (updater.trackOf(build) == null)
+                bufPrintZ(&buf, "Talkies {s} ({s}) does not follow a release channel, so it cannot update itself.", .{ build.version, method })
+            else
+                bufPrintZ(&buf, "Talkies {s}, installed as a {s}.", .{ build.version, method }),
+            .checking => bufPrintZ(&buf, "Checking for updates...", .{}),
+            .current => bufPrintZ(&buf, "Talkies {s} is up to date.", .{build.version}),
+            .available => if (self.update_install.manualInstructions()) |how|
+                bufPrintZ(&buf, "Talkies {s} is available. {s}", .{ label, how })
+            else switch (self.update_install) {
+                .package => |tool| bufPrintZ(&buf, "Talkies {s} is available. Installing asks for your password ({s}).", .{ label, updater.approvalCommand(tool) }),
+                else => bufPrintZ(&buf, "Talkies {s} is available.", .{label}),
+            },
+            .installing => bufPrintZ(&buf, "Downloading and verifying {s}...", .{label}),
+            .installed => bufPrintZ(&buf, "Installed. Talkies restarts when the current dictation is done.", .{}),
+            .failed => bufPrintZ(&buf, "Update failed: {s}", .{@errorName(self.update_error)}),
+        } catch return;
+        const can_install = state == .available and self.update_install.manualInstructions() == null;
+        const busy = state == .checking or state == .installing or state == .installed;
+        c_settings.talkies_settings_window_set_update_state(win, status.ptr, @intFromBool(can_install), @intFromBool(busy));
+    }
+
+    fn onUpdateCheck(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startUpdateCheck();
+    }
+
+    fn onUpdateInstall(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startUpdateInstall();
+    }
+
+    // -----------------------------------------------------------------
     // Settings
     // -----------------------------------------------------------------
 
@@ -1309,6 +1611,7 @@ pub const Daemon = struct {
             c_settings.talkies_settings_window_set_callbacks(self.settings_win, onSettingsSave, onSettingsRefresh, self);
             c_settings.talkies_settings_window_set_s1_callbacks(self.settings_win, onS1Download, onS1Remove);
             c_settings.talkies_settings_window_set_phonon_callbacks(self.settings_win, onPhononDownload, onPhononRemove);
+            c_settings.talkies_settings_window_set_update_callbacks(self.settings_win, onUpdateCheck, onUpdateInstall);
         }
         const win = self.settings_win.?;
         self.loadAudioDevices(win);
@@ -1319,6 +1622,7 @@ pub const Daemon = struct {
         c_settings.talkies_settings_window_present(win, &data);
         self.refreshS1State();
         self.refreshPhononState();
+        self.pushUpdateState();
         self.refreshHealth();
 
         // Like macOS, check the selected server as the settings open.
@@ -1407,6 +1711,7 @@ pub const Daemon = struct {
         self.pending_cfg = null;
 
         const threads_changed = next.threads != self.cfg.threads;
+        const update_checks_changed = next.check_for_updates != self.cfg.check_for_updates;
         self.cfg.deinit();
         self.cfg = next;
         self.trigger = trigger_mod.Trigger.init(self.cfg.push_to_talk_threshold);
@@ -1418,6 +1723,7 @@ pub const Daemon = struct {
         if (self.hud) |hud| c_hud.talkies_hud_set_mini(hud, @intFromBool(self.cfg.mini_window));
         if (!self.cfg.show_hud) self.hideHud() else if (self.phase == .idle) self.collapseHud();
         if (speech_changed) try self.loadSpeechModel(true);
+        if (update_checks_changed) self.scheduleUpdateChecks(update_first_check_ms);
         self.log(.info, "Settings applied", .{});
         self.refreshHealth();
     }
@@ -1447,8 +1753,9 @@ pub const Daemon = struct {
     // YAP mode (ported from the previous Wayland-only loop)
     // -----------------------------------------------------------------
 
-    fn handleYapTranscript(self: *Daemon, text: []const u8) !void {
+    fn handleYapTranscript(self: *Daemon, text: []const u8, meta: HistoryMeta) !void {
         if (self.yap_sb) |sb| {
+            self.rememberTranscript(text, null);
             const appended = try std.fmt.allocPrint(self.allocator, "{s} {s}", .{ sb.yapping, text });
             self.allocator.free(sb.yapping);
             sb.yapping = appended;
@@ -1457,10 +1764,12 @@ pub const Daemon = struct {
             return;
         }
         if (self.startYapSession(text)) {
+            self.rememberTranscript(text, null);
             self.enter(.yap, null);
         } else {
             // YAP unavailable: behave like normal dictation.
             self.output(text);
+            self.rememberTranscript(text, meta);
             self.enterResult(.complete, null);
         }
     }
@@ -1576,7 +1885,7 @@ pub const Daemon = struct {
                 }
                 self.endYapSession();
                 self.output(final_text);
-                self.rememberTranscript(final_text);
+                self.rememberTranscript(final_text, .{});
                 if (self.phase == .yap) self.enter(.idle, null);
             },
             .request_clarification => try self.yapClarify(win, sb),
@@ -1657,6 +1966,9 @@ pub const Daemon = struct {
         try self.pollJob();
         self.collectS1Download();
         self.collectPhononDownload();
+        self.collectUpdate();
+        // Relaunch into an installed update once nothing is in flight.
+        if (self.restart_exe != null and self.phase.isQuiescent() and self.job == null and self.capture == null) self.quit = true;
         if (self.speech_reload_pending) try self.reloadSpeechWhenIdle();
         if (self.yap_win != null) try self.pollYap();
     }
@@ -1674,6 +1986,39 @@ pub const Daemon = struct {
 
 fn bufPrintZ(buf: []u8, comptime fmt: []const u8, args: anytype) ![:0]u8 {
     return std.fmt.bufPrintSentinel(buf, fmt, args, 0);
+}
+
+/// Best-effort desktop notification: notify-send, else the
+/// org.freedesktop.Notifications D-Bus call through gdbus (part of GLib).
+fn notifyDesktop(allocator: std.mem.Allocator, title: []const u8, body: []const u8) void {
+    utils.runQuiet(&.{ "notify-send", "--app-name=Talkies", "--icon=talkies", title, body }) catch {
+        const title_arg = gvariantString(allocator, title) catch return;
+        defer allocator.free(title_arg);
+        const body_arg = gvariantString(allocator, body) catch return;
+        defer allocator.free(body_arg);
+        // Notify(app_name, replaces_id, icon, summary, body, actions, hints, timeout)
+        utils.runQuiet(&.{
+            "gdbus",                          "call",                          "--session",
+            "--dest",                         "org.freedesktop.Notifications", "--object-path",
+            "/org/freedesktop/Notifications", "--method",                      "org.freedesktop.Notifications.Notify",
+            "\"Talkies\"",                    "0",                             "\"talkies\"",
+            title_arg,                        body_arg,                        "[]",
+            "{}",                             "-1",
+        }) catch |err| utils.logError("Could not show a desktop notification: {}", .{err});
+    };
+}
+
+/// A GVariant text-format string literal. Caller owns it.
+fn gvariantString(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.append(allocator, '"');
+    for (text) |ch| {
+        if (ch == '"' or ch == '\\') try out.append(allocator, '\\');
+        try out.append(allocator, ch);
+    }
+    try out.append(allocator, '"');
+    return out.toOwnedSlice(allocator);
 }
 
 fn pumpGtk() void {
@@ -1721,6 +2066,8 @@ pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData
     d.mini_window = @intFromBool(cfg.mini_window);
     d.voice_assistant_mode = @intFromBool(cfg.voice_assistant_mode);
     d.insert_text_in_assistant_mode = @intFromBool(cfg.insert_text_in_assistant_mode);
+    d.save_history = @intFromBool(cfg.save_history);
+    d.check_for_updates = @intFromBool(cfg.check_for_updates);
     putString(&d.audio_device, cfg.audio_device);
     d.speech_engine = @intCast(@intFromEnum(cfg.speech_engine));
     putString(&d.model, cfg.model);
@@ -1769,6 +2116,8 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     cfg.mini_window = d.mini_window != 0;
     cfg.voice_assistant_mode = d.voice_assistant_mode != 0;
     cfg.insert_text_in_assistant_mode = d.insert_text_in_assistant_mode != 0;
+    cfg.save_history = d.save_history != 0;
+    cfg.check_for_updates = d.check_for_updates != 0;
     try cfg.setString("audio_device", getString(&d.audio_device));
     cfg.speech_engine = std.enums.fromInt(config.SpeechEngine, d.speech_engine) orelse .auto;
     if (getString(&d.model).len > 0) try cfg.setString("model", getString(&d.model));
@@ -1963,7 +2312,10 @@ test "reserved top comes from the focused Hyprland monitor" {
 // Entry point
 // ---------------------------------------------------------------------
 
-pub fn run(allocator: std.mem.Allocator) !void {
+/// Runs until the user quits. Returns the binary to relaunch when an
+/// installed update should replace this process (the caller exec's it
+/// after every resource here is released).
+pub fn run(allocator: std.mem.Allocator) !?[]u8 {
     utils.log("Starting daemon...", .{});
 
     const ws_port = wsPort();
@@ -2000,6 +2352,12 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     try daemon.cfg.load();
     daemon.cleanup_service.threads = daemon.cfg.threads;
+    // Opened even while saving is off, so the history page can show (and
+    // delete) what was saved before.
+    daemon.history_store = history.Store.openDefault(allocator) catch |err| blk: {
+        utils.logError("Transcript history unavailable: {}", .{err});
+        break :blk null;
+    };
     _ = daemon.configureRecognizer();
     daemon.trigger = trigger_mod.Trigger.init(daemon.cfg.push_to_talk_threshold);
     const platform = daemon.cfg.getEffectivePlatform();
@@ -2031,6 +2389,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
         c_hud.talkies_hud_set_record_callback(hud, Daemon.onHudRecord, &daemon);
         c_hud.talkies_hud_set_dismiss_callback(hud, Daemon.onHudDismiss, &daemon);
         c_hud.talkies_hud_set_mini(hud, @intFromBool(daemon.cfg.mini_window));
+        if (daemon.history_store != null) {
+            c_hud.talkies_hud_set_history_callbacks(hud, Daemon.onHistoryQuery, Daemon.onHistoryDelete, Daemon.onHistoryClear, &daemon);
+        }
     }
     if (daemon.cfg.show_status_gui) {
         daemon.status_win = daemon_status_window.DaemonStatusWindow.create(allocator) catch |err| blk: {
@@ -2063,6 +2424,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
     }
     daemon.refreshS1State();
     daemon.refreshPhononState();
+    daemon.initUpdater();
 
     const ws_thread = try std.Thread.spawn(.{}, struct {
         fn serve(server: *websocket.Server, st: *daemon_ws.DaemonState) void {
@@ -2102,6 +2464,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
     if (build_options.x11 == false and !is_wayland) utils.log("Built without X11 support", .{});
 
     try daemon.loop();
+    const restart = daemon.restart_exe;
+    daemon.restart_exe = null;
+    return restart;
 }
 
 test "level normalization matches the macOS dB meter" {
@@ -2130,6 +2495,8 @@ test "settings round trip through the C struct" {
     original.cleanup_structure = .lists;
     original.cleanup_context = .email;
     original.push_to_talk_threshold = 0.3;
+    original.save_history = false;
+    original.check_for_updates = false;
 
     var data = std.mem.zeroes(c_settings.TalkiesSettingsData);
     settingsFromConfig(original, &data);
@@ -2148,6 +2515,8 @@ test "settings round trip through the C struct" {
     try std.testing.expectEqual(config.CleanupStructure.lists, restored.cleanup_structure);
     try std.testing.expectEqual(config.CleanupContext.email, restored.cleanup_context);
     try std.testing.expectEqual(@as(f64, 0.3), restored.push_to_talk_threshold);
+    try std.testing.expect(!restored.save_history);
+    try std.testing.expect(!restored.check_for_updates);
 }
 
 test "speech_engine setting maps onto the engine policy" {
@@ -2162,6 +2531,14 @@ test "speech_engine setting maps onto the engine policy" {
     data.speech_engine = 7;
     try configFromSettings(&cfg, &data);
     try std.testing.expectEqual(config.SpeechEngine.auto, cfg.speech_engine);
+}
+
+test "history language: Phonon-2 is English, Whisper auto-detect is unknown" {
+    try std.testing.expectEqualStrings("en", historyLanguage("auto", .phonon).?);
+    try std.testing.expectEqualStrings("de", historyLanguage("de", .whisper).?);
+    try std.testing.expectEqualStrings("en-US", historyLanguage("en-US", null).?);
+    try std.testing.expect(historyLanguage("auto", .whisper) == null);
+    try std.testing.expect(historyLanguage("", .whisper) == null);
 }
 
 test "cleanup options follow the configured S1-mini style" {

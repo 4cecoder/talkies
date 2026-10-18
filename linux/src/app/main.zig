@@ -25,6 +25,8 @@ const config = @import("config.zig");
 const daemon = @import("daemon.zig");
 const offline_acceptance = @import("offline_acceptance.zig");
 const health = @import("health.zig");
+const history = @import("history.zig");
+const updater = @import("updater.zig");
 const evdev_hotkey = engine.evdev_hotkey;
 const c_tray = @import("c_tray");
 const build_options = @import("build_options");
@@ -37,6 +39,8 @@ test {
     _ = @import("trigger.zig");
     _ = @import("state.zig");
     _ = health;
+    _ = history;
+    _ = updater;
     _ = @import("daemon_ws.zig");
     _ = @import("daemon_status_window.zig");
     _ = @import("ollama.zig");
@@ -53,6 +57,8 @@ const Command = enum {
     transcribe_test,
     daemon,
     doctor,
+    history,
+    update,
     version,
     help,
 };
@@ -63,7 +69,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     run(init, allocator) catch |err| switch (err) {
         // Expected, already explained to the user: not a crash.
-        error.AlreadyRunning, error.MissingArgument => std.process.exit(1),
+        error.AlreadyRunning, error.MissingArgument, error.InvalidArgument, error.UpdateFailed => std.process.exit(1),
         error.UnknownCommand => std.process.exit(2),
         else => {
             local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
@@ -103,6 +109,8 @@ fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
         .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
         .doctor => try runDoctor(allocator),
+        .history => try runHistory(allocator, arguments[2..]),
+        .update => try runUpdate(allocator, arguments[2..]),
         .version => try utils.writeStdout("talkies " ++ build_options.version ++ "\n"),
         .help => try printHelp(),
     }
@@ -120,6 +128,8 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "transcribe", .transcribe_test },
         .{ "daemon", .daemon },
         .{ "doctor", .doctor },
+        .{ "history", .history },
+        .{ "update", .update },
         .{ "version", .version },
         .{ "--version", .version },
         .{ "-V", .version },
@@ -606,8 +616,172 @@ fn doctorSpeechStatus(allocator: std.mem.Allocator, cfg: *const config.Config) h
     return .{ .phonon_active = true, .phonon_selected = selected };
 }
 
+const HistoryRequest = union(enum) {
+    list: struct { search: ?[]const u8 = null, limit: u32 = history.page_size, json: bool = false },
+    clear,
+};
+
+fn parseHistoryArgs(args: []const []const u8) !HistoryRequest {
+    if (args.len == 1 and std.mem.eql(u8, args[0], "clear")) return .clear;
+    var request: HistoryRequest = .{ .list = .{} };
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--json")) {
+            request.list.json = true;
+        } else if (std.mem.eql(u8, arg, "--search") or std.mem.eql(u8, arg, "--limit")) {
+            i += 1;
+            if (i == args.len) return error.MissingArgument;
+            if (arg[2] == 's') {
+                request.list.search = args[i];
+            } else {
+                request.list.limit = std.fmt.parseInt(u32, args[i], 10) catch return error.InvalidArgument;
+                if (request.list.limit == 0) return error.InvalidArgument;
+            }
+        } else {
+            return error.InvalidArgument;
+        }
+    }
+    return request;
+}
+
+/// `talkies history [--search Q] [--limit N] [--json]` and `talkies history
+/// clear`. Transcripts go to stdout only because the user asked for them.
+fn runHistory(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const request = parseHistoryArgs(args) catch |err| {
+        std.debug.print("Usage: talkies history [--search TEXT] [--limit N] [--json]\n       talkies history clear\n", .{});
+        return err;
+    };
+    var store = try history.Store.openDefault(allocator);
+    defer store.close();
+
+    const options = switch (request) {
+        .clear => {
+            const removed = try store.count();
+            try store.clear();
+            std.debug.print("Deleted {d} transcript{s} from history.\n", .{ removed, if (removed == 1) "" else "s" });
+            return;
+        },
+        .list => |options| options,
+    };
+    var page = try store.list(allocator, .{ .search = options.search, .limit = options.limit });
+    defer page.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    if (options.json) {
+        try history.writeJson(&out.writer, page.entries);
+    } else {
+        for (page.entries) |entry| {
+            var time_buf: [32]u8 = undefined;
+            try out.writer.print("{s}  {s}\n", .{ localTime(&time_buf, entry.created_at_ms), entry.text });
+        }
+        if (page.entries.len == 0) std.debug.print("No transcripts{s}.\n", .{if (options.search != null) " match" else " saved yet"});
+        if (page.has_more) std.debug.print("(showing the newest {d}; use --limit for more)\n", .{options.limit});
+    }
+    try utils.writeStdout(out.written());
+}
+
+// libc's local-time formatting (Zig's std has no time zone database). The
+// struct tm is opaque here: 64 aligned bytes cover glibc's 56-byte layout.
+const Tm = extern struct { bytes: [64]u8 align(8) };
+extern "c" fn localtime_r(timer: *const i64, result: *Tm) ?*Tm;
+extern "c" fn strftime(buf: [*]u8, max: usize, format: [*:0]const u8, tm: *const Tm) usize;
+
+fn localTime(buf: []u8, epoch_ms: i64) []const u8 {
+    const seconds = @divFloor(epoch_ms, 1000);
+    var tm: Tm = undefined;
+    if (localtime_r(&seconds, &tm) == null) return "";
+    return buf[0..strftime(buf.ptr, buf.len, "%Y-%m-%d %H:%M", &tm)];
+}
+
 fn runDaemon(allocator: std.mem.Allocator) !void {
-    try daemon.run(allocator);
+    // Returns only after the daemon released its windows, devices and port.
+    const restart_exe = try daemon.run(allocator) orelse return;
+    defer allocator.free(restart_exe);
+    try updater.relaunchDaemon(allocator, restart_exe);
+}
+
+/// `talkies update [--check]`: compare with GitHub Releases and, after
+/// confirmation, install the verified update the way Talkies was installed.
+fn runUpdate(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const check_only = args.len == 1 and std.mem.eql(u8, args[0], "--check");
+    if (args.len > 0 and !check_only) {
+        std.debug.print("Usage: talkies update [--check]\n", .{});
+        return error.InvalidArgument;
+    }
+    const build = updater.currentBuild();
+    const exe = try updater.currentExe(allocator);
+    defer allocator.free(exe);
+    const method = try updater.detectInstall(allocator, .{ .exe = exe });
+    std.debug.print("Installed: Talkies {s} ({s}{s}{s}), {s}\n", .{
+        build.version,
+        if (build.channel.len > 0) build.channel else "no channel",
+        if (build.commit.len >= 7) ", commit " else "",
+        if (build.commit.len >= 7) build.commit[0..7] else "",
+        method.describe(),
+    });
+    if (updater.trackOf(build) == null) {
+        std.debug.print("This build does not follow a release channel (development or CI build), so it cannot update itself.\n", .{});
+        return;
+    }
+    if (updater.disabledByEnv()) {
+        std.debug.print("Update checks are turned off ({s} is set).\n", .{updater.disable_env});
+        return;
+    }
+
+    std.debug.print("Checking {s} ...\n", .{updater.buildInfoUrl(updater.trackOf(build).?)});
+    const found = updater.check(allocator, build) catch |err| {
+        std.debug.print("Could not check for updates: {s}\n", .{@errorName(err)});
+        return error.UpdateFailed;
+    };
+    var available = found orelse {
+        std.debug.print("Talkies is up to date.\n", .{});
+        return;
+    };
+    defer available.deinit();
+    var label_buf: [64]u8 = undefined;
+    const label = available.label(&label_buf);
+    std.debug.print("Update available: Talkies {s} (release {s}).\n", .{ label, available.remote.release });
+    if (check_only) return;
+    if (method.manualInstructions()) |how| {
+        std.debug.print("{s}\n", .{how});
+        return;
+    }
+
+    switch (method) {
+        .tarball => |t| if (t.writable)
+            std.debug.print("This replaces {s}/lib/talkies.\n", .{t.prefix})
+        else
+            std.debug.print("{s} belongs to root: the verified tarball's install.sh runs through pkexec.\n", .{t.prefix}),
+        .package => |tool| std.debug.print("This runs: {s}\n", .{updater.approvalCommand(tool)}),
+        else => {},
+    }
+    if (!confirm("Download, verify and install it? [y/N] ")) {
+        std.debug.print("Not installed.\n", .{});
+        return;
+    }
+    const new_exe = updater.install(allocator, &available, method) catch |err| {
+        // Nothing was replaced unless the package manager itself failed midway.
+        std.debug.print("Update failed: {s}\n", .{@errorName(err)});
+        return error.UpdateFailed;
+    };
+    defer allocator.free(new_exe);
+    std.debug.print("Installed Talkies {s}.\n", .{label});
+    // A daemon run by a systemd user unit is restarted; any other running
+    // daemon keeps the old version until it is restarted.
+    utils.runQuiet(&.{ "systemctl", "--user", "--quiet", "try-restart", "talkies.service" }) catch {};
+    std.debug.print("If Talkies is running, quit it from the tray and start it again to use the new version.\n", .{});
+}
+
+/// Read a y/N answer from stdin; anything but y/yes is no.
+fn confirm(prompt: []const u8) bool {
+    std.debug.print("{s}", .{prompt});
+    var buf: [16]u8 = undefined;
+    const rc = std.os.linux.read(0, &buf, buf.len);
+    if (std.os.linux.errno(rc) != .SUCCESS) return false;
+    const answer = std.mem.trim(u8, buf[0..rc], &std.ascii.whitespace);
+    return std.ascii.eqlIgnoreCase(answer, "y") or std.ascii.eqlIgnoreCase(answer, "yes");
 }
 
 fn printHelp() !void {
@@ -628,6 +802,9 @@ fn printHelp() !void {
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
         \\  transcribe [wav]   Transcribe a WAV; TXT/VTT/SRT exports use Whisper timestamps
+        \\  history            List saved transcripts [--search TEXT] [--limit N] [--json]
+        \\  history clear      Delete every saved transcript
+        \\  update [--check]   Check GitHub Releases for a newer build and install it
         \\  version            Print the Talkies version
         \\  help               Show this help message
         \\
@@ -638,6 +815,7 @@ fn printHelp() !void {
         \\  talkies quick                       # One-shot recording workflow
         \\  talkies models                      # Download model from config
         \\  talkies transcribe speech.wav --format srt --output speech.srt
+        \\  talkies history --search invoice --json
         \\
     ;
 
@@ -646,7 +824,26 @@ fn printHelp() !void {
 
 test "command parsing" {
     try std.testing.expectEqual(Command.quick, parseCommand("quick").?);
+    try std.testing.expectEqual(Command.history, parseCommand("history").?);
+    try std.testing.expectEqual(Command.update, parseCommand("update").?);
     try std.testing.expectEqual(Command.help, parseCommand("--help").?);
     try std.testing.expectEqual(Command.version, parseCommand("--version").?);
     try std.testing.expect(parseCommand("invalid") == null);
+}
+
+test "history arguments" {
+    const all = try parseHistoryArgs(&.{});
+    try std.testing.expectEqual(history.page_size, all.list.limit);
+    try std.testing.expect(all.list.search == null and !all.list.json);
+
+    const query = try parseHistoryArgs(&.{ "--search", "invoice", "--limit", "5", "--json" });
+    try std.testing.expectEqualStrings("invoice", query.list.search.?);
+    try std.testing.expectEqual(@as(u32, 5), query.list.limit);
+    try std.testing.expect(query.list.json);
+
+    try std.testing.expect((try parseHistoryArgs(&.{"clear"})) == .clear);
+    try std.testing.expectError(error.MissingArgument, parseHistoryArgs(&.{"--search"}));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "--limit", "0" }));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "--limit", "lots" }));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "clear", "--json" }));
 }

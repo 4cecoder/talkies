@@ -4,18 +4,21 @@
 #   app     <APP_DIR>/talkies                    every release (Zig app/engine/core)
 #   ui      <APP_DIR>/lib/libtalkies-ui.so.1     when windows/tray change
 #   native  <APP_DIR>/lib/libtalkies-native.so.1 when the S1-mini runtime changes
+#   phonon  <APP_DIR>/lib/crispasr/*              when the Phonon-2 runtime changes
 #   vendor  <APP_DIR>/lib/lib{whisper,ggml*,llama}.so*  only if missing (--vendor to refresh)
 #
-# Usage: scripts/install.sh [--prefix /usr/local] [--vendor] [--no-build] [--restart]
+# Usage: scripts/install.sh [--prefix /usr/local] [--libdir lib] [--vendor] [--no-build] [--restart]
 set -euo pipefail
 
 prefix=/usr/local
+libdir=lib
 refresh_vendor=0
 build=1
 restart=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --prefix) prefix="$2"; shift 2 ;;
+        --libdir) libdir="$2"; shift 2 ;;
         --vendor) refresh_vendor=1; shift ;;
         --no-build) build=0; shift ;;
         --restart) restart=1; shift ;;
@@ -24,8 +27,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "$libdir" in
+    ""|/*|..|../*|*/..|*/../*)
+        echo "--libdir must be a relative directory beneath --prefix" >&2
+        exit 2
+        ;;
+esac
+
 root="$(cd "$(dirname "$0")/.." && pwd)"
-app_dir="$prefix/lib/talkies"
+app_dir="$prefix/$libdir/talkies"
 out="$root/zig-out"
 
 if command -v doas >/dev/null 2>&1; then priv=doas
@@ -64,6 +74,20 @@ for lib in talkies-ui:ui talkies-native:native; do
     real="$(readlink -f "$out/lib/lib$name.so")"
     install_if_changed "$tier" "$real" "$app_dir/lib/lib$name.so.1"
 done
+
+# Phonon-2 is optional at runtime but its CrispASR shared-library closure is
+# required when the user downloads the model. Install the complete pinned
+# runtime beside Talkies so the app can load it without system-wide libraries.
+if [[ -d "$out/lib/crispasr" ]]; then
+    while IFS= read -r -d '' file; do
+        relative="${file#"$out/lib/crispasr"/}"
+        case "$relative" in
+            *.txt|LICENSE|NOTICE) mode=644 ;;
+            *) mode=755 ;;
+        esac
+        install_if_changed phonon "$file" "$app_dir/lib/crispasr/$relative"
+    done < <(find "$out/lib/crispasr" -type f -print0 | sort -z)
+fi
 
 # Vendor tier: copy the exact libwhisper/libllama/libggml* the build resolved.
 while read -r soname path; do

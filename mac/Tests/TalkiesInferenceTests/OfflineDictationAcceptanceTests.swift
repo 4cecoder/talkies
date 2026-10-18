@@ -89,6 +89,8 @@ private final class AcceptanceTextAccessibilityClient: TextAccessibilityClient {
 
     func isTrusted() -> Bool { true }
 
+    func activateApplication(_ processIdentifier: pid_t) {}
+
     func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt {
         guard processIdentifier == 4242 else { return .writeDenied }
         insertedText = text

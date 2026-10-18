@@ -105,9 +105,13 @@ jobs:
 
       - name: Build release binaries
         working-directory: linux
+        env:
+          RELEASE_LABEL: ${{ inputs.release_label }}
         # Never -Dcpu=native here: runners have newer CPUs than users (SIGILL).
         # x86_64_v2 covers every x86-64 CPU since ~2009; ggml sets its own AVX2 floor.
-        run: zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion="${APP_VERSION}"
+        # The commit and label let the in-app updater compare rolling `latest`
+        # builds, which keep the same version, against BUILD-INFO.txt.
+        run: zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion="${APP_VERSION}" -Dcommit="${GITHUB_SHA}" -Dchannel="${RELEASE_LABEL}"
 
       - name: Build packages (tar.gz, deb, rpm, Arch) and distro recipes
         env:
@@ -116,7 +120,7 @@ jobs:
         run: packaging/linux/package.sh
 
       - name: Upload Linux packages
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/
@@ -151,7 +155,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
@@ -168,7 +172,7 @@ jobs:
 
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
@@ -191,6 +195,7 @@ jobs:
           cd /build
           sudo -u builder makepkg -si --noconfirm
           talkies --version
+          talkies update --check 2>&1 | tee /dev/stderr | grep -F ', AUR package talkies-bin'
           test -f /usr/share/licenses/talkies-bin/LICENSE
 
   gentoo-test:
@@ -206,7 +211,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
@@ -220,7 +225,7 @@ jobs:
         run: bash packaging/linux/test-gentoo.sh dist "${{ inputs.release_label }}" both
 
       - name: Upload Gentoo overlay and build toolchain
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ inputs.artifact_name }}-gentoo
           path: dist/gentoo-release/

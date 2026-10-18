@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import AVFoundation
 import TalkiesCore
 import TalkiesInference
 
@@ -71,6 +72,16 @@ enum PipelineStage: Equatable {
     }
 }
 
+/// Recognizer output for one recording, carried through cleanup so the saved history entry
+/// records the runtime that actually produced the text.
+struct RecognizedDictation: Sendable {
+    let text: String
+    let runtime: SpeechRuntimeID
+    let durationMs: Int64?
+    /// The capture that produced this text; it decides insertion versus agent mode.
+    var ticket: CaptureTicket? = nil
+}
+
 @MainActor
 class TranscriptionService: ObservableObject {
     @Published var segments: [TranscriptSegment] = []
@@ -94,8 +105,10 @@ class TranscriptionService: ObservableObject {
         SettingsService.shared.settings.speechEngine ?? .automatic
     }
 
-    /// Called with the recognized text and the ticket of the capture that produced it.
-    var onTranscriptionComplete: ((String, CaptureTicket?) -> Void)?
+    /// Called with the recognizer's text and the ticket of the capture that produced it. The
+    /// handler routes it, applies cleanup and insertion for dictation, then passes the same
+    /// `RecognizedDictation` to `saveToHistory(finalText:from:)`.
+    var onTranscriptionComplete: ((RecognizedDictation) -> Void)?
     /// Called when a capture produced no usable text or failed.
     var onTranscriptionEndedWithoutText: ((CaptureTicket?) -> Void)?
 
@@ -149,6 +162,7 @@ class TranscriptionService: ObservableObject {
         }
 
         print("🎙️ Starting transcription of: \(audioURL.lastPathComponent)")
+        let durationMs = Self.audioDurationMilliseconds(audioURL)
 
         do {
             let result = try await recognizers.transcribe(
@@ -193,7 +207,12 @@ class TranscriptionService: ObservableObject {
                 }
 
                 // Trigger callback with transcribed text
-                self.onTranscriptionComplete?(fullText, ticket)
+                self.onTranscriptionComplete?(RecognizedDictation(
+                    text: fullText,
+                    runtime: result.runtime,
+                    durationMs: durationMs,
+                    ticket: ticket
+                ))
             }
         } catch {
             print("❌ Transcription error: \(error)")
@@ -207,6 +226,29 @@ class TranscriptionService: ObservableObject {
                 self.onTranscriptionEndedWithoutText?(ticket)
             }
         }
+    }
+
+    /// Saves one finished dictation (after cleanup) to the local history when the user has
+    /// "Save transcript history" on. Never logs transcript text.
+    func saveToHistory(finalText: String, from dictation: RecognizedDictation) {
+        guard SettingsService.shared.settings.saveTranscriptHistory ?? true else { return }
+        let text = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        TranscriptHistoryModel.shared.save(NewTranscript(
+            text: text,
+            rawText: dictation.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            durationMs: dictation.durationMs,
+            runtime: dictation.runtime,
+            // Phonon-2 is English-only; Whisper's detected language is not surfaced by the chain.
+            language: dictation.runtime == .phonon ? "en" : nil
+        ))
+    }
+
+    private nonisolated static func audioDurationMilliseconds(_ url: URL) -> Int64? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let sampleRate = file.processingFormat.sampleRate
+        guard sampleRate > 0 else { return nil }
+        return Int64((Double(file.length) / sampleRate * 1_000).rounded())
     }
 
     private func formatTimestamp(_ time: Double) -> String {

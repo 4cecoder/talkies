@@ -33,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var localClickMonitor: Any?
     private var isDismissingFloatingWindow = false
     private var isFloatingWindowCollapsed = true
+    private let floatingPanelState = FloatingPanelState()
     var activationKeyWasPressed = false
     /// Each recording's mode and insertion destination, bound at key press.
     private var captures = CaptureLedger<TextInsertionDestination>()
@@ -82,16 +83,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         observeStatusIconState()
 
         // Setup transcription completion callback
-        transcriptionService.onTranscriptionComplete = { [weak self] text, ticket in
+        transcriptionService.onTranscriptionComplete = { [weak self] dictation in
             guard let self else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let text = dictation.text
+                let ticket = dictation.ticket
                 // Route by the capture that produced this text, never by the key pressed last.
                 if let ticket {
                     guard let mode = self.captures.mode(of: ticket) else { return } // discarded
                     if mode == .agent {
                         // Agent text is parsed as recognized: no S1-mini, Ollama, or LM Studio rewriting.
-                        self.finishAgentCapture(text, ticket: ticket)
+                        self.finishAgentCapture(dictation, ticket: ticket)
                         return
                     }
                 }
@@ -143,6 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.transcriptionService.statusMessage = "No usable words were recognized. Try again."
                     return
                 }
+                self.transcriptionService.saveToHistory(finalText: finalText, from: dictation)
                 if cleanupFailed {
                     self.transcriptionService.pipelineStage = .cleanupFallback
                     self.transcriptionService.statusMessage = "Cleanup failed; keeping the recognized words."
@@ -274,7 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         isFloatingWindowCollapsed = !expanded
         if floatingWindow == nil {
             // Create floating window
-            let window = NSWindow(
+            let window = FloatingDictationWindow(
                 contentRect: NSRect(
                     x: 0,
                     y: 0,
@@ -309,10 +313,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 get: { [weak self] in self?.isFloatingWindowCollapsed ?? true },
                 set: { [weak self] collapsed in self?.isFloatingWindowCollapsed = collapsed }
             )
-            let contentView = DictationView(agentController: agentController, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
+            let contentView = DictationView(panelState: floatingPanelState, agentController: agentController, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
+            }, onHistoryVisibilityChange: { [weak self] visible in
+                if visible { self?.takeKeyFocusForHistory() } else { self?.closeTranscriptHistory() }
             })
                 .environmentObject(audioRecorder)
                 .environmentObject(transcriptionService)
@@ -333,6 +339,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         floatingWindow?.alphaValue = 1
         floatingWindow?.orderFront(nil)
         // DO NOT call makeKeyAndOrderFront or NSApp.activate - that steals focus!
+    }
+
+    /// Transcript history has a search field, so the panel takes key focus while it is open.
+    /// The app that had focus is remembered first so dictation can return to it.
+    private func takeKeyFocusForHistory() {
+        guard let window = floatingWindow as? FloatingDictationWindow, !window.acceptsKeyFocus else { return }
+        TextInserter.shared.rememberDestinationBeforeTakingFocus()
+        window.acceptsKeyFocus = true
+        NSApp.activate()
+        window.makeKey()
+    }
+
+    /// Closes transcript history and gives keyboard focus back to the app that had it before.
+    /// Idempotent. Returns that app when history was holding focus, so a recording that starts
+    /// now targets it even though macOS finishes the app switch asynchronously.
+    /// Pass `returnFocus: false` when the user is moving focus elsewhere themselves (a click
+    /// outside the panel), so Talkies does not pull the old app back to the front.
+    @discardableResult
+    private func closeTranscriptHistory(returnFocus: Bool = true) -> TextInsertionDestination? {
+        floatingPanelState.isHistoryVisible = false
+        guard let window = floatingWindow as? FloatingDictationWindow, window.acceptsKeyFocus else { return nil }
+        window.acceptsKeyFocus = false
+        if window.isKeyWindow { window.resignKey() }
+        guard returnFocus else {
+            TextInserter.shared.forgetRememberedDestination()
+            return nil
+        }
+        let destination = TextInserter.shared.returnFocusToRememberedDestination()
+        if destination == nil { NSApp.deactivate() }
+        return destination
     }
 
     private func resizeFloatingWindow(to size: CGSize) {
@@ -391,6 +427,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 @MainActor
     func hideWindow() {
         guard let window = floatingWindow, window.isVisible, !isDismissingFloatingWindow else { return }
+        closeTranscriptHistory()
         isDismissingFloatingWindow = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
@@ -414,6 +451,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             let click = NSEvent.mouseLocation
             guard !window.frame.contains(click) else { return }
+            self.closeTranscriptHistory(returnFocus: false)
             self.collapseWindow()
         }
 
@@ -582,14 +620,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return nil
         }
 
-        // Set pipeline stage to recording
+        // History holds key focus for its search field. Close it and hand focus back before
+        // choosing where the transcript goes, so text never lands inside Talkies.
+        let returnedDestination = closeTranscriptHistory()
         transcriptionService.currentText = ""
         transcriptionService.pipelineStage = .recording
         let ticket: CaptureTicket
         let vocabulary: [String]
         switch mode {
         case .dictation:
-            ticket = captures.begin(.dictation, destination: TextInserter.shared.captureDestination())
+            ticket = captures.begin(.dictation, destination: returnedDestination ?? TextInserter.shared.captureDestination())
             vocabulary = []
             transcriptionService.statusMessage = "Listening… audio stays on this Mac."
             agentController.dictationStarted()
@@ -755,9 +795,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Agent-mode text is parsed for an agent and is never inserted into the focused field.
-    /// It still lands in the transcript list like any dictation.
-    private func finishAgentCapture(_ text: String, ticket: CaptureTicket) {
-        let recognized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// It is still saved to transcript history like any dictation.
+    private func finishAgentCapture(_ dictation: RecognizedDictation, ticket: CaptureTicket) {
+        let recognized = dictation.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard case .agent(let trimmed) = captures.finish(ticket, text: recognized) else { return }
         transcriptionService.currentText = trimmed
         guard !trimmed.isEmpty else {
@@ -766,6 +806,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             agentController.captureEndedWithoutSpeech()
             return
         }
+        // Agent-mode utterances are saved to transcript history like any dictation.
+        transcriptionService.saveToHistory(finalText: trimmed, from: dictation)
         transcriptionService.pipelineStage = .complete
         transcriptionService.statusMessage = "Agent mode: \(trimmed)"
         Task { await agentController.handle(trimmed) }
@@ -833,6 +875,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { await agentController.refreshAgents() }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Free S1-mini's Metal buffers before exit runs llama.cpp's static destructors,
+        // which abort when model buffers are still allocated.
+        let cleaner = s1MiniCleaner
+        Task {
+            await cleaner.unload()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         if let monitor = eventMonitor {
@@ -851,4 +903,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSEvent.removeMonitor(monitor)
         }
     }
+}
+
+/// Borderless dictation panel. It refuses key status so dictation never takes focus from the
+/// app receiving text, except while transcript history (with its search field) is open.
+final class FloatingDictationWindow: NSWindow {
+    var acceptsKeyFocus = false
+    override var canBecomeKey: Bool { acceptsKeyFocus }
+}
+
+/// Floating-panel UI state the app delegate must change directly (for example, closing
+/// history when a recording starts from the global shortcut).
+@MainActor
+final class FloatingPanelState: ObservableObject {
+    @Published var isHistoryVisible = false
 }

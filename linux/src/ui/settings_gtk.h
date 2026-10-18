@@ -18,6 +18,8 @@ typedef struct {
     int launch_at_login;
     int voice_assistant_mode;
     int insert_text_in_assistant_mode;
+    int save_history;
+    int check_for_updates;
 
     // Audio + transcription
     char audio_device[256];
@@ -128,5 +130,13 @@ typedef struct {
 } TalkiesHealthItem;
 
 void talkies_settings_window_set_health(TalkiesSettingsWindow *win, const TalkiesHealthItem *items, int count);
+
+// Updates (General page). status is one line (version, result, or what to
+// run for package managers Talkies does not drive); can_install shows the
+// install button; busy disables both buttons while a check or install runs.
+void talkies_settings_window_set_update_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_check,
+                                                  TalkiesSettingsActionFn on_install);
+void talkies_settings_window_set_update_state(TalkiesSettingsWindow *win, const char *status, int can_install,
+                                              int busy);
 
 #endif

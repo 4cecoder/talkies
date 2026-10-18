@@ -112,17 +112,21 @@ ditto "${SCRIPT_DIR}/Info.plist.template" "${APP_BUNDLE}/Contents/Info.plist"
 
 # Keep licensing material inside the .app so the same notices travel in the
 # app ZIP and the drag-install DMG. WhisperKit carries additional Apache
-# attribution notices; llama.swift ships the license for its bundled binary.
+# attribution notices; llama.swift ships the license for its bundled binary;
+# phonon-coreml (the Phonon-2 Core ML runtime) ships Apache-2.0 with a NOTICE.
 LEGAL_DIR="${APP_BUNDLE}/Contents/Resources/Legal"
 LEGAL_LICENSE_DIR="${LEGAL_DIR}/ThirdParty"
 mkdir -p "${LEGAL_LICENSE_DIR}"
 install -m 0644 "${REPOSITORY_ROOT}/LICENSE" "${LEGAL_DIR}/LICENSE"
 WHISPERKIT_CHECKOUT="${MAC_PACKAGE}/.build/checkouts/WhisperKit"
 LLAMA_SWIFT_CHECKOUT="${MAC_PACKAGE}/.build/checkouts/llama.swift"
+PHONON_COREML_CHECKOUT="${MAC_PACKAGE}/.build/checkouts/phonon-coreml"
 for required_license in \
     "${WHISPERKIT_CHECKOUT}/LICENSE" \
     "${WHISPERKIT_CHECKOUT}/NOTICES" \
-    "${LLAMA_SWIFT_CHECKOUT}/LICENSE.md"; do
+    "${LLAMA_SWIFT_CHECKOUT}/LICENSE.md" \
+    "${PHONON_COREML_CHECKOUT}/LICENSE" \
+    "${PHONON_COREML_CHECKOUT}/NOTICE"; do
     if [[ ! -s "${required_license}" ]]; then
         echo "Missing bundled dependency license or notice: ${required_license}" >&2
         exit 1
@@ -131,6 +135,8 @@ done
 install -m 0644 "${WHISPERKIT_CHECKOUT}/LICENSE" "${LEGAL_LICENSE_DIR}/WhisperKit-LICENSE.txt"
 install -m 0644 "${WHISPERKIT_CHECKOUT}/NOTICES" "${LEGAL_LICENSE_DIR}/WhisperKit-NOTICES.txt"
 install -m 0644 "${LLAMA_SWIFT_CHECKOUT}/LICENSE.md" "${LEGAL_LICENSE_DIR}/llama.swift-LICENSE.md"
+install -m 0644 "${PHONON_COREML_CHECKOUT}/LICENSE" "${LEGAL_LICENSE_DIR}/phonon-coreml-LICENSE.txt"
+install -m 0644 "${PHONON_COREML_CHECKOUT}/NOTICE" "${LEGAL_LICENSE_DIR}/phonon-coreml-NOTICE.txt"
 install -m 0644 "${REPOSITORY_ROOT}/packaging/shared/licenses/llama.cpp-MIT.txt" \
     "${LEGAL_LICENSE_DIR}/llama.cpp-MIT.txt"
 
@@ -191,6 +197,8 @@ test -s "${LEGAL_LICENSE_DIR}/WhisperKit-LICENSE.txt"
 test -s "${LEGAL_LICENSE_DIR}/WhisperKit-NOTICES.txt"
 test -s "${LEGAL_LICENSE_DIR}/llama.swift-LICENSE.md"
 test -s "${LEGAL_LICENSE_DIR}/llama.cpp-MIT.txt"
+test -s "${LEGAL_LICENSE_DIR}/phonon-coreml-LICENSE.txt"
+test -s "${LEGAL_LICENSE_DIR}/phonon-coreml-NOTICE.txt"
 test -s "${CORE_PATH}"
 test -s "${INFERENCE_PATH}"
 test -f "${APP_BUNDLE}/Contents/Frameworks/llama.framework/Versions/Current/llama"
@@ -225,7 +233,8 @@ ditto -x -k "${ZIP_TMP}" "${ZIP_SMOKE_DIR}"
 for bundled_notice in \
     "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/LICENSE" \
     "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/WhisperKit-NOTICES.txt" \
-    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/llama.cpp-MIT.txt"; do
+    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/llama.cpp-MIT.txt" \
+    "${ZIP_SMOKE_DIR}/${APP_NAME}.app/Contents/Resources/Legal/ThirdParty/phonon-coreml-NOTICE.txt"; do
     if [[ ! -s "${bundled_notice}" ]]; then
         echo "App ZIP is missing a required license or notice: ${bundled_notice}" >&2
         exit 1

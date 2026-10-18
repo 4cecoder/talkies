@@ -8,7 +8,7 @@ The package graph separates Foundation-only `TalkiesCore`, AVFoundation-based `T
 
 | Product/target | Change rate | Owns |
 |---|---|---|
-| `TalkiesCore` dynamic library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols |
+| `TalkiesCore` dynamic library | Low | Transcript/settings/mode types, privacy rules, formatting, export, model metadata protocols, local transcript history store (system SQLite) |
 | `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
 | `TalkiesAccessibility` library | Medium | Focus capture, verified text-control insertion, permission checks, explicit clipboard copy |
 | `TalkiesInference` dynamic library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |

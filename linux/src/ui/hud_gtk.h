@@ -59,8 +59,21 @@ void talkies_hud_set_level(TalkiesHud *hud, float level);
 void talkies_hud_set_elapsed(TalkiesHud *hud, double seconds);
 // Text of the latest dictation (Copy button, idle footer).
 void talkies_hud_set_transcript(TalkiesHud *hud, const char *text);
-// Adds an entry to the transcript history page (newest first).
-void talkies_hud_add_history(TalkiesHud *hud, const char *text);
+// Adds a new transcript at the top of the history page. id is its row in the
+// daemon's history store, or 0 when it was not saved (kept for this session).
+void talkies_hud_add_history(TalkiesHud *hud, long long id, long long created_at_ms, const char *text);
+
+// Transcript history page backed by the daemon's store. The panel asks for a
+// page with query (search is "" for all; offset/limit count saved rows); the
+// daemon answers synchronously with talkies_hud_history_append for each row,
+// newest first, then talkies_hud_history_finish. remove and clear report the
+// user's deletions. Without callbacks only this session's entries are shown.
+typedef void (*TalkiesHudHistoryQueryFn)(const char *search, int offset, int limit, void *user_data);
+typedef void (*TalkiesHudHistoryDeleteFn)(long long id, void *user_data);
+void talkies_hud_set_history_callbacks(TalkiesHud *hud, TalkiesHudHistoryQueryFn query, TalkiesHudHistoryDeleteFn remove,
+                                       TalkiesHudCallback clear, void *user_data);
+void talkies_hud_history_append(TalkiesHud *hud, long long id, long long created_at_ms, const char *text);
+void talkies_hud_history_finish(TalkiesHud *hud, int has_more);
 // e.g. "Right Alt" -> "Hold Right Alt for push-to-talk".
 void talkies_hud_set_hotkey_name(TalkiesHud *hud, const char *name);
 // A setup problem shown while idle instead of "Ready to dictate"
