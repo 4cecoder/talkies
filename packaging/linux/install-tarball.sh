@@ -51,6 +51,9 @@ fi
 mkdir -p "${PREFIX}/bin" "${PREFIX}/lib"
 rm -rf "${PREFIX}/lib/talkies"
 cp -a "${HERE}/usr/lib/talkies" "${PREFIX}/lib/"
+# Tells the in-app updater (`talkies update`) that install.sh owns this tree
+# and may replace it, unlike files owned by a package manager.
+printf 'tarball\n' > "${PREFIX}/lib/talkies/install-method"
 ln -sfn ../lib/talkies/talkies "${PREFIX}/bin/talkies"
 mkdir -p "${data}"
 cp -a "${HERE}/usr/share/." "${data}/"

@@ -124,6 +124,14 @@ pub const Config = struct {
     yap_ollama_url: []const u8 = "http://localhost:11434",
     yap_system_prompt: []const u8 = "You refine verbose voice transcriptions into clear, natural text. Keep the user's voice and intent. Don't capitalize every sentence - write naturally like you're texting or messaging. Be conversational, not formal.",
 
+    // [history]
+    /// Keep every final transcript in history.sqlite until the user deletes it.
+    save_history: bool = true,
+
+    // [updates]
+    /// Check GitHub for a newer Linux build at startup and once a day.
+    check_for_updates: bool = true,
+
     // [vad]
     vad_enabled: bool = true,
     vad_mode: u8 = 2, // 0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive
@@ -451,6 +459,10 @@ const field_specs = [_]FieldSpec{
     .{ .section = "yap", .key = "ollama_url", .field = "yap_ollama_url" },
     .{ .section = "yap", .key = "system_prompt", .field = "yap_system_prompt" },
 
+    .{ .section = "history", .key = "save", .field = "save_history", .comment = "Save transcripts to ~/.local/share/talkies/history.sqlite (kept until you delete them; off stops saving)" },
+
+    .{ .section = "updates", .key = "check_automatically", .field = "check_for_updates", .comment = "Ask GitHub Releases for a newer build at startup and daily; no user data is sent (TALKIES_NO_UPDATE_CHECK=1 also turns this off)" },
+
     .{ .section = "vad", .key = "enabled", .field = "vad_enabled", .comment = "Trim silence before transcription" },
     .{ .section = "vad", .key = "mode", .field = "vad_mode", .comment = "0=quality, 1=low_bitrate, 2=aggressive, 3=very_aggressive" },
 };
@@ -570,6 +582,8 @@ test "config initialization matches macOS defaults" {
     try std.testing.expectEqual(CleanupStyle.semi_formal, cfg.cleanup_style);
     try std.testing.expectEqual(CleanupStructure.prose, cfg.cleanup_structure);
     try std.testing.expectEqual(CleanupContext.general, cfg.cleanup_context);
+    try std.testing.expect(cfg.save_history);
+    try std.testing.expect(cfg.check_for_updates);
 }
 
 test "parse string value" {
@@ -701,6 +715,8 @@ test "toToml round trips every field" {
     original.cleanup_style = .casual;
     original.cleanup_structure = .lists;
     original.cleanup_context = .email;
+    original.save_history = false;
+    original.check_for_updates = false;
     try original.setString("ollama_custom_system_prompt", "Line one\n\"quoted\"");
 
     const toml = try original.toToml(allocator);
@@ -719,6 +735,8 @@ test "toToml round trips every field" {
     try std.testing.expectEqual(CleanupStyle.casual, parsed.cleanup_style);
     try std.testing.expectEqual(CleanupStructure.lists, parsed.cleanup_structure);
     try std.testing.expectEqual(CleanupContext.email, parsed.cleanup_context);
+    try std.testing.expect(!parsed.save_history);
+    try std.testing.expect(!parsed.check_for_updates);
     try std.testing.expectEqualStrings("Line one\n\"quoted\"", parsed.ollama_custom_system_prompt);
 }
 

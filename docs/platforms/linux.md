@@ -15,13 +15,17 @@ across platforms, see the
   (whisper.cpp) for every other case. Optional cleanup by the on-device S1-mini model (downloaded
   from Settings) or by a local Ollama / LM Studio server.
 - **Dictation panel and tray** that follow the macOS app: a small waveform pill at the top of the
-  screen, a live panel while you dictate, recent-transcript history, and a status tray icon.
+  screen, a live panel while you dictate, searchable transcript history saved on this computer, and a
+  status tray icon.
 - **Works across desktops**: GNOME, KDE Plasma, Hyprland, Sway and X11 window managers.
 - **`talkies doctor`** checks audio, microphone, hotkey, typing, clipboard, tray and model, and
   tells you how to fix anything that isn't ready.
 
 Ollama and LM Studio cleanup only accept `localhost`, `127.0.0.0/8` or `::1` endpoints. Remote
 endpoints are rejected and HTTP redirects are disabled, so transcripts never leave the machine.
+
+Besides the model downloads you ask for, the only network request Talkies makes is the update
+check described in [Updates](#updates), which sends no user data and can be turned off.
 
 ## Install
 
@@ -72,7 +76,7 @@ typing into apps then needs `/dev/uinput` access, which the root install sets up
 
 **Uninstall.** Use your package manager (`apt remove talkies`, `dnf remove talkies`,
 `pacman -R talkies`, `emerge --depclean talkies`) or `./talkies-*/install.sh --uninstall`.
-Settings (`~/.config/talkies`) and models (`~/.local/share/talkies`) are kept.
+Settings (`~/.config/talkies`), models and transcript history (`~/.local/share/talkies`) are kept.
 
 ## Using Talkies
 
@@ -91,8 +95,34 @@ Talkies rests as a small waveform pill at the top centre of the screen. Click it
 | Done | "Text insertion complete" with a **Copy text** button; the panel collapses after 2.5 seconds |
 | No speech, manual paste, errors | Stays open with the reason and what to do; move the pointer away to dismiss |
 
-The clock button opens **Transcript History**, the transcripts from this session with their times.
+The clock button opens **Transcript History**: your saved transcripts, newest first, 50 at a time
+(**Show older** loads more). Type in the search field to filter them (case-insensitive), and use the
+buttons on each entry to copy or delete it. **Clear all** (click twice to confirm) deletes every saved
+transcript. The search field is the only time the panel takes keyboard focus; on compositors that
+never focus it (for example with the Hyprland rules), use `talkies history --search` instead.
 **Use mini window** in Settings switches to a compact 360-pixel panel.
+
+### Transcript history
+
+While **Save transcript history** (Settings > General, on by default) is on, every final transcript,
+the text that was typed or copied, is saved to
+`${XDG_DATA_HOME:-$HOME/.local/share}/talkies/history.sqlite`. The directory is private (`0700`) and
+the file is readable only by you (`0600`). Transcripts are kept until you delete them; nothing expires
+and nothing leaves the computer. Turning the setting off stops saving but keeps what is already
+saved; entries from the current session are still shown until Talkies restarts. Transcript text is
+never written to the log.
+
+Each entry also records the recognizer output before cleanup (when cleanup changed it), the audio
+length, the speech engine (`phonon` or `whisper`) and the language. The SQLite schema
+(`linux/src/app/history_schema.sql`, `PRAGMA user_version = 1`) is shared with the other Talkies
+clients; every row has a random UUID so history can later be synced between devices.
+
+```bash
+talkies history                         # newest 50
+talkies history --search invoice --limit 200
+talkies history --json                  # every column, including uuid
+talkies history clear                   # delete everything (then VACUUM)
+```
 
 ### Tray icon
 
@@ -106,7 +136,8 @@ with the AppIndicator extension, waybar, AGS and similar bars.
 
 Settings has five pages:
 
-- **General**: mini window, launch at login, push-to-talk threshold, voice assistant mode.
+- **General**: mini window, launch at login, transcript history, updates, push-to-talk threshold,
+  voice assistant mode.
 - **Transcription**: microphone, speech engine (Automatic, Phonon-2 or Whisper), the Phonon-2
   download, Whisper model and language, personal vocabulary (one name or uncommon word per line,
   used as Whisper recognition hints).
@@ -163,6 +194,48 @@ card show which engine is in use and why.
   On Hyprland the daemon also sets the window rules for its panel and Settings window at startup.
   `/usr/share/talkies/hyprland-rules.conf` has the same rules if you prefer them in your config.
 
+### Updates
+
+Talkies checks GitHub Releases for a newer Linux build about a minute after the daemon starts and
+then once a day, on a background thread. The check is a single HTTPS GET of the release's
+`BUILD-INFO.txt` (with curl); nothing about you, your settings or your transcripts is sent, and it
+has nothing to do with speech recognition, which stays on this computer.
+
+- Builds from the rolling `latest` prerelease keep the same version number on every push to
+  master, so they compare the commit they were built from with the one in `BUILD-INFO.txt`.
+- Builds of a tagged release (`vX.Y.Z`, and distro builds such as the Gentoo ebuild) compare
+  version numbers with the newest stable release.
+- Development and CI builds never check.
+
+When an update exists, Talkies shows a desktop notification once and the **Updates** row in
+Settings > General says what to do. Nothing is installed until you click **Install and Restart**
+(or confirm `talkies update`). The download goes to `~/.cache/talkies/updates/` and is used only
+if its SHA-256 matches the release's `SHA256SUMS`; otherwise it is deleted and the update is
+refused. How it is installed depends on how you installed Talkies:
+
+| Installed with | What the update does |
+| --- | --- |
+| `install.sh` into a prefix you own (e.g. `~/.local`) | Swaps `<prefix>/lib/talkies` for the new version in one rename, refreshes the menu entry and icons, then restarts the daemon |
+| `sudo ./install.sh` (e.g. `/usr/local`) | Runs the verified tarball's `install.sh` through `pkexec` |
+| `.deb` / `.rpm` / Arch package | Never touches package files itself: after you approve, `pkexec` runs `apt install`, `dnf install` / `zypper install`, or `pacman -U` on the verified package |
+| AUR `talkies-bin` | Notification only: update it with your AUR helper |
+| Gentoo overlay | Notification only: sync the overlay and `emerge --update` |
+
+For the `pkexec` installs, root copies the download into a private directory and checks its
+SHA-256 again before the package manager reads it. After installing, the daemon restarts itself
+once no dictation is running: through `systemctl --user restart` when a systemd user unit runs it,
+otherwise by starting the new binary in place. `install.sh` records itself in
+`<prefix>/lib/talkies/install-method` so the updater can tell its files from a package manager's.
+
+To turn the checks off, switch off **Check for updates automatically** in Settings, set
+`check_automatically = false` under `[updates]`, or set `TALKIES_NO_UPDATE_CHECK=1` in the
+daemon's environment (this also blocks **Check Now** and `talkies update`).
+
+```bash
+talkies update --check    # what is installed, how, and whether a newer build exists
+talkies update            # the same, then download, verify and install after you confirm
+```
+
 ## Configuration
 
 Settings are saved to `~/.config/talkies/config.toml`. Everything is editable in the Settings
@@ -197,6 +270,12 @@ context = "general"             # general | email
 auto_paste = true               # type at the cursor; false = copy to clipboard only
 restore_clipboard = true
 
+[history]
+save = true                     # keep transcripts in history.sqlite until you delete them
+
+[updates]
+check_automatically = true      # look for a newer build at startup and daily (see Updates)
+
 [vad]
 enabled = true                  # trim silence before transcription
 ```
@@ -215,6 +294,9 @@ those providers.
 | `talkies audio` | Record a 5-second test |
 | `talkies quick` | Record, transcribe and type once, without the daemon |
 | `talkies transcribe <file.wav> --format txt\|vtt\|srt --output <file>` | Export a transcript with timestamps |
+| `talkies history [--search Q] [--limit N] [--json]` | List saved transcripts, newest first |
+| `talkies history clear` | Delete every saved transcript |
+| `talkies update [--check]` | Check GitHub Releases for a newer build; without `--check`, install it after confirmation |
 | `talkies config` | Print the current configuration |
 | `talkies --version` | Print the version |
 
@@ -260,7 +342,8 @@ scripts/install.sh --restart                    # developer install, restarts th
 On Gentoo, `app-accessibility/talkies` from the release overlay does all of this for you.
 
 To build the release packages locally, run
-`zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z` and then
+`zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z` (release CI also passes
+`-Dcommit=<sha> -Dchannel=<latest|vX.Y.Z>` for the updater) and then
 `VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh`. The output goes to `linux/dist/`, and
 `packaging/linux/README.md` describes the pipeline.
 

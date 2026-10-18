@@ -105,9 +105,13 @@ jobs:
 
       - name: Build release binaries
         working-directory: linux
+        env:
+          RELEASE_LABEL: ${{ inputs.release_label }}
         # Never -Dcpu=native here: runners have newer CPUs than users (SIGILL).
         # x86_64_v2 covers every x86-64 CPU since ~2009; ggml sets its own AVX2 floor.
-        run: zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion="${APP_VERSION}"
+        # The commit and label let the in-app updater compare rolling `latest`
+        # builds, which keep the same version, against BUILD-INFO.txt.
+        run: zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion="${APP_VERSION}" -Dcommit="${GITHUB_SHA}" -Dchannel="${RELEASE_LABEL}"
 
       - name: Build packages (tar.gz, deb, rpm, Arch) and distro recipes
         env:
@@ -191,6 +195,7 @@ jobs:
           cd /build
           sudo -u builder makepkg -si --noconfirm
           talkies --version
+          talkies update --check 2>&1 | tee /dev/stderr | grep -F ', AUR package talkies-bin'
           test -f /usr/share/licenses/talkies-bin/LICENSE
 
   gentoo-test:

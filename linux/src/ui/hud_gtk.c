@@ -24,7 +24,12 @@
 #define HISTORY_H 420.0
 #define PANEL_RADIUS 24.0
 #define SAMPLE_COUNT 160
+// Unsaved (session-only) transcripts kept in memory.
 #define HISTORY_LIMIT 50
+// Rows asked of the daemon's store per page.
+#define HISTORY_PAGE 50
+// "Clear all" asks for a second click within this time.
+#define CLEAR_CONFIRM_MS 3000
 #define WIN_W TALKIES_HUD_WINDOW_WIDTH
 #define WIN_H TALKIES_HUD_WINDOW_HEIGHT
 // spring(response: 0.38, dampingFraction: 0.82)
@@ -45,9 +50,12 @@ typedef struct {
 } Spring;
 
 typedef struct {
+    gint64 id; // 0 = not saved (history saving off or unavailable)
     char *time;
     char *text;
 } HistoryEntry;
+
+typedef void (*LayerKeyboardFn)(GtkWindow *, int);
 
 // One layout of the dictation controls (full and mini share this shape).
 typedef struct {
@@ -78,6 +86,8 @@ struct TalkiesHud {
     GtkWidget *history_page;
     GtkWidget *history_list;
     GtkWidget *history_empty;
+    GtkWidget *history_search;
+    GtkWidget *history_clear;
     GtkCssProvider *tint_css;
 
     TalkiesHudStage stage;
@@ -88,7 +98,11 @@ struct TalkiesHud {
     char *attention_hint;
     double elapsed;
     float samples[SAMPLE_COUNT];
-    GPtrArray *history; // HistoryEntry*, newest first
+    GPtrArray *history; // HistoryEntry* loaded from the store, newest first
+    GPtrArray *session; // HistoryEntry* that were not saved, newest first
+    gboolean history_more;
+    gboolean clear_armed;
+    guint clear_reset_id;
 
     gboolean expanded;
     gboolean mini_mode;
@@ -100,11 +114,18 @@ struct TalkiesHud {
     guint leave_id;
     gboolean pointer_inside;
     gboolean x11_positioned;
+    // The history page takes keyboard focus (for search); dictation never does.
+    gboolean wants_focus;
+    LayerKeyboardFn layer_keyboard;
 
     TalkiesHudCallback record_callback;
     void *record_user_data;
     TalkiesHudCallback dismiss_callback;
     void *dismiss_user_data;
+    TalkiesHudHistoryQueryFn history_query;
+    TalkiesHudHistoryDeleteFn history_delete;
+    TalkiesHudCallback history_clear_all;
+    void *history_user_data;
 };
 
 // ---------------------------------------------------------------------------
@@ -690,6 +711,8 @@ static const char *page_name(Page page) {
     }
 }
 
+static void apply_focus(TalkiesHud *hud);
+
 static void apply_layout(TalkiesHud *hud) {
     double w, h;
     target_size(hud, &w, &h);
@@ -697,6 +720,11 @@ static void apply_layout(TalkiesHud *hud) {
     hud->height.target = h;
     gtk_widget_set_size_request(hud->history_page, hud->mini_mode ? (int)MINI_W : (int)MAIN_W, (int)HISTORY_H);
     gtk_stack_set_visible_child_name(GTK_STACK(hud->stack), page_name(current_page(hud)));
+    gboolean history = current_page(hud) == PAGE_HISTORY;
+    if (history != hud->wants_focus) {
+        hud->wants_focus = history;
+        apply_focus(hud);
+    }
     ensure_ticking(hud);
 }
 
@@ -750,10 +778,14 @@ static void on_record_clicked(GtkButton *button, gpointer user_data) {
     if (hud->record_callback) hud->record_callback(hud->record_user_data);
 }
 
+static void history_reload(TalkiesHud *hud);
+
 static void on_history_clicked(GtkButton *button, gpointer user_data) {
     (void)button;
     TalkiesHud *hud = user_data;
     hud->show_history = TRUE;
+    // Fresh from the store: `talkies history clear` may have run meanwhile.
+    history_reload(hud);
     apply_layout(hud);
 }
 
@@ -773,10 +805,122 @@ static void history_entry_free(gpointer data) {
     g_free(entry);
 }
 
+// Today: the time; otherwise the date too.
+static char *history_time(gint64 created_ms) {
+    GDateTime *when = g_date_time_new_from_unix_local(created_ms / 1000);
+    if (!when) return g_strdup("");
+    GDateTime *now = g_date_time_new_now_local();
+    const char *format = "%Y-%m-%d %H:%M";
+    if (g_date_time_get_year(when) == g_date_time_get_year(now)) {
+        format = g_date_time_get_day_of_year(when) == g_date_time_get_day_of_year(now) ? "%H:%M:%S" : "%b %e, %H:%M";
+    }
+    char *text = g_date_time_format(when, format);
+    g_date_time_unref(now);
+    g_date_time_unref(when);
+    return text ? text : g_strdup("");
+}
+
+static HistoryEntry *history_entry_new(gint64 id, gint64 created_ms, const char *text) {
+    HistoryEntry *entry = g_malloc0(sizeof *entry);
+    entry->id = id;
+    entry->time = history_time(created_ms);
+    entry->text = g_strdup(text);
+    return entry;
+}
+
+static const char *history_search_text(TalkiesHud *hud) {
+    return gtk_editable_get_text(GTK_EDITABLE(hud->history_search));
+}
+
+// Same rule as the store's LIKE search, for entries that were never saved.
+static gboolean history_matches(const char *text, const char *search) {
+    if (!has_text(search)) return TRUE;
+    char *haystack = g_utf8_casefold(text, -1);
+    char *needle = g_utf8_casefold(search, -1);
+    gboolean found = strstr(haystack, needle) != NULL;
+    g_free(haystack);
+    g_free(needle);
+    return found;
+}
+
+// Ask the store for the first page of the current search.
+static void history_reload(TalkiesHud *hud) {
+    if (!hud->history_query) {
+        rebuild_history(hud);
+        return;
+    }
+    g_ptr_array_set_size(hud->history, 0);
+    hud->history_more = FALSE;
+    hud->history_query(history_search_text(hud), 0, HISTORY_PAGE, hud->history_user_data);
+    rebuild_history(hud);
+}
+
+static void on_history_search(GtkSearchEntry *entry, gpointer user_data) {
+    (void)entry;
+    history_reload(user_data);
+}
+
+static void on_history_more(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesHud *hud = user_data;
+    if (!hud->history_query) return;
+    hud->history_more = FALSE;
+    hud->history_query(history_search_text(hud), (int)hud->history->len, HISTORY_PAGE, hud->history_user_data);
+    rebuild_history(hud);
+}
+
+static void on_history_copy(GtkButton *button, gpointer user_data) {
+    TalkiesHud *hud = user_data;
+    HistoryEntry *entry = g_object_get_data(G_OBJECT(button), "entry");
+    if (!entry) return;
+    gdk_clipboard_set_text(gtk_widget_get_clipboard(hud->window), entry->text);
+    gtk_button_set_icon_name(button, "object-select-symbolic");
+    gtk_widget_set_tooltip_text(GTK_WIDGET(button), "Copied");
+}
+
+static void on_history_delete(GtkButton *button, gpointer user_data) {
+    TalkiesHud *hud = user_data;
+    HistoryEntry *entry = g_object_get_data(G_OBJECT(button), "entry");
+    if (!entry) return;
+    guint index;
+    if (g_ptr_array_find(hud->history, entry, &index)) {
+        if (hud->history_delete) hud->history_delete(entry->id, hud->history_user_data);
+        g_ptr_array_remove_index(hud->history, index);
+    } else if (g_ptr_array_find(hud->session, entry, &index)) {
+        g_ptr_array_remove_index(hud->session, index);
+    }
+    rebuild_history(hud);
+}
+
+static void history_disarm_clear(TalkiesHud *hud) {
+    if (hud->clear_reset_id) g_source_remove(hud->clear_reset_id);
+    hud->clear_reset_id = 0;
+    hud->clear_armed = FALSE;
+    gtk_button_set_label(GTK_BUTTON(hud->history_clear), "Clear all");
+}
+
+static gboolean on_clear_timeout(gpointer user_data) {
+    TalkiesHud *hud = user_data;
+    hud->clear_reset_id = 0;
+    history_disarm_clear(hud);
+    return G_SOURCE_REMOVE;
+}
+
+// History is kept until deleted, so clearing it takes a second click.
 static void on_history_clear(GtkButton *button, gpointer user_data) {
     (void)button;
     TalkiesHud *hud = user_data;
+    if (!hud->clear_armed) {
+        hud->clear_armed = TRUE;
+        gtk_button_set_label(GTK_BUTTON(hud->history_clear), "Clear all?");
+        hud->clear_reset_id = g_timeout_add(CLEAR_CONFIRM_MS, on_clear_timeout, hud);
+        return;
+    }
+    history_disarm_clear(hud);
+    if (hud->history_clear_all) hud->history_clear_all(hud->history_user_data);
     g_ptr_array_set_size(hud->history, 0);
+    g_ptr_array_set_size(hud->session, 0);
+    hud->history_more = FALSE;
     g_clear_pointer(&hud->transcript, g_free);
     rebuild_history(hud);
     refresh(hud);
@@ -843,7 +987,7 @@ static void apply_x11_hints(TalkiesHud *hud) {
     XWMHints *hints = XAllocWMHints();
     if (hints) {
         hints->flags = InputHint;
-        hints->input = False;
+        hints->input = hud->wants_focus ? True : False;
         XSetWMHints(xdpy, xid, hints);
         XFree(hints);
     }
@@ -908,7 +1052,8 @@ static void apply_x11_hints(TalkiesHud *hud) {
 // Native Wayland without XWayland: use gtk4-layer-shell when it is installed
 // (resolved at runtime so packages don't depend on it). Must run before the
 // window is realized. Returns TRUE when the window became a layer surface.
-static gboolean try_layer_shell(GtkWindow *window) {
+static gboolean try_layer_shell(TalkiesHud *hud) {
+    GtkWindow *window = GTK_WINDOW(hud->window);
 #ifdef GDK_WINDOWING_WAYLAND
     // Check the display type by name: GDK_IS_WAYLAND_DISPLAY would link
     // gdk_wayland_display_get_type, which GTK builds without the Wayland
@@ -937,12 +1082,39 @@ static gboolean try_layer_shell(GtkWindow *window) {
     set_anchor(window, 2 /* GTK_LAYER_SHELL_EDGE_TOP */, TRUE);
     set_margin(window, 2, TALKIES_HUD_SCREEN_TOP - TALKIES_HUD_PANEL_TOP);
     if (set_keyboard) set_keyboard(window, 0 /* GTK_LAYER_SHELL_KEYBOARD_MODE_NONE */);
+    hud->layer_keyboard = set_keyboard;
     if (set_namespace) set_namespace(window, "talkies");
     return TRUE;
 #else
     (void)window;
     return FALSE;
 #endif
+}
+
+// Typing a search needs keyboard focus, which the panel otherwise never takes
+// so that dictation lands in the app underneath. Only the history page asks
+// for it: an X11 input hint, or on-demand keyboard for a layer surface.
+// (Compositors that force no-focus by rule, like the Hyprland rules, keep it.)
+static void apply_focus(TalkiesHud *hud) {
+    if (hud->layer_keyboard) {
+        hud->layer_keyboard(GTK_WINDOW(hud->window), hud->wants_focus ? 2 /* ON_DEMAND */ : 0 /* NONE */);
+    }
+#ifdef TALKIES_HAVE_X11
+    GdkDisplay *display = gtk_widget_get_display(hud->window);
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(hud->window));
+    if (surface && GDK_IS_X11_DISPLAY(display)) {
+        Display *xdpy = gdk_x11_display_get_xdisplay(display);
+        XWMHints *hints = XAllocWMHints();
+        if (hints) {
+            hints->flags = InputHint;
+            hints->input = hud->wants_focus ? True : False;
+            XSetWMHints(xdpy, gdk_x11_surface_get_xid(surface), hints);
+            XFree(hints);
+            XFlush(xdpy);
+        }
+    }
+#endif
+    if (!hud->wants_focus) gtk_window_set_focus(GTK_WINDOW(hud->window), NULL);
 }
 
 static void on_realize(GtkWidget *widget, gpointer user_data) {
@@ -1021,6 +1193,10 @@ static const char *hud_css =
     ".talkies-hud .history-time { font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.5); }"
     ".talkies-hud .history-text { font-size: 13px; color: rgba(255,255,255,0.9); }"
     ".talkies-hud .history-empty { font-size: 14px; color: rgba(255,255,255,0.5); }"
+    ".talkies-hud .history-row button.row-action { min-width: 26px; min-height: 26px; -gtk-icon-size: 11px;"
+    "  color: rgba(255,255,255,0.7); }"
+    ".talkies-hud entry.history-search, .talkies-hud .history-search { background: rgba(255,255,255,0.08);"
+    "  color: white; border: none; box-shadow: none; border-radius: 8px; min-height: 30px; }"
     ".talkies-hud scrolledwindow, .talkies-hud viewport, .talkies-hud stack { background: transparent; }";
 
 static GtkWidget *circle_button(const char *icon, const char *tooltip, GCallback callback, gpointer user_data) {
@@ -1140,21 +1316,33 @@ static GtkWidget *build_history(TalkiesHud *hud) {
     gtk_widget_set_margin_start(header, 20);
     gtk_widget_set_margin_end(header, 20);
     gtk_widget_set_margin_top(header, 16);
-    gtk_widget_set_margin_bottom(header, 16);
+    gtk_widget_set_margin_bottom(header, 12);
     GtkWidget *title = gtk_label_new("Transcript History");
     gtk_widget_add_css_class(title, "history-title");
     gtk_label_set_xalign(GTK_LABEL(title), 0);
     gtk_widget_set_hexpand(title, TRUE);
     gtk_box_append(GTK_BOX(header), title);
+    hud->history_clear = gtk_button_new_with_label("Clear all");
+    gtk_widget_add_css_class(hud->history_clear, "clear");
+    gtk_widget_set_focusable(hud->history_clear, FALSE);
+    gtk_widget_set_tooltip_text(hud->history_clear, "Delete every saved transcript");
+    g_signal_connect(hud->history_clear, "clicked", G_CALLBACK(on_history_clear), hud);
+    gtk_box_append(GTK_BOX(header), hud->history_clear);
     GtkWidget *close = circle_button("window-close-symbolic", "Close transcript history", G_CALLBACK(on_history_close), hud);
     gtk_widget_add_css_class(close, "close");
     gtk_box_append(GTK_BOX(header), close);
-    GtkWidget *clear = gtk_button_new_with_label("Clear");
-    gtk_widget_add_css_class(clear, "clear");
-    gtk_widget_set_focusable(clear, FALSE);
-    g_signal_connect(clear, "clicked", G_CALLBACK(on_history_clear), hud);
-    gtk_box_append(GTK_BOX(header), clear);
     gtk_box_append(GTK_BOX(page), header);
+
+    hud->history_search = gtk_search_entry_new();
+    g_object_set(hud->history_search, "placeholder-text", "Search transcripts", NULL);
+    gtk_accessible_update_property(GTK_ACCESSIBLE(hud->history_search), GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                   "Search transcripts", -1);
+    gtk_widget_add_css_class(hud->history_search, "history-search");
+    gtk_widget_set_margin_start(hud->history_search, 20);
+    gtk_widget_set_margin_end(hud->history_search, 20);
+    gtk_widget_set_margin_bottom(hud->history_search, 12);
+    g_signal_connect(hud->history_search, "search-changed", G_CALLBACK(on_history_search), hud);
+    gtk_box_append(GTK_BOX(page), hud->history_search);
 
     GtkWidget *divider = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_add_css_class(divider, "history-divider");
@@ -1173,32 +1361,63 @@ static GtkWidget *build_history(TalkiesHud *hud) {
     return page;
 }
 
+static GtkWidget *history_row(TalkiesHud *hud, HistoryEntry *entry) {
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_add_css_class(row, "history-row");
+    GtkWidget *top = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *time = gtk_label_new(entry->time);
+    gtk_widget_add_css_class(time, "history-time");
+    gtk_label_set_xalign(GTK_LABEL(time), 0);
+    gtk_widget_set_hexpand(time, TRUE);
+    gtk_box_append(GTK_BOX(top), time);
+    GtkWidget *copy = circle_button("edit-copy-symbolic", "Copy transcript", G_CALLBACK(on_history_copy), hud);
+    gtk_widget_add_css_class(copy, "row-action");
+    g_object_set_data(G_OBJECT(copy), "entry", entry);
+    gtk_box_append(GTK_BOX(top), copy);
+    GtkWidget *remove = circle_button("user-trash-symbolic", "Delete transcript", G_CALLBACK(on_history_delete), hud);
+    gtk_widget_add_css_class(remove, "row-action");
+    g_object_set_data(G_OBJECT(remove), "entry", entry);
+    gtk_box_append(GTK_BOX(top), remove);
+    GtkWidget *text = gtk_label_new(entry->text);
+    gtk_widget_add_css_class(text, "history-text");
+    gtk_label_set_xalign(GTK_LABEL(text), 0);
+    gtk_label_set_wrap(GTK_LABEL(text), TRUE);
+    gtk_label_set_wrap_mode(GTK_LABEL(text), PANGO_WRAP_WORD_CHAR);
+    gtk_label_set_selectable(GTK_LABEL(text), TRUE);
+    gtk_box_append(GTK_BOX(row), top);
+    gtk_box_append(GTK_BOX(row), text);
+    return row;
+}
+
 static void rebuild_history(TalkiesHud *hud) {
     GtkWidget *child;
     while ((child = gtk_widget_get_first_child(hud->history_list))) gtk_box_remove(GTK_BOX(hud->history_list), child);
-    if (hud->history->len == 0) {
-        GtkWidget *empty = gtk_label_new("No transcripts yet");
+    const char *search = history_search_text(hud);
+    guint shown = 0;
+    // Unsaved entries of this session first: they are the newest.
+    for (guint i = 0; i < hud->session->len; i++) {
+        HistoryEntry *entry = g_ptr_array_index(hud->session, i);
+        if (!history_matches(entry->text, search)) continue;
+        gtk_box_append(GTK_BOX(hud->history_list), history_row(hud, entry));
+        shown++;
+    }
+    for (guint i = 0; i < hud->history->len; i++) {
+        gtk_box_append(GTK_BOX(hud->history_list), history_row(hud, g_ptr_array_index(hud->history, i)));
+        shown++;
+    }
+    if (shown == 0) {
+        GtkWidget *empty = gtk_label_new(has_text(search) ? "No matching transcripts" : "No transcripts yet");
         gtk_widget_add_css_class(empty, "history-empty");
         gtk_widget_set_margin_top(empty, 40);
         gtk_box_append(GTK_BOX(hud->history_list), empty);
-        return;
     }
-    for (guint i = 0; i < hud->history->len; i++) {
-        HistoryEntry *entry = g_ptr_array_index(hud->history, i);
-        GtkWidget *row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-        gtk_widget_add_css_class(row, "history-row");
-        GtkWidget *time = gtk_label_new(entry->time);
-        gtk_widget_add_css_class(time, "history-time");
-        gtk_label_set_xalign(GTK_LABEL(time), 0);
-        GtkWidget *text = gtk_label_new(entry->text);
-        gtk_widget_add_css_class(text, "history-text");
-        gtk_label_set_xalign(GTK_LABEL(text), 0);
-        gtk_label_set_wrap(GTK_LABEL(text), TRUE);
-        gtk_label_set_wrap_mode(GTK_LABEL(text), PANGO_WRAP_WORD_CHAR);
-        gtk_label_set_selectable(GTK_LABEL(text), TRUE);
-        gtk_box_append(GTK_BOX(row), time);
-        gtk_box_append(GTK_BOX(row), text);
-        gtk_box_append(GTK_BOX(hud->history_list), row);
+    if (hud->history_more) {
+        GtkWidget *more = gtk_button_new_with_label("Show older");
+        gtk_widget_add_css_class(more, "clear");
+        gtk_widget_set_focusable(more, FALSE);
+        gtk_widget_set_halign(more, GTK_ALIGN_CENTER);
+        g_signal_connect(more, "clicked", G_CALLBACK(on_history_more), hud);
+        gtk_box_append(GTK_BOX(hud->history_list), more);
     }
 }
 
@@ -1208,6 +1427,7 @@ TalkiesHud *talkies_hud_new(void) {
     TalkiesHud *hud = g_malloc0(sizeof *hud);
     hud->start_us = g_get_monotonic_time();
     hud->history = g_ptr_array_new_with_free_func(history_entry_free);
+    hud->session = g_ptr_array_new_with_free_func(history_entry_free);
     hud->width = (Spring){PILL_W, 0, PILL_W};
     hud->height = (Spring){PILL_H, 0, PILL_H};
 
@@ -1219,7 +1439,7 @@ TalkiesHud *talkies_hud_new(void) {
     gtk_widget_set_size_request(hud->window, WIN_W, WIN_H);
     gtk_widget_set_focusable(hud->window, FALSE);
     gtk_widget_add_css_class(hud->window, "talkies-hud");
-    try_layer_shell(GTK_WINDOW(hud->window));
+    try_layer_shell(hud);
     g_signal_connect(hud->window, "close-request", G_CALLBACK(on_close_request), hud);
     g_signal_connect(hud->window, "realize", G_CALLBACK(on_realize), hud);
     g_signal_connect(hud->window, "map", G_CALLBACK(on_map), hud);
@@ -1304,9 +1524,11 @@ void talkies_hud_destroy(TalkiesHud *hud) {
     if (hud->tick_id) gtk_widget_remove_tick_callback(hud->backdrop, hud->tick_id);
     if (hud->main.copy_reset_id) g_source_remove(hud->main.copy_reset_id);
     if (hud->mini.copy_reset_id) g_source_remove(hud->mini.copy_reset_id);
+    if (hud->clear_reset_id) g_source_remove(hud->clear_reset_id);
     gtk_window_destroy(GTK_WINDOW(hud->window));
     g_object_unref(hud->tint_css);
     g_ptr_array_unref(hud->history);
+    g_ptr_array_unref(hud->session);
     g_free(hud->detail);
     g_free(hud->transcript);
     g_free(hud->hotkey_name);
@@ -1396,16 +1618,35 @@ void talkies_hud_set_transcript(TalkiesHud *hud, const char *text) {
     refresh(hud);
 }
 
-void talkies_hud_add_history(TalkiesHud *hud, const char *text) {
+void talkies_hud_add_history(TalkiesHud *hud, long long id, long long created_at_ms, const char *text) {
     if (!hud || !has_text(text)) return;
-    HistoryEntry *entry = g_malloc0(sizeof *entry);
-    GDateTime *now = g_date_time_new_now_local();
-    entry->time = g_date_time_format(now, "%H:%M:%S");
-    g_date_time_unref(now);
-    entry->text = g_strdup(text);
-    g_ptr_array_insert(hud->history, 0, entry);
-    if (hud->history->len > HISTORY_LIMIT) g_ptr_array_set_size(hud->history, HISTORY_LIMIT);
+    if (id == 0) {
+        g_ptr_array_insert(hud->session, 0, history_entry_new(0, created_at_ms, text));
+        if (hud->session->len > HISTORY_LIMIT) g_ptr_array_set_size(hud->session, HISTORY_LIMIT);
+    } else if (history_matches(text, history_search_text(hud))) {
+        g_ptr_array_insert(hud->history, 0, history_entry_new(id, created_at_ms, text));
+    }
     rebuild_history(hud);
+}
+
+void talkies_hud_set_history_callbacks(TalkiesHud *hud, TalkiesHudHistoryQueryFn query, TalkiesHudHistoryDeleteFn remove,
+                                       TalkiesHudCallback clear, void *user_data) {
+    if (!hud) return;
+    hud->history_query = query;
+    hud->history_delete = remove;
+    hud->history_clear_all = clear;
+    hud->history_user_data = user_data;
+    history_reload(hud);
+}
+
+void talkies_hud_history_append(TalkiesHud *hud, long long id, long long created_at_ms, const char *text) {
+    if (!hud || !text) return;
+    g_ptr_array_add(hud->history, history_entry_new(id, created_at_ms, text));
+}
+
+void talkies_hud_history_finish(TalkiesHud *hud, int has_more) {
+    if (!hud) return;
+    hud->history_more = has_more != 0;
 }
 
 void talkies_hud_set_hotkey_name(TalkiesHud *hud, const char *name) {

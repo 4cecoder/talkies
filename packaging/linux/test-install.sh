@@ -36,20 +36,25 @@ if [[ "${MODE}" == tar ]]; then
     installer="$(echo "${work}"/talkies-*/install.sh)"
     "${installer}"
     bin=/usr/local/bin/talkies
+    method="tarball (install.sh)"
 elif command -v apt-get >/dev/null; then
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${base}.deb" >/dev/null
     bin=/usr/bin/talkies
+    method="Debian package (apt)"
 elif command -v dnf >/dev/null; then
     dnf install -y -q "${base}.rpm" >/dev/null
     bin=/usr/bin/talkies
+    method="RPM package (dnf)"
 elif command -v zypper >/dev/null; then
     zypper -n -q --no-gpg-checks install --allow-unsigned-rpm "${base}.rpm" >/dev/null
     bin=/usr/bin/talkies
+    method="RPM package (zypper)"
 elif command -v pacman >/dev/null; then
     pacman -Sy --noconfirm >/dev/null
     pacman -U --noconfirm "${base}.pkg.tar.zst" >/dev/null
     bin=/usr/bin/talkies
+    method="Arch package (pacman)"
 else
     echo "no supported package manager" >&2
     exit 1
@@ -63,6 +68,14 @@ fi
 "${bin}" --version
 # Headless: every check must run and report, never crash.
 "${bin}" doctor 2>&1 | sed 's/^/   /'
+# The updater must know who owns this install. CI builds follow no release
+# channel, so this makes no network request.
+update_check="$("${bin}" update --check 2>&1)"
+echo "${update_check}" | sed 's/^/   /'
+if [[ "${update_check}" != *", ${method}"* ]]; then
+    echo "talkies update --check did not detect the ${method} install" >&2
+    exit 1
+fi
 test -f "$(dirname "${real}")/../../share/applications/app.talkies.Talkies.desktop"
 test -f "$(dirname "${real}")/../../share/icons/hicolor/256x256/apps/talkies.png"
 
