@@ -50,6 +50,7 @@ struct TalkiesSettingsWindow {
     GtkWidget *voice_assistant;
     GtkWidget *assistant_insert;
     GtkWidget *assistant_insert_row;
+    GtkWidget *save_history;
 
     // Transcription
     GtkWidget *audio_device;
@@ -183,6 +184,7 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
     d->launch_at_login = gtk_switch_get_active(GTK_SWITCH(win->launch_at_login));
     d->voice_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->voice_assistant));
     d->insert_text_in_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->assistant_insert));
+    d->save_history = gtk_switch_get_active(GTK_SWITCH(win->save_history));
 
     int device = dropdown_index(win->audio_device);
     const char *device_name = (guint)device < win->audio_device_names->len
@@ -906,6 +908,12 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
     add_section(box, "Startup");
     win->launch_at_login = switch_new(win);
     add_row(box, "Launch at Login", "Start Talkies when you log in", win->launch_at_login);
+    add_section(box, "History");
+    win->save_history = switch_new(win);
+    add_row(box, "Save transcript history",
+            "Keep transcripts on this computer until you delete them (clock button in the dictation window). "
+            "Turning this off stops saving; nothing is deleted.",
+            win->save_history);
     add_section(box, "Intelligent Detection");
     win->threshold = scale_new(win, 50, 500, 50, 0);
     gtk_scale_set_format_value_func(GTK_SCALE(win->threshold), format_ms, NULL, NULL);
@@ -1074,6 +1082,7 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     gtk_switch_set_active(GTK_SWITCH(win->voice_assistant), d->voice_assistant_mode);
     gtk_switch_set_active(GTK_SWITCH(win->assistant_insert), d->insert_text_in_assistant_mode);
     gtk_widget_set_visible(win->assistant_insert_row, d->voice_assistant_mode);
+    gtk_switch_set_active(GTK_SWITCH(win->save_history), d->save_history);
 
     select_audio_device(win, d->audio_device);
     choice_set(win->speech_engine, d->speech_engine);

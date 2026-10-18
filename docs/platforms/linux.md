@@ -15,7 +15,8 @@ across platforms, see the
   (whisper.cpp) for every other case. Optional cleanup by the on-device S1-mini model (downloaded
   from Settings) or by a local Ollama / LM Studio server.
 - **Dictation panel and tray** that follow the macOS app: a small waveform pill at the top of the
-  screen, a live panel while you dictate, recent-transcript history, and a status tray icon.
+  screen, a live panel while you dictate, searchable transcript history saved on this computer, and a
+  status tray icon.
 - **Works across desktops**: GNOME, KDE Plasma, Hyprland, Sway and X11 window managers.
 - **`talkies doctor`** checks audio, microphone, hotkey, typing, clipboard, tray and model, and
   tells you how to fix anything that isn't ready.
@@ -72,7 +73,7 @@ typing into apps then needs `/dev/uinput` access, which the root install sets up
 
 **Uninstall.** Use your package manager (`apt remove talkies`, `dnf remove talkies`,
 `pacman -R talkies`, `emerge --depclean talkies`) or `./talkies-*/install.sh --uninstall`.
-Settings (`~/.config/talkies`) and models (`~/.local/share/talkies`) are kept.
+Settings (`~/.config/talkies`), models and transcript history (`~/.local/share/talkies`) are kept.
 
 ## Using Talkies
 
@@ -91,8 +92,34 @@ Talkies rests as a small waveform pill at the top centre of the screen. Click it
 | Done | "Text insertion complete" with a **Copy text** button; the panel collapses after 2.5 seconds |
 | No speech, manual paste, errors | Stays open with the reason and what to do; move the pointer away to dismiss |
 
-The clock button opens **Transcript History**, the transcripts from this session with their times.
+The clock button opens **Transcript History**: your saved transcripts, newest first, 50 at a time
+(**Show older** loads more). Type in the search field to filter them (case-insensitive), and use the
+buttons on each entry to copy or delete it. **Clear all** (click twice to confirm) deletes every saved
+transcript. The search field is the only time the panel takes keyboard focus; on compositors that
+never focus it (for example with the Hyprland rules), use `talkies history --search` instead.
 **Use mini window** in Settings switches to a compact 360-pixel panel.
+
+### Transcript history
+
+While **Save transcript history** (Settings > General, on by default) is on, every final transcript,
+the text that was typed or copied, is saved to
+`${XDG_DATA_HOME:-$HOME/.local/share}/talkies/history.sqlite`. The directory is private (`0700`) and
+the file is readable only by you (`0600`). Transcripts are kept until you delete them; nothing expires
+and nothing leaves the computer. Turning the setting off stops saving but keeps what is already
+saved; entries from the current session are still shown until Talkies restarts. Transcript text is
+never written to the log.
+
+Each entry also records the recognizer output before cleanup (when cleanup changed it), the audio
+length, the speech engine (`phonon` or `whisper`) and the language. The SQLite schema
+(`linux/src/app/history_schema.sql`, `PRAGMA user_version = 1`) is shared with the other Talkies
+clients; every row has a random UUID so history can later be synced between devices.
+
+```bash
+talkies history                         # newest 50
+talkies history --search invoice --limit 200
+talkies history --json                  # every column, including uuid
+talkies history clear                   # delete everything (then VACUUM)
+```
 
 ### Tray icon
 
@@ -106,7 +133,8 @@ with the AppIndicator extension, waybar, AGS and similar bars.
 
 Settings has five pages:
 
-- **General**: mini window, launch at login, push-to-talk threshold, voice assistant mode.
+- **General**: mini window, launch at login, transcript history, push-to-talk threshold, voice
+  assistant mode.
 - **Transcription**: microphone, speech engine (Automatic, Phonon-2 or Whisper), the Phonon-2
   download, Whisper model and language, personal vocabulary (one name or uncommon word per line,
   used as Whisper recognition hints).
@@ -197,6 +225,9 @@ context = "general"             # general | email
 auto_paste = true               # type at the cursor; false = copy to clipboard only
 restore_clipboard = true
 
+[history]
+save = true                     # keep transcripts in history.sqlite until you delete them
+
 [vad]
 enabled = true                  # trim silence before transcription
 ```
@@ -215,6 +246,8 @@ those providers.
 | `talkies audio` | Record a 5-second test |
 | `talkies quick` | Record, transcribe and type once, without the daemon |
 | `talkies transcribe <file.wav> --format txt\|vtt\|srt --output <file>` | Export a transcript with timestamps |
+| `talkies history [--search Q] [--limit N] [--json]` | List saved transcripts, newest first |
+| `talkies history clear` | Delete every saved transcript |
 | `talkies config` | Print the current configuration |
 | `talkies --version` | Print the version |
 

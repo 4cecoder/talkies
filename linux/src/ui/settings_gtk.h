@@ -18,6 +18,7 @@ typedef struct {
     int launch_at_login;
     int voice_assistant_mode;
     int insert_text_in_assistant_mode;
+    int save_history;
 
     // Audio + transcription
     char audio_device[256];

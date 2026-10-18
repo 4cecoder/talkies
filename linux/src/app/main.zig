@@ -25,6 +25,7 @@ const config = @import("config.zig");
 const daemon = @import("daemon.zig");
 const offline_acceptance = @import("offline_acceptance.zig");
 const health = @import("health.zig");
+const history = @import("history.zig");
 const evdev_hotkey = engine.evdev_hotkey;
 const c_tray = @import("c_tray");
 const build_options = @import("build_options");
@@ -37,6 +38,7 @@ test {
     _ = @import("trigger.zig");
     _ = @import("state.zig");
     _ = health;
+    _ = history;
     _ = @import("daemon_ws.zig");
     _ = @import("daemon_status_window.zig");
     _ = @import("ollama.zig");
@@ -53,6 +55,7 @@ const Command = enum {
     transcribe_test,
     daemon,
     doctor,
+    history,
     version,
     help,
 };
@@ -63,7 +66,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     run(init, allocator) catch |err| switch (err) {
         // Expected, already explained to the user: not a crash.
-        error.AlreadyRunning, error.MissingArgument => std.process.exit(1),
+        error.AlreadyRunning, error.MissingArgument, error.InvalidArgument => std.process.exit(1),
         error.UnknownCommand => std.process.exit(2),
         else => {
             local_diagnostics.recordUnhandledError(allocator, @errorName(err), @errorReturnTrace());
@@ -103,6 +106,7 @@ fn run(init: std.process.Init.Minimal, allocator: std.mem.Allocator) !void {
         .transcribe_test => try runTranscribeTest(allocator, arguments),
         .daemon => try runDaemon(allocator),
         .doctor => try runDoctor(allocator),
+        .history => try runHistory(allocator, arguments[2..]),
         .version => try utils.writeStdout("talkies " ++ build_options.version ++ "\n"),
         .help => try printHelp(),
     }
@@ -120,6 +124,7 @@ fn parseCommand(arg: []const u8) ?Command {
         .{ "transcribe", .transcribe_test },
         .{ "daemon", .daemon },
         .{ "doctor", .doctor },
+        .{ "history", .history },
         .{ "version", .version },
         .{ "--version", .version },
         .{ "-V", .version },
@@ -606,6 +611,85 @@ fn doctorSpeechStatus(allocator: std.mem.Allocator, cfg: *const config.Config) h
     return .{ .phonon_active = true, .phonon_selected = selected };
 }
 
+const HistoryRequest = union(enum) {
+    list: struct { search: ?[]const u8 = null, limit: u32 = history.page_size, json: bool = false },
+    clear,
+};
+
+fn parseHistoryArgs(args: []const []const u8) !HistoryRequest {
+    if (args.len == 1 and std.mem.eql(u8, args[0], "clear")) return .clear;
+    var request: HistoryRequest = .{ .list = .{} };
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--json")) {
+            request.list.json = true;
+        } else if (std.mem.eql(u8, arg, "--search") or std.mem.eql(u8, arg, "--limit")) {
+            i += 1;
+            if (i == args.len) return error.MissingArgument;
+            if (arg[2] == 's') {
+                request.list.search = args[i];
+            } else {
+                request.list.limit = std.fmt.parseInt(u32, args[i], 10) catch return error.InvalidArgument;
+                if (request.list.limit == 0) return error.InvalidArgument;
+            }
+        } else {
+            return error.InvalidArgument;
+        }
+    }
+    return request;
+}
+
+/// `talkies history [--search Q] [--limit N] [--json]` and `talkies history
+/// clear`. Transcripts go to stdout only because the user asked for them.
+fn runHistory(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const request = parseHistoryArgs(args) catch |err| {
+        std.debug.print("Usage: talkies history [--search TEXT] [--limit N] [--json]\n       talkies history clear\n", .{});
+        return err;
+    };
+    var store = try history.Store.openDefault(allocator);
+    defer store.close();
+
+    const options = switch (request) {
+        .clear => {
+            const removed = try store.count();
+            try store.clear();
+            std.debug.print("Deleted {d} transcript{s} from history.\n", .{ removed, if (removed == 1) "" else "s" });
+            return;
+        },
+        .list => |options| options,
+    };
+    var page = try store.list(allocator, .{ .search = options.search, .limit = options.limit });
+    defer page.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    if (options.json) {
+        try history.writeJson(&out.writer, page.entries);
+    } else {
+        for (page.entries) |entry| {
+            var time_buf: [32]u8 = undefined;
+            try out.writer.print("{s}  {s}\n", .{ localTime(&time_buf, entry.created_at_ms), entry.text });
+        }
+        if (page.entries.len == 0) std.debug.print("No transcripts{s}.\n", .{if (options.search != null) " match" else " saved yet"});
+        if (page.has_more) std.debug.print("(showing the newest {d}; use --limit for more)\n", .{options.limit});
+    }
+    try utils.writeStdout(out.written());
+}
+
+// libc's local-time formatting (Zig's std has no time zone database). The
+// struct tm is opaque here: 64 aligned bytes cover glibc's 56-byte layout.
+const Tm = extern struct { bytes: [64]u8 align(8) };
+extern "c" fn localtime_r(timer: *const i64, result: *Tm) ?*Tm;
+extern "c" fn strftime(buf: [*]u8, max: usize, format: [*:0]const u8, tm: *const Tm) usize;
+
+fn localTime(buf: []u8, epoch_ms: i64) []const u8 {
+    const seconds = @divFloor(epoch_ms, 1000);
+    var tm: Tm = undefined;
+    if (localtime_r(&seconds, &tm) == null) return "";
+    return buf[0..strftime(buf.ptr, buf.len, "%Y-%m-%d %H:%M", &tm)];
+}
+
 fn runDaemon(allocator: std.mem.Allocator) !void {
     try daemon.run(allocator);
 }
@@ -628,6 +712,8 @@ fn printHelp() !void {
         \\  audio-list         List available input devices
         \\  audio-set <device> Set audio input device
         \\  transcribe [wav]   Transcribe a WAV; TXT/VTT/SRT exports use Whisper timestamps
+        \\  history            List saved transcripts [--search TEXT] [--limit N] [--json]
+        \\  history clear      Delete every saved transcript
         \\  version            Print the Talkies version
         \\  help               Show this help message
         \\
@@ -638,6 +724,7 @@ fn printHelp() !void {
         \\  talkies quick                       # One-shot recording workflow
         \\  talkies models                      # Download model from config
         \\  talkies transcribe speech.wav --format srt --output speech.srt
+        \\  talkies history --search invoice --json
         \\
     ;
 
@@ -646,7 +733,25 @@ fn printHelp() !void {
 
 test "command parsing" {
     try std.testing.expectEqual(Command.quick, parseCommand("quick").?);
+    try std.testing.expectEqual(Command.history, parseCommand("history").?);
     try std.testing.expectEqual(Command.help, parseCommand("--help").?);
     try std.testing.expectEqual(Command.version, parseCommand("--version").?);
     try std.testing.expect(parseCommand("invalid") == null);
+}
+
+test "history arguments" {
+    const all = try parseHistoryArgs(&.{});
+    try std.testing.expectEqual(history.page_size, all.list.limit);
+    try std.testing.expect(all.list.search == null and !all.list.json);
+
+    const query = try parseHistoryArgs(&.{ "--search", "invoice", "--limit", "5", "--json" });
+    try std.testing.expectEqualStrings("invoice", query.list.search.?);
+    try std.testing.expectEqual(@as(u32, 5), query.list.limit);
+    try std.testing.expect(query.list.json);
+
+    try std.testing.expect((try parseHistoryArgs(&.{"clear"})) == .clear);
+    try std.testing.expectError(error.MissingArgument, parseHistoryArgs(&.{"--search"}));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "--limit", "0" }));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "--limit", "lots" }));
+    try std.testing.expectError(error.InvalidArgument, parseHistoryArgs(&.{ "clear", "--json" }));
 }

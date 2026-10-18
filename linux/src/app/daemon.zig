@@ -30,6 +30,7 @@ const vad = @import("engine").vad;
 const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
+const history = @import("history.zig");
 const trigger_mod = @import("trigger.zig");
 const build_options = @import("build_options");
 
@@ -139,6 +140,11 @@ const Job = struct {
     notice_buf: [200]u8 = undefined,
     notice_len: usize = 0,
     duration_ms: i64 = 0,
+    /// Recognizer output when the enhancer changed it (history's raw_text).
+    raw_text: ?[]u8 = null,
+    backend: ?speech.Backend = null,
+    /// Length of the recording, for history.
+    audio_ms: i64 = 0,
     /// Snapshot of YAP routing at spawn time (main thread owns yap state).
     route_to_yap: bool = false,
     /// S1-mini weights present; otherwise cleanup is skipped, never fetched.
@@ -167,6 +173,10 @@ const Job = struct {
 
     fn notice(self: *const Job) ?[]const u8 {
         return if (self.notice_len == 0) null else self.notice_buf[0..self.notice_len];
+    }
+
+    fn historyMeta(self: *const Job) HistoryMeta {
+        return .{ .raw_text = self.raw_text, .duration_ms = self.audio_ms, .runtime = self.backend };
     }
 
     fn run(self: *Job) void {
@@ -213,6 +223,7 @@ const Job = struct {
         };
         const raw = transcript.text;
         defer allocator.free(raw);
+        self.backend = transcript.backend;
         utils.logDebug("Transcribed with {s}", .{transcript.backend.displayName()});
         const trimmed = std.mem.trim(u8, raw, &std.ascii.whitespace);
         if (trimmed.len == 0) {
@@ -225,6 +236,7 @@ const Job = struct {
             return;
         };
         self.text = text;
+        if (!std.mem.eql(u8, text, trimmed)) self.raw_text = allocator.dupe(u8, trimmed) catch null;
 
         if (self.route_to_yap) {
             self.outcome = .yap;
@@ -383,6 +395,21 @@ const Capture = struct {
     }
 };
 
+/// What history stores beside the final text.
+const HistoryMeta = struct {
+    raw_text: ?[]const u8 = null,
+    duration_ms: ?i64 = null,
+    runtime: ?speech.Backend = null,
+};
+
+/// Language recorded with a transcript: Phonon-2 is English-only; Whisper
+/// uses the configured language, unknown when it auto-detects.
+pub fn historyLanguage(configured: []const u8, runtime: ?speech.Backend) ?[]const u8 {
+    if (runtime == .phonon) return "en";
+    if (configured.len == 0 or std.mem.eql(u8, configured, "auto")) return null;
+    return configured;
+}
+
 /// Download state of an on-device model (S1-mini, Phonon-2). Values match
 /// TalkiesS1State in settings_gtk.h.
 const S1State = enum(u8) { missing, downloading, ready, failed };
@@ -421,6 +448,8 @@ pub const Daemon = struct {
     phase: Phase = .starting,
     capture: ?*Capture = null,
     record_start_ms: i64 = 0,
+    /// Length of the last finished recording.
+    capture_ms: i64 = 0,
     last_level_broadcast_ms: i64 = 0,
     level_timer: c_uint = 0,
     stop_timer: c_uint = 0,
@@ -431,6 +460,8 @@ pub const Daemon = struct {
     /// Latest system check; drives the tray tooltip and Settings status.
     health_report: ?health.Report = null,
     last_transcript: ?[:0]u8 = null,
+    /// Persistent transcript history; null when it could not be opened.
+    history_store: ?history.Store = null,
 
     s1_state: std.atomic.Value(u8) = .init(@intFromEnum(S1State.missing)),
     s1_thread: ?std.Thread = null,
@@ -484,6 +515,7 @@ pub const Daemon = struct {
         if (self.hotkey_listener) |*l| l.deinit();
         self.evdev.deinit();
         if (self.last_transcript) |t| self.allocator.free(t);
+        if (self.history_store) |*h| h.close();
         if (self.health_report) |*r| r.deinit();
         if (self.pending_cfg) |*p| p.deinit();
         self.recorder.deinit();
@@ -871,6 +903,7 @@ pub const Daemon = struct {
         const failed = cap.failed.load(.acquire);
         self.allocator.destroy(cap);
         self.capture = null;
+        self.capture_ms = utils.monotonicMilliseconds() - self.record_start_ms;
         c_loop.talkies_loop_remove(self.level_timer);
         c_loop.talkies_loop_remove(self.stop_timer);
         self.level_timer = 0;
@@ -896,6 +929,7 @@ pub const Daemon = struct {
             .daemon = self,
             .route_to_yap = self.yap_win != null or self.cfg.yap_mode_enabled,
             .s1_ready = self.s1Ready(),
+            .audio_ms = self.capture_ms,
         };
         job.thread = try std.Thread.spawn(.{}, Job.run, .{job});
         self.job = job;
@@ -903,6 +937,7 @@ pub const Daemon = struct {
 
     fn freeJob(self: *Daemon, job: *Job) void {
         if (job.text) |t| self.allocator.free(t);
+        if (job.raw_text) |t| self.allocator.free(t);
         self.allocator.destroy(job);
     }
 
@@ -923,7 +958,7 @@ pub const Daemon = struct {
         switch (job.outcome) {
             .delivered => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
+                self.rememberTranscript(text, job.historyMeta());
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.log(.info, "Delivered {d} chars in {d}ms", .{ text.len, job.duration_ms });
                 if (self.status_win) |win| win.setLastTranscription(text);
@@ -935,7 +970,7 @@ pub const Daemon = struct {
             },
             .manual_paste => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
+                self.rememberTranscript(text, job.historyMeta());
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
                 self.log(.warn, "Manual paste needed: {s}", .{job.notice() orelse ""});
                 self.enterResult(.clipboard_fallback, job.notice());
@@ -951,22 +986,80 @@ pub const Daemon = struct {
             },
             .yap => {
                 const text = job.text orelse "";
-                self.rememberTranscript(text);
                 self.state.broadcastTranscription(text, job.duration_ms) catch |err| utils.logError("broadcast: {}", .{err});
-                try self.handleYapTranscript(text);
+                try self.handleYapTranscript(text, job.historyMeta());
             },
         }
         try self.applyPendingConfig();
     }
 
-    fn rememberTranscript(self: *Daemon, text: []const u8) void {
+    /// Show the latest transcript and add it to the history page. With
+    /// `meta` it is final text and is saved when "Save transcript history"
+    /// is on; null shows it for this session only (YAP drafts).
+    fn rememberTranscript(self: *Daemon, text: []const u8, meta: ?HistoryMeta) void {
         const copy = utils.dupeZ(self.allocator, text) catch return;
         if (self.last_transcript) |old| self.allocator.free(old);
         self.last_transcript = copy;
+        const created_ms = std.Io.Timestamp.now(utils.io(), .real).toMilliseconds();
+        const id = if (meta) |m| self.saveHistory(text, m, created_ms) else 0;
         if (self.hud) |hud| {
             c_hud.talkies_hud_set_transcript(hud, copy.ptr);
-            c_hud.talkies_hud_add_history(hud, copy.ptr);
+            c_hud.talkies_hud_add_history(hud, id, created_ms, copy.ptr);
         }
+    }
+
+    /// Returns the new row id, or 0 when nothing was saved.
+    fn saveHistory(self: *Daemon, text: []const u8, meta: HistoryMeta, created_ms: i64) i64 {
+        if (!self.cfg.save_history or text.len == 0) return 0;
+        const store = if (self.history_store) |*s| s else return 0;
+        return store.insert(.{
+            .text = text,
+            .raw_text = meta.raw_text,
+            .duration_ms = meta.duration_ms,
+            .runtime = if (meta.runtime) |r| @tagName(r) else null,
+            .language = historyLanguage(self.cfg.language, meta.runtime),
+            .created_at_ms = created_ms,
+        }) catch |err| {
+            // Never the text itself: transcripts stay out of logs.
+            self.log(.err, "Could not save the transcript to history: {}", .{err});
+            return 0;
+        };
+    }
+
+    fn onHistoryQuery(search: [*c]const u8, offset: c_int, limit: c_int, user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        const hud = self.hud orelse return;
+        var more = false;
+        defer c_hud.talkies_hud_history_finish(hud, @intFromBool(more));
+        const store = if (self.history_store) |*s| s else return;
+        var page = store.list(self.allocator, .{
+            .search = if (search != null) std.mem.span(search) else null,
+            .offset = toU32(offset),
+            .limit = toU32(limit),
+        }) catch |err| {
+            self.log(.err, "Could not read transcript history: {}", .{err});
+            return;
+        };
+        defer page.deinit();
+        for (page.entries) |entry| {
+            const text = utils.dupeZ(page.arena.allocator(), entry.text) catch return;
+            c_hud.talkies_hud_history_append(hud, entry.id, entry.created_at_ms, text.ptr);
+        }
+        more = page.has_more;
+    }
+
+    fn onHistoryDelete(id: c_longlong, user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        const store = if (self.history_store) |*s| s else return;
+        _ = store.delete(id) catch |err| self.log(.err, "Could not delete the transcript: {}", .{err});
+    }
+
+    fn onHistoryClear(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        if (self.last_transcript) |t| self.allocator.free(t);
+        self.last_transcript = null;
+        const store = if (self.history_store) |*s| s else return;
+        store.clear() catch |err| self.log(.err, "Could not clear transcript history: {}", .{err});
     }
 
     // -----------------------------------------------------------------
@@ -1447,8 +1540,9 @@ pub const Daemon = struct {
     // YAP mode (ported from the previous Wayland-only loop)
     // -----------------------------------------------------------------
 
-    fn handleYapTranscript(self: *Daemon, text: []const u8) !void {
+    fn handleYapTranscript(self: *Daemon, text: []const u8, meta: HistoryMeta) !void {
         if (self.yap_sb) |sb| {
+            self.rememberTranscript(text, null);
             const appended = try std.fmt.allocPrint(self.allocator, "{s} {s}", .{ sb.yapping, text });
             self.allocator.free(sb.yapping);
             sb.yapping = appended;
@@ -1457,10 +1551,12 @@ pub const Daemon = struct {
             return;
         }
         if (self.startYapSession(text)) {
+            self.rememberTranscript(text, null);
             self.enter(.yap, null);
         } else {
             // YAP unavailable: behave like normal dictation.
             self.output(text);
+            self.rememberTranscript(text, meta);
             self.enterResult(.complete, null);
         }
     }
@@ -1576,7 +1672,7 @@ pub const Daemon = struct {
                 }
                 self.endYapSession();
                 self.output(final_text);
-                self.rememberTranscript(final_text);
+                self.rememberTranscript(final_text, .{});
                 if (self.phase == .yap) self.enter(.idle, null);
             },
             .request_clarification => try self.yapClarify(win, sb),
@@ -1721,6 +1817,7 @@ pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData
     d.mini_window = @intFromBool(cfg.mini_window);
     d.voice_assistant_mode = @intFromBool(cfg.voice_assistant_mode);
     d.insert_text_in_assistant_mode = @intFromBool(cfg.insert_text_in_assistant_mode);
+    d.save_history = @intFromBool(cfg.save_history);
     putString(&d.audio_device, cfg.audio_device);
     d.speech_engine = @intCast(@intFromEnum(cfg.speech_engine));
     putString(&d.model, cfg.model);
@@ -1769,6 +1866,7 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     cfg.mini_window = d.mini_window != 0;
     cfg.voice_assistant_mode = d.voice_assistant_mode != 0;
     cfg.insert_text_in_assistant_mode = d.insert_text_in_assistant_mode != 0;
+    cfg.save_history = d.save_history != 0;
     try cfg.setString("audio_device", getString(&d.audio_device));
     cfg.speech_engine = std.enums.fromInt(config.SpeechEngine, d.speech_engine) orelse .auto;
     if (getString(&d.model).len > 0) try cfg.setString("model", getString(&d.model));
@@ -2000,6 +2098,12 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     try daemon.cfg.load();
     daemon.cleanup_service.threads = daemon.cfg.threads;
+    // Opened even while saving is off, so the history page can show (and
+    // delete) what was saved before.
+    daemon.history_store = history.Store.openDefault(allocator) catch |err| blk: {
+        utils.logError("Transcript history unavailable: {}", .{err});
+        break :blk null;
+    };
     _ = daemon.configureRecognizer();
     daemon.trigger = trigger_mod.Trigger.init(daemon.cfg.push_to_talk_threshold);
     const platform = daemon.cfg.getEffectivePlatform();
@@ -2031,6 +2135,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
         c_hud.talkies_hud_set_record_callback(hud, Daemon.onHudRecord, &daemon);
         c_hud.talkies_hud_set_dismiss_callback(hud, Daemon.onHudDismiss, &daemon);
         c_hud.talkies_hud_set_mini(hud, @intFromBool(daemon.cfg.mini_window));
+        if (daemon.history_store != null) {
+            c_hud.talkies_hud_set_history_callbacks(hud, Daemon.onHistoryQuery, Daemon.onHistoryDelete, Daemon.onHistoryClear, &daemon);
+        }
     }
     if (daemon.cfg.show_status_gui) {
         daemon.status_win = daemon_status_window.DaemonStatusWindow.create(allocator) catch |err| blk: {
@@ -2130,6 +2237,7 @@ test "settings round trip through the C struct" {
     original.cleanup_structure = .lists;
     original.cleanup_context = .email;
     original.push_to_talk_threshold = 0.3;
+    original.save_history = false;
 
     var data = std.mem.zeroes(c_settings.TalkiesSettingsData);
     settingsFromConfig(original, &data);
@@ -2148,6 +2256,7 @@ test "settings round trip through the C struct" {
     try std.testing.expectEqual(config.CleanupStructure.lists, restored.cleanup_structure);
     try std.testing.expectEqual(config.CleanupContext.email, restored.cleanup_context);
     try std.testing.expectEqual(@as(f64, 0.3), restored.push_to_talk_threshold);
+    try std.testing.expect(!restored.save_history);
 }
 
 test "speech_engine setting maps onto the engine policy" {
@@ -2162,6 +2271,14 @@ test "speech_engine setting maps onto the engine policy" {
     data.speech_engine = 7;
     try configFromSettings(&cfg, &data);
     try std.testing.expectEqual(config.SpeechEngine.auto, cfg.speech_engine);
+}
+
+test "history language: Phonon-2 is English, Whisper auto-detect is unknown" {
+    try std.testing.expectEqualStrings("en", historyLanguage("auto", .phonon).?);
+    try std.testing.expectEqualStrings("de", historyLanguage("de", .whisper).?);
+    try std.testing.expectEqualStrings("en-US", historyLanguage("en-US", null).?);
+    try std.testing.expect(historyLanguage("auto", .whisper) == null);
+    try std.testing.expect(historyLanguage("", .whisper) == null);
 }
 
 test "cleanup options follow the configured S1-mini style" {
