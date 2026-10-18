@@ -140,6 +140,7 @@ namespace Talkies.Windows
 
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("Open", null, (_, __) => ShowFromTray());
+            menu.Items.Add("History", null, (_, __) => _vm.ShowHistoryCommand.Execute(null));
             menu.Items.Add("Exit", null, (_, __) => ExitFromTray());
             _notifyIcon.ContextMenuStrip = menu;
             _notifyIcon.DoubleClick += (_, __) => ShowFromTray();

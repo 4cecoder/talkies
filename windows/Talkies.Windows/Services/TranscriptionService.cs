@@ -74,6 +74,13 @@ namespace Talkies.Windows.Services
         public string Text { get; set; } = string.Empty;
         public string Vtt { get; set; } = string.Empty;
 
+        /// <summary>
+        /// <see cref="ISpeechRecognizer.Id"/> of the runtime that produced this result
+        /// (<see cref="SpeechEnginePolicy.Phonon2Id"/> or <see cref="SpeechEnginePolicy.WhisperId"/>);
+        /// set by <see cref="SpeechRecognizerChain"/>, null when no chain was involved.
+        /// </summary>
+        public string? RecognizerId { get; set; }
+
         // Statistics
         public int TotalWords => Segments.Sum(s => s.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
         public double DurationSeconds => Segments.Count > 0 ? Segments.Last().End : 0;

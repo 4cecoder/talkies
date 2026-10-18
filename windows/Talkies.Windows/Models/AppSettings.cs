@@ -26,6 +26,9 @@ namespace Talkies.Windows.Models
         public bool InsertEnabled { get; set; }
         public bool VadEnabled { get; set; } = true;
         public bool FilterEnabled { get; set; } = true;
+
+        /// <summary>Save each finished dictation to the local SQLite history. Turning it off stops saving; it does not delete.</summary>
+        public bool SaveTranscriptHistory { get; set; } = true;
         public List<string> PersonalVocabulary { get; set; } = new();
         public ExportPreferences Export { get; set; } = new();
 

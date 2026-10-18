@@ -95,6 +95,7 @@ namespace Talkies.Windows.Services
                 try
                 {
                     var result = await recognizer.RecognizeAsync(request, progress, cancellationToken).ConfigureAwait(false);
+                    result.RecognizerId = recognizer.Id;
                     lock (_sync)
                     {
                         _lastRecognizerName = recognizer.DisplayName;
