@@ -38,6 +38,7 @@ overrides:
       - libdbus-1-3
       - libgomp1
       - libstdc++6
+      - curl
     recommends:
       - wl-clipboard | xclip
       - pipewire-pulse | pulseaudio
@@ -52,6 +53,7 @@ overrides:
       - libdbus-1.so.3()(64bit)
       - libgomp.so.1()(64bit)
       - libstdc++.so.6()(64bit)
+      - curl
     recommends:
       - wl-clipboard
       - xclip
@@ -63,6 +65,7 @@ overrides:
       - libx11
       - dbus
       - gcc-libs
+      - curl
 
 deb:
   fields:

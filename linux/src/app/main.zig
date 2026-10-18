@@ -733,6 +733,7 @@ fn runUpdate(allocator: std.mem.Allocator, args: []const []const u8) !void {
     std.debug.print("Checking {s} ...\n", .{updater.buildInfoUrl(updater.trackOf(build).?)});
     const found = updater.check(allocator, build) catch |err| {
         std.debug.print("Could not check for updates: {s}\n", .{@errorName(err)});
+        if (err == error.UpdateCheckFailed) std.debug.print("The check needs curl and HTTPS access to github.com.\n", .{});
         return error.UpdateFailed;
     };
     var available = found orelse {

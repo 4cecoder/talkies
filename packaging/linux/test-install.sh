@@ -68,9 +68,9 @@ fi
 "${bin}" --version
 # Headless: every check must run and report, never crash.
 "${bin}" doctor 2>&1 | sed 's/^/   /'
-# The updater must know who owns this install. CI builds follow no release
-# channel, so this makes no network request.
-update_check="$("${bin}" update --check 2>&1)"
+# The updater must know who owns this install. Release builds follow a
+# channel, so turn the network check off; the install method prints first.
+update_check="$(TALKIES_NO_UPDATE_CHECK=1 "${bin}" update --check 2>&1)"
 echo "${update_check}" | sed 's/^/   /'
 if [[ "${update_check}" != *", ${method}"* ]]; then
     echo "talkies update --check did not detect the ${method} install" >&2

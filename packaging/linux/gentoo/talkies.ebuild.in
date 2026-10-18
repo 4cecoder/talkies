@@ -37,6 +37,7 @@ DEPEND="
 "
 RDEPEND="${DEPEND}
 	!app-accessibility/talkies-bin
+	net-misc/curl
 	X? ( x11-misc/xclip )
 	wayland? ( gui-apps/wl-clipboard )
 "
