@@ -51,6 +51,12 @@ struct TalkiesSettingsWindow {
     GtkWidget *assistant_insert;
     GtkWidget *assistant_insert_row;
     GtkWidget *save_history;
+    GtkWidget *check_for_updates;
+    GtkWidget *update_status;
+    GtkWidget *update_check;
+    GtkWidget *update_install;
+    TalkiesSettingsActionFn on_update_check;
+    TalkiesSettingsActionFn on_update_install;
 
     // Transcription
     GtkWidget *audio_device;
@@ -185,6 +191,7 @@ static void collect(TalkiesSettingsWindow *win, TalkiesSettingsData *d) {
     d->voice_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->voice_assistant));
     d->insert_text_in_assistant_mode = gtk_switch_get_active(GTK_SWITCH(win->assistant_insert));
     d->save_history = gtk_switch_get_active(GTK_SWITCH(win->save_history));
+    d->check_for_updates = gtk_switch_get_active(GTK_SWITCH(win->check_for_updates));
 
     int device = dropdown_index(win->audio_device);
     const char *device_name = (guint)device < win->audio_device_names->len
@@ -664,6 +671,18 @@ static void on_phonon_remove_clicked(GtkButton *button, gpointer user_data) {
     if (win->on_phonon_remove) win->on_phonon_remove(win->user_data);
 }
 
+static void on_update_check_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_update_check) win->on_update_check(win->user_data);
+}
+
+static void on_update_install_clicked(GtkButton *button, gpointer user_data) {
+    (void)button;
+    TalkiesSettingsWindow *win = user_data;
+    if (win->on_update_install) win->on_update_install(win->user_data);
+}
+
 static GtkWidget *provider_page(void) {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
     return box;
@@ -914,6 +933,27 @@ TalkiesSettingsWindow *talkies_settings_window_new(const char *const *mode_names
             "Keep transcripts on this computer until you delete them (clock button in the dictation window). "
             "Turning this off stops saving; nothing is deleted.",
             win->save_history);
+    add_section(box, "Updates");
+    win->check_for_updates = switch_new(win);
+    add_row(box, "Check for updates automatically",
+            "Asks GitHub Releases for a newer build at startup and once a day. No personal data is sent.",
+            win->check_for_updates);
+    win->update_status = gtk_label_new("");
+    gtk_label_set_xalign(GTK_LABEL(win->update_status), 0);
+    gtk_label_set_wrap(GTK_LABEL(win->update_status), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(win->update_status), TRUE);
+    gtk_widget_set_hexpand(win->update_status, TRUE);
+    win->update_check = gtk_button_new_with_label("Check Now");
+    g_signal_connect(win->update_check, "clicked", G_CALLBACK(on_update_check_clicked), win);
+    win->update_install = gtk_button_new_with_label("Install and Restart");
+    gtk_widget_add_css_class(win->update_install, "suggested-action");
+    gtk_widget_set_visible(win->update_install, FALSE);
+    g_signal_connect(win->update_install, "clicked", G_CALLBACK(on_update_install_clicked), win);
+    GtkWidget *update_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_append(GTK_BOX(update_row), win->update_status);
+    gtk_box_append(GTK_BOX(update_row), win->update_check);
+    gtk_box_append(GTK_BOX(update_row), win->update_install);
+    gtk_box_append(GTK_BOX(box), update_row);
     add_section(box, "Intelligent Detection");
     win->threshold = scale_new(win, 50, 500, 50, 0);
     gtk_scale_set_format_value_func(GTK_SCALE(win->threshold), format_ms, NULL, NULL);
@@ -1083,6 +1123,7 @@ void talkies_settings_window_present(TalkiesSettingsWindow *win, const TalkiesSe
     gtk_switch_set_active(GTK_SWITCH(win->assistant_insert), d->insert_text_in_assistant_mode);
     gtk_widget_set_visible(win->assistant_insert_row, d->voice_assistant_mode);
     gtk_switch_set_active(GTK_SWITCH(win->save_history), d->save_history);
+    gtk_switch_set_active(GTK_SWITCH(win->check_for_updates), d->check_for_updates);
 
     select_audio_device(win, d->audio_device);
     choice_set(win->speech_engine, d->speech_engine);
@@ -1225,6 +1266,22 @@ void talkies_settings_window_set_health(TalkiesSettingsWindow *win, const Talkie
         gtk_box_append(GTK_BOX(row), label);
         gtk_box_append(GTK_BOX(win->health_list), row);
     }
+}
+
+void talkies_settings_window_set_update_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_check,
+                                                  TalkiesSettingsActionFn on_install) {
+    if (!win) return;
+    win->on_update_check = on_check;
+    win->on_update_install = on_install;
+}
+
+void talkies_settings_window_set_update_state(TalkiesSettingsWindow *win, const char *status, int can_install,
+                                              int busy) {
+    if (!win) return;
+    gtk_label_set_text(GTK_LABEL(win->update_status), status ? status : "");
+    gtk_widget_set_visible(win->update_install, can_install);
+    gtk_widget_set_sensitive(win->update_install, !busy);
+    gtk_widget_set_sensitive(win->update_check, !busy);
 }
 
 void talkies_settings_window_set_s1_callbacks(TalkiesSettingsWindow *win, TalkiesSettingsActionFn on_download,

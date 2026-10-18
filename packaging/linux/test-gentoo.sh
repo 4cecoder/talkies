@@ -50,6 +50,8 @@ check() { # <package>
     talkies --version
     test "$(talkies --version)" = "talkies ${app_version}"
     HOME="$(mktemp -d)" talkies doctor 2>&1 | sed "s/^/   /"
+    # Portage owns the files: the updater only gives instructions. No network.
+    TALKIES_NO_UPDATE_CHECK=1 talkies update --check 2>&1 | tee /dev/stderr | grep -F ', Gentoo overlay' >/dev/null
     test -f /usr/share/applications/app.talkies.Talkies.desktop
     test -f /usr/share/icons/hicolor/256x256/apps/talkies.png
     find /lib/udev/rules.d /usr/lib/udev/rules.d -name 70-talkies-uinput.rules 2>/dev/null | grep -q .

@@ -57,6 +57,10 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "wayland", gtk_targets.wayland);
     // Release builds pass -Dversion=X.Y.Z (packaging/shared/version.txt).
     build_options.addOption([]const u8, "version", b.option([]const u8, "version", "Talkies version string") orelse "dev");
+    // Release CI also records what it built, so the updater can tell rolling
+    // `latest` builds of the same version apart (src/app/updater.zig).
+    build_options.addOption([]const u8, "commit", b.option([]const u8, "commit", "Git commit this build is made from") orelse "");
+    build_options.addOption([]const u8, "channel", b.option([]const u8, "channel", "Release label: latest, vX.Y.Z or ci-N (empty for distro builds)") orelse "");
 
     // --- C shared libraries -------------------------------------------
     const native_lib = addNativeLib(ctx);

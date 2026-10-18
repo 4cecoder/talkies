@@ -31,6 +31,7 @@ const yap_sandbox = @import("yap_sandbox.zig");
 const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
 const history = @import("history.zig");
+const updater = @import("updater.zig");
 const trigger_mod = @import("trigger.zig");
 const build_options = @import("build_options");
 
@@ -66,6 +67,9 @@ const idle_after_result_headless_ms: c_uint = 3000;
 const level_broadcast_interval_ms: i64 = 50;
 /// HUD waveform refresh while recording (~30 fps).
 const level_interval_ms: c_uint = 33;
+/// First update check once startup has settled, then daily.
+const update_first_check_ms: c_uint = 60 * 1000;
+const update_interval_ms: c_uint = 24 * 60 * 60 * 1000;
 
 /// Mirrors TalkiesHudStage in hud_gtk.h and PipelineStage on macOS.
 pub const Stage = enum(u8) {
@@ -410,6 +414,9 @@ pub fn historyLanguage(configured: []const u8, runtime: ?speech.Backend) ?[]cons
     return configured;
 }
 
+/// Updater progress, written by its worker thread and read by the main loop.
+const UpdateState = enum(u8) { idle, checking, current, available, installing, installed, failed };
+
 /// Download state of an on-device model (S1-mini, Phonon-2). Values match
 /// TalkiesS1State in settings_gtk.h.
 const S1State = enum(u8) { missing, downloading, ready, failed };
@@ -473,6 +480,25 @@ pub const Daemon = struct {
     /// Reload the recognizer once no job runs (after a Phonon-2 download).
     speech_reload_pending: bool = false,
 
+    // In-app updater (updater.zig). Checks and installs run on a worker; it
+    // owns the fields below while `update_thread` is set.
+    update_build: updater.Build = undefined,
+    update_exe: ?[]u8 = null,
+    /// Points into `update_exe`.
+    update_install: updater.Install = .unknown,
+    update_state: std.atomic.Value(u8) = .init(@intFromEnum(UpdateState.idle)),
+    update_thread: ?std.Thread = null,
+    update_timer: c_uint = 0,
+    update_available: ?updater.Available = null,
+    update_error: anyerror = error.Unknown,
+    /// Binary of the installed update; the daemon exec's it once idle.
+    update_new_exe: ?[]u8 = null,
+    /// The release last announced, so a daily check does not repeat it.
+    update_notified_buf: [64]u8 = undefined,
+    update_notified_len: usize = 0,
+    /// Set when the loop should end by relaunching this binary.
+    restart_exe: ?[]u8 = null,
+
     // UI requests raised from GTK / D-Bus callbacks, handled in tick().
     request_toggle: bool = false,
     request_toggle_hud: bool = false,
@@ -507,6 +533,11 @@ pub const Daemon = struct {
         }
         if (self.s1_thread) |t| t.join();
         if (self.phonon_thread) |t| t.join();
+        if (self.update_thread) |t| t.join();
+        c_loop.talkies_loop_remove(self.update_timer);
+        if (self.update_available) |*a| a.deinit();
+        if (self.update_new_exe) |e| self.allocator.free(e);
+        if (self.update_exe) |e| self.allocator.free(e);
         self.endYapSession();
         if (self.tray) |t| c_tray.talkies_tray_destroy(t);
         if (self.settings_win) |w| c_settings.talkies_settings_window_destroy(w);
@@ -1179,7 +1210,12 @@ pub const Daemon = struct {
             c_tray.TALKIES_TRAY_OPEN => self.request_expand_hud = true,
             c_tray.TALKIES_TRAY_TOGGLE_RECORD => self.request_toggle = true,
             c_tray.TALKIES_TRAY_SETTINGS => self.request_settings = true,
-            c_tray.TALKIES_TRAY_QUIT => self.quit = true,
+            c_tray.TALKIES_TRAY_QUIT => {
+                // Quitting wins over relaunching into an installed update.
+                if (self.restart_exe) |exe| self.allocator.free(exe);
+                self.restart_exe = null;
+                self.quit = true;
+            },
             else => {},
         }
     }
@@ -1388,6 +1424,179 @@ pub const Daemon = struct {
     }
 
     // -----------------------------------------------------------------
+    // Updates (one HTTPS GET to GitHub; install only on approval)
+    // -----------------------------------------------------------------
+
+    fn updateState(self: *Daemon) UpdateState {
+        return @enumFromInt(self.update_state.load(.acquire));
+    }
+
+    fn initUpdater(self: *Daemon) void {
+        self.update_build = updater.currentBuild();
+        self.update_exe = updater.currentExe(self.allocator) catch |err| blk: {
+            utils.logError("Updater: cannot locate the running binary: {}", .{err});
+            break :blk null;
+        };
+        if (self.update_exe) |exe| {
+            self.update_install = updater.detectInstall(self.allocator, .{ .exe = exe }) catch .unknown;
+        }
+        self.scheduleUpdateChecks(update_first_check_ms);
+    }
+
+    /// Arm (or disarm) the automatic checks for the current settings.
+    fn scheduleUpdateChecks(self: *Daemon, delay_ms: c_uint) void {
+        c_loop.talkies_loop_remove(self.update_timer);
+        self.update_timer = 0;
+        if (!self.cfg.check_for_updates or updater.disabledByEnv()) return;
+        if (updater.trackOf(self.update_build) == null) return;
+        self.update_timer = c_loop.talkies_loop_timeout(delay_ms, onUpdateTimer, self);
+    }
+
+    fn onUpdateTimer(user_data: ?*anyopaque) callconv(.c) c_int {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return 0));
+        self.update_timer = 0;
+        self.startUpdateCheck();
+        self.scheduleUpdateChecks(update_interval_ms);
+        return 0;
+    }
+
+    fn startUpdateCheck(self: *Daemon) void {
+        if (self.update_thread != null or self.restart_exe != null) return;
+        if (updater.trackOf(self.update_build) == null or updater.disabledByEnv()) {
+            self.pushUpdateState();
+            return;
+        }
+        if (self.update_available) |*a| a.deinit();
+        self.update_available = null;
+        self.update_state.store(@intFromEnum(UpdateState.checking), .release);
+        self.update_thread = std.Thread.spawn(.{}, updateCheckThread, .{self}) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            self.pushUpdateState();
+            return;
+        };
+        self.pushUpdateState();
+    }
+
+    fn updateCheckThread(self: *Daemon) void {
+        defer self.wake();
+        const found = updater.check(self.allocator, self.update_build) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            return;
+        };
+        self.update_available = found;
+        self.update_state.store(@intFromEnum(if (found == null) UpdateState.current else UpdateState.available), .release);
+    }
+
+    fn startUpdateInstall(self: *Daemon) void {
+        if (self.update_thread != null or self.update_available == null) return;
+        if (self.update_install.manualInstructions() != null) return;
+        // Not in the middle of a dictation: the daemon restarts afterwards.
+        if (!self.phase.isQuiescent() or self.job != null or self.capture != null) return;
+        self.update_state.store(@intFromEnum(UpdateState.installing), .release);
+        self.update_thread = std.Thread.spawn(.{}, updateInstallThread, .{self}) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            self.pushUpdateState();
+            return;
+        };
+        self.log(.info, "Installing the update ({s})...", .{self.update_install.describe()});
+        self.pushUpdateState();
+    }
+
+    fn updateInstallThread(self: *Daemon) void {
+        defer self.wake();
+        const exe = updater.install(self.allocator, &self.update_available.?, self.update_install) catch |err| {
+            self.update_error = err;
+            self.update_state.store(@intFromEnum(UpdateState.failed), .release);
+            return;
+        };
+        self.update_new_exe = exe;
+        self.update_state.store(@intFromEnum(UpdateState.installed), .release);
+    }
+
+    fn collectUpdate(self: *Daemon) void {
+        const thread = self.update_thread orelse return;
+        const state = self.updateState();
+        if (state == .checking or state == .installing) return;
+        thread.join();
+        self.update_thread = null;
+        switch (state) {
+            .available => self.announceUpdate(),
+            .installed => {
+                self.log(.info, "Update installed; restarting Talkies", .{});
+                self.restart_exe = self.update_new_exe;
+                self.update_new_exe = null;
+            },
+            .failed => self.log(.warn, "Update {s} failed: {}", .{ if (self.update_available == null) "check" else "install", self.update_error }),
+            else => {},
+        }
+        self.pushUpdateState();
+    }
+
+    /// Desktop notification, once per release.
+    fn announceUpdate(self: *Daemon) void {
+        const available = if (self.update_available) |*a| a else return;
+        var label_buf: [64]u8 = undefined;
+        const label = available.label(&label_buf);
+        self.log(.info, "Talkies {s} is available", .{label});
+        const n = @min(label.len, self.update_notified_buf.len);
+        if (std.mem.eql(u8, self.update_notified_buf[0..self.update_notified_len], label[0..n])) return;
+        @memcpy(self.update_notified_buf[0..n], label[0..n]);
+        self.update_notified_len = n;
+        var body_buf: [320]u8 = undefined;
+        const body = std.fmt.bufPrint(&body_buf, "Talkies {s} is available. {s}", .{
+            label,
+            self.update_install.manualInstructions() orelse "Open Settings > General to install it.",
+        }) catch return;
+        notifyDesktop(self.allocator, "Talkies update available", body);
+    }
+
+    fn pushUpdateState(self: *Daemon) void {
+        const win = self.settings_win orelse return;
+        var buf: [512]u8 = undefined;
+        var label_buf: [64]u8 = undefined;
+        const build = self.update_build;
+        const method = self.update_install.describe();
+        const state = self.updateState();
+        // The worker writes update_available while it checks.
+        const label: []const u8 = if (state == .checking) "" else if (self.update_available) |*a| a.label(&label_buf) else "";
+        const status = switch (state) {
+            .idle => if (updater.disabledByEnv())
+                bufPrintZ(&buf, "Update checks are turned off ({s} is set).", .{updater.disable_env})
+            else if (updater.trackOf(build) == null)
+                bufPrintZ(&buf, "Talkies {s} ({s}) does not follow a release channel, so it cannot update itself.", .{ build.version, method })
+            else
+                bufPrintZ(&buf, "Talkies {s}, installed as a {s}.", .{ build.version, method }),
+            .checking => bufPrintZ(&buf, "Checking for updates...", .{}),
+            .current => bufPrintZ(&buf, "Talkies {s} is up to date.", .{build.version}),
+            .available => if (self.update_install.manualInstructions()) |how|
+                bufPrintZ(&buf, "Talkies {s} is available. {s}", .{ label, how })
+            else switch (self.update_install) {
+                .package => |tool| bufPrintZ(&buf, "Talkies {s} is available. Installing asks for your password ({s}).", .{ label, updater.approvalCommand(tool) }),
+                else => bufPrintZ(&buf, "Talkies {s} is available.", .{label}),
+            },
+            .installing => bufPrintZ(&buf, "Downloading and verifying {s}...", .{label}),
+            .installed => bufPrintZ(&buf, "Installed. Talkies restarts when the current dictation is done.", .{}),
+            .failed => bufPrintZ(&buf, "Update failed: {s}", .{@errorName(self.update_error)}),
+        } catch return;
+        const can_install = state == .available and self.update_install.manualInstructions() == null;
+        const busy = state == .checking or state == .installing or state == .installed;
+        c_settings.talkies_settings_window_set_update_state(win, status.ptr, @intFromBool(can_install), @intFromBool(busy));
+    }
+
+    fn onUpdateCheck(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startUpdateCheck();
+    }
+
+    fn onUpdateInstall(user_data: ?*anyopaque) callconv(.c) void {
+        const self: *Daemon = @ptrCast(@alignCast(user_data orelse return));
+        self.startUpdateInstall();
+    }
+
+    // -----------------------------------------------------------------
     // Settings
     // -----------------------------------------------------------------
 
@@ -1402,6 +1611,7 @@ pub const Daemon = struct {
             c_settings.talkies_settings_window_set_callbacks(self.settings_win, onSettingsSave, onSettingsRefresh, self);
             c_settings.talkies_settings_window_set_s1_callbacks(self.settings_win, onS1Download, onS1Remove);
             c_settings.talkies_settings_window_set_phonon_callbacks(self.settings_win, onPhononDownload, onPhononRemove);
+            c_settings.talkies_settings_window_set_update_callbacks(self.settings_win, onUpdateCheck, onUpdateInstall);
         }
         const win = self.settings_win.?;
         self.loadAudioDevices(win);
@@ -1412,6 +1622,7 @@ pub const Daemon = struct {
         c_settings.talkies_settings_window_present(win, &data);
         self.refreshS1State();
         self.refreshPhononState();
+        self.pushUpdateState();
         self.refreshHealth();
 
         // Like macOS, check the selected server as the settings open.
@@ -1500,6 +1711,7 @@ pub const Daemon = struct {
         self.pending_cfg = null;
 
         const threads_changed = next.threads != self.cfg.threads;
+        const update_checks_changed = next.check_for_updates != self.cfg.check_for_updates;
         self.cfg.deinit();
         self.cfg = next;
         self.trigger = trigger_mod.Trigger.init(self.cfg.push_to_talk_threshold);
@@ -1511,6 +1723,7 @@ pub const Daemon = struct {
         if (self.hud) |hud| c_hud.talkies_hud_set_mini(hud, @intFromBool(self.cfg.mini_window));
         if (!self.cfg.show_hud) self.hideHud() else if (self.phase == .idle) self.collapseHud();
         if (speech_changed) try self.loadSpeechModel(true);
+        if (update_checks_changed) self.scheduleUpdateChecks(update_first_check_ms);
         self.log(.info, "Settings applied", .{});
         self.refreshHealth();
     }
@@ -1753,6 +1966,9 @@ pub const Daemon = struct {
         try self.pollJob();
         self.collectS1Download();
         self.collectPhononDownload();
+        self.collectUpdate();
+        // Relaunch into an installed update once nothing is in flight.
+        if (self.restart_exe != null and self.phase.isQuiescent() and self.job == null and self.capture == null) self.quit = true;
         if (self.speech_reload_pending) try self.reloadSpeechWhenIdle();
         if (self.yap_win != null) try self.pollYap();
     }
@@ -1770,6 +1986,39 @@ pub const Daemon = struct {
 
 fn bufPrintZ(buf: []u8, comptime fmt: []const u8, args: anytype) ![:0]u8 {
     return std.fmt.bufPrintSentinel(buf, fmt, args, 0);
+}
+
+/// Best-effort desktop notification: notify-send, else the
+/// org.freedesktop.Notifications D-Bus call through gdbus (part of GLib).
+fn notifyDesktop(allocator: std.mem.Allocator, title: []const u8, body: []const u8) void {
+    utils.runQuiet(&.{ "notify-send", "--app-name=Talkies", "--icon=talkies", title, body }) catch {
+        const title_arg = gvariantString(allocator, title) catch return;
+        defer allocator.free(title_arg);
+        const body_arg = gvariantString(allocator, body) catch return;
+        defer allocator.free(body_arg);
+        // Notify(app_name, replaces_id, icon, summary, body, actions, hints, timeout)
+        utils.runQuiet(&.{
+            "gdbus",                          "call",                          "--session",
+            "--dest",                         "org.freedesktop.Notifications", "--object-path",
+            "/org/freedesktop/Notifications", "--method",                      "org.freedesktop.Notifications.Notify",
+            "\"Talkies\"",                    "0",                             "\"talkies\"",
+            title_arg,                        body_arg,                        "[]",
+            "{}",                             "-1",
+        }) catch |err| utils.logError("Could not show a desktop notification: {}", .{err});
+    };
+}
+
+/// A GVariant text-format string literal. Caller owns it.
+fn gvariantString(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.append(allocator, '"');
+    for (text) |ch| {
+        if (ch == '"' or ch == '\\') try out.append(allocator, '\\');
+        try out.append(allocator, ch);
+    }
+    try out.append(allocator, '"');
+    return out.toOwnedSlice(allocator);
 }
 
 fn pumpGtk() void {
@@ -1818,6 +2067,7 @@ pub fn settingsFromConfig(cfg: config.Config, d: *c_settings.TalkiesSettingsData
     d.voice_assistant_mode = @intFromBool(cfg.voice_assistant_mode);
     d.insert_text_in_assistant_mode = @intFromBool(cfg.insert_text_in_assistant_mode);
     d.save_history = @intFromBool(cfg.save_history);
+    d.check_for_updates = @intFromBool(cfg.check_for_updates);
     putString(&d.audio_device, cfg.audio_device);
     d.speech_engine = @intCast(@intFromEnum(cfg.speech_engine));
     putString(&d.model, cfg.model);
@@ -1867,6 +2117,7 @@ pub fn configFromSettings(cfg: *config.Config, d: *const c_settings.TalkiesSetti
     cfg.voice_assistant_mode = d.voice_assistant_mode != 0;
     cfg.insert_text_in_assistant_mode = d.insert_text_in_assistant_mode != 0;
     cfg.save_history = d.save_history != 0;
+    cfg.check_for_updates = d.check_for_updates != 0;
     try cfg.setString("audio_device", getString(&d.audio_device));
     cfg.speech_engine = std.enums.fromInt(config.SpeechEngine, d.speech_engine) orelse .auto;
     if (getString(&d.model).len > 0) try cfg.setString("model", getString(&d.model));
@@ -2061,7 +2312,10 @@ test "reserved top comes from the focused Hyprland monitor" {
 // Entry point
 // ---------------------------------------------------------------------
 
-pub fn run(allocator: std.mem.Allocator) !void {
+/// Runs until the user quits. Returns the binary to relaunch when an
+/// installed update should replace this process (the caller exec's it
+/// after every resource here is released).
+pub fn run(allocator: std.mem.Allocator) !?[]u8 {
     utils.log("Starting daemon...", .{});
 
     const ws_port = wsPort();
@@ -2170,6 +2424,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
     }
     daemon.refreshS1State();
     daemon.refreshPhononState();
+    daemon.initUpdater();
 
     const ws_thread = try std.Thread.spawn(.{}, struct {
         fn serve(server: *websocket.Server, st: *daemon_ws.DaemonState) void {
@@ -2209,6 +2464,9 @@ pub fn run(allocator: std.mem.Allocator) !void {
     if (build_options.x11 == false and !is_wayland) utils.log("Built without X11 support", .{});
 
     try daemon.loop();
+    const restart = daemon.restart_exe;
+    daemon.restart_exe = null;
+    return restart;
 }
 
 test "level normalization matches the macOS dB meter" {
@@ -2238,6 +2496,7 @@ test "settings round trip through the C struct" {
     original.cleanup_context = .email;
     original.push_to_talk_threshold = 0.3;
     original.save_history = false;
+    original.check_for_updates = false;
 
     var data = std.mem.zeroes(c_settings.TalkiesSettingsData);
     settingsFromConfig(original, &data);
@@ -2257,6 +2516,7 @@ test "settings round trip through the C struct" {
     try std.testing.expectEqual(config.CleanupContext.email, restored.cleanup_context);
     try std.testing.expectEqual(@as(f64, 0.3), restored.push_to_talk_threshold);
     try std.testing.expect(!restored.save_history);
+    try std.testing.expect(!restored.check_for_updates);
 }
 
 test "speech_engine setting maps onto the engine policy" {

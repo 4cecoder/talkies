@@ -24,6 +24,9 @@ across platforms, see the
 Ollama and LM Studio cleanup only accept `localhost`, `127.0.0.0/8` or `::1` endpoints. Remote
 endpoints are rejected and HTTP redirects are disabled, so transcripts never leave the machine.
 
+Besides the model downloads you ask for, the only network request Talkies makes is the update
+check described in [Updates](#updates), which sends no user data and can be turned off.
+
 ## Install
 
 Every release on [GitHub Releases](https://github.com/4cecoder/talkies/releases/latest) ships the same
@@ -133,8 +136,8 @@ with the AppIndicator extension, waybar, AGS and similar bars.
 
 Settings has five pages:
 
-- **General**: mini window, launch at login, transcript history, push-to-talk threshold, voice
-  assistant mode.
+- **General**: mini window, launch at login, transcript history, updates, push-to-talk threshold,
+  voice assistant mode.
 - **Transcription**: microphone, speech engine (Automatic, Phonon-2 or Whisper), the Phonon-2
   download, Whisper model and language, personal vocabulary (one name or uncommon word per line,
   used as Whisper recognition hints).
@@ -191,6 +194,48 @@ card show which engine is in use and why.
   On Hyprland the daemon also sets the window rules for its panel and Settings window at startup.
   `/usr/share/talkies/hyprland-rules.conf` has the same rules if you prefer them in your config.
 
+### Updates
+
+Talkies checks GitHub Releases for a newer Linux build about a minute after the daemon starts and
+then once a day, on a background thread. The check is a single HTTPS GET of the release's
+`BUILD-INFO.txt` (with curl); nothing about you, your settings or your transcripts is sent, and it
+has nothing to do with speech recognition, which stays on this computer.
+
+- Builds from the rolling `latest` prerelease keep the same version number on every push to
+  master, so they compare the commit they were built from with the one in `BUILD-INFO.txt`.
+- Builds of a tagged release (`vX.Y.Z`, and distro builds such as the Gentoo ebuild) compare
+  version numbers with the newest stable release.
+- Development and CI builds never check.
+
+When an update exists, Talkies shows a desktop notification once and the **Updates** row in
+Settings > General says what to do. Nothing is installed until you click **Install and Restart**
+(or confirm `talkies update`). The download goes to `~/.cache/talkies/updates/` and is used only
+if its SHA-256 matches the release's `SHA256SUMS`; otherwise it is deleted and the update is
+refused. How it is installed depends on how you installed Talkies:
+
+| Installed with | What the update does |
+| --- | --- |
+| `install.sh` into a prefix you own (e.g. `~/.local`) | Swaps `<prefix>/lib/talkies` for the new version in one rename, refreshes the menu entry and icons, then restarts the daemon |
+| `sudo ./install.sh` (e.g. `/usr/local`) | Runs the verified tarball's `install.sh` through `pkexec` |
+| `.deb` / `.rpm` / Arch package | Never touches package files itself: after you approve, `pkexec` runs `apt install`, `dnf install` / `zypper install`, or `pacman -U` on the verified package |
+| AUR `talkies-bin` | Notification only: update it with your AUR helper |
+| Gentoo overlay | Notification only: sync the overlay and `emerge --update` |
+
+For the `pkexec` installs, root copies the download into a private directory and checks its
+SHA-256 again before the package manager reads it. After installing, the daemon restarts itself
+once no dictation is running: through `systemctl --user restart` when a systemd user unit runs it,
+otherwise by starting the new binary in place. `install.sh` records itself in
+`<prefix>/lib/talkies/install-method` so the updater can tell its files from a package manager's.
+
+To turn the checks off, switch off **Check for updates automatically** in Settings, set
+`check_automatically = false` under `[updates]`, or set `TALKIES_NO_UPDATE_CHECK=1` in the
+daemon's environment (this also blocks **Check Now** and `talkies update`).
+
+```bash
+talkies update --check    # what is installed, how, and whether a newer build exists
+talkies update            # the same, then download, verify and install after you confirm
+```
+
 ## Configuration
 
 Settings are saved to `~/.config/talkies/config.toml`. Everything is editable in the Settings
@@ -228,6 +273,9 @@ restore_clipboard = true
 [history]
 save = true                     # keep transcripts in history.sqlite until you delete them
 
+[updates]
+check_automatically = true      # look for a newer build at startup and daily (see Updates)
+
 [vad]
 enabled = true                  # trim silence before transcription
 ```
@@ -248,6 +296,7 @@ those providers.
 | `talkies transcribe <file.wav> --format txt\|vtt\|srt --output <file>` | Export a transcript with timestamps |
 | `talkies history [--search Q] [--limit N] [--json]` | List saved transcripts, newest first |
 | `talkies history clear` | Delete every saved transcript |
+| `talkies update [--check]` | Check GitHub Releases for a newer build; without `--check`, install it after confirmation |
 | `talkies config` | Print the current configuration |
 | `talkies --version` | Print the version |
 
@@ -293,7 +342,8 @@ scripts/install.sh --restart                    # developer install, restarts th
 On Gentoo, `app-accessibility/talkies` from the release overlay does all of this for you.
 
 To build the release packages locally, run
-`zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z` and then
+`zig build -Doptimize=ReleaseSafe -Dcpu=x86_64_v2 -Dversion=X.Y.Z` (release CI also passes
+`-Dcommit=<sha> -Dchannel=<latest|vX.Y.Z>` for the updater) and then
 `VERSION=vX.Y.Z APP_VERSION=X.Y.Z packaging/linux/package.sh`. The output goes to `linux/dist/`, and
 `packaging/linux/README.md` describes the pipeline.
 
