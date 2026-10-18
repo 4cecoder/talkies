@@ -197,6 +197,8 @@ jobs:
     name: Emerge on Gentoo (talkies-bin and from source)
     needs: build
     runs-on: ubuntu-24.04
+    # A normal run takes about 20 minutes with binary packages.
+    timeout-minutes: 90
     container: gentoo/stage3:latest
 
     steps:
