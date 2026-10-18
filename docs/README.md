@@ -8,6 +8,7 @@ Start at [the documentation index](index.md). It maps product goals, architectur
 - [Feature gap analysis](product/feature-gap-analysis.md)
 - [Module boundaries by volatility](architecture/module-volatility.md)
 - [macOS package split](architecture/macos-volatility-split.md)
+- [Companion devices and voice agent control (proposal)](architecture/companion-and-agent-control.md)
 - [Quality and distribution](engineering/quality-and-distribution.md)
 - [Documentation style](style.md)
 - [Roadmap](ROADMAP.md)
