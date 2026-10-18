@@ -173,8 +173,11 @@ behavior and never runs commands. Command-shaped text dictated with the dictatio
    it only lists agents.
 3. Hold the agent key while you speak, then release it. Start with an agent's name, or pick a target
    from the HUD's target menu or the menu bar's **Agent Target** submenu. Agent mode is hold-to-talk
-   only: a short tap, or a press that becomes a shortcut such as ⌘C or ⌘Tab, is discarded without
-   transcribing anything.
+   only. Nothing happens while you press the key: the HUD appears and the microphone opens only
+   after the key has been held alone for about a third of a second, so start speaking once the HUD
+   says it is listening. A tap, or a press that becomes a shortcut (another key, another modifier,
+   or a mouse click during the hold, such as ⌘V or ⌘-click), is dropped without showing, closing,
+   or recording anything.
 
 What you can say:
 

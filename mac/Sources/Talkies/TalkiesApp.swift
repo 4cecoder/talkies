@@ -42,9 +42,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Agent mode: a separate hotkey whose utterances go to agents, never into the focused field.
     let agentController = AgentModeController()
     /// The agent capture whose key is currently held.
-    private var activeAgentCapture: (ticket: CaptureTicket, pressedAt: Date)?
+    private var activeAgentCapture: CaptureTicket?
+    /// Qualifies agent-key presses: nothing happens until the key is held alone long enough.
+    private var agentHold = AgentHoldGate()
     var agentKeyWasPressed = false
-    private var escapeMonitors: [Any] = []
+    private var agentEventMonitors: [Any] = []
     private let agentTargetMenu = NSMenu(title: "Agent Target")
 
     // Settings service
@@ -502,7 +504,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                     if self.agentKeyWasPressed, !agentHotkey.isSolePress(rawFlags: deviceFlags) {
                         // Another modifier joined the hold: it's a shortcut, not an agent capture.
-                        self.abortAgentCapture()
+                        self.agentHoldInterrupted()
                     }
                 }
                 guard Int(keyCode) == selectedKeyCode else { return }
@@ -706,35 +708,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return hotkey.conflicts(with: dictationKey) ? nil : hotkey
     }
 
-    /// Agent mode is hold-to-talk: the key must be pressed alone, and held long enough.
+    /// Agent mode is hold-to-talk. Pressing the key has no visible effect: the HUD, history,
+    /// microphone, and any pending send are untouched until the hold qualifies (held alone for
+    /// `AgentHotkey.minimumHoldSeconds` with no other key, modifier, or mouse button).
     private func agentKeyDown(_ hotkey: AgentHotkey, rawFlags: UInt) {
-        guard hotkey.isSolePress(rawFlags: rawFlags) else { return } // part of a shortcut
-        guard !audioRecorder.isRecording else { return } // never take over a capture in progress
+        perform(agentHold.keyDown(isSolePress: hotkey.isSolePress(rawFlags: rawFlags), at: Date()))
+        // A small margin so the check never runs a hair before the hold qualifies.
+        DispatchQueue.main.asyncAfter(deadline: .now() + agentHold.minimumHold + 0.02) { [weak self] in
+            guard let self else { return }
+            self.perform(self.agentHold.tick(at: Date()))
+        }
+    }
+
+    private func agentKeyUp() {
+        perform(agentHold.keyUp(at: Date()))
+    }
+
+    /// Another key, modifier, or mouse button during the hold: this was a shortcut such as ⌘V.
+    private func agentHoldInterrupted() {
+        perform(agentHold.interrupted())
+    }
+
+    private func perform(_ action: AgentHoldGate.Action) {
+        switch action {
+        case .none:
+            break
+        case .startCapture:
+            startQualifiedAgentCapture()
+        case .finishCapture:
+            guard activeAgentCapture != nil else { return }
+            activeAgentCapture = nil
+            if audioRecorder.isRecording { audioRecorder.stopRecording() }
+        case .discardCapture:
+            guard let ticket = activeAgentCapture else { return }
+            activeAgentCapture = nil
+            discardAgentCapture(ticket)
+        }
+    }
+
+    private func startQualifiedAgentCapture() {
+        guard !audioRecorder.isRecording else {
+            // Never take over a capture in progress.
+            agentHold.captureUnavailable()
+            return
+        }
         if floatingWindow == nil || floatingWindow?.isVisible == false {
             showWindow()
         } else {
             expandWindow()
         }
-        guard let ticket = startRecordingWithCallback(mode: .agent) else { return }
-        activeAgentCapture = (ticket, Date())
-    }
-
-    private func agentKeyUp() {
-        guard let capture = activeAgentCapture else { return }
-        activeAgentCapture = nil
-        guard Date().timeIntervalSince(capture.pressedAt) >= AgentHotkey.minimumHoldSeconds else {
-            // A tap never leaves the microphone open.
-            discardAgentCapture(capture.ticket)
+        guard let ticket = startRecordingWithCallback(mode: .agent) else {
+            agentHold.captureUnavailable()
             return
         }
-        if audioRecorder.isRecording { audioRecorder.stopRecording() }
-    }
-
-    /// Another key was pressed during the hold, so this was a shortcut such as ⌘C.
-    private func abortAgentCapture() {
-        guard let capture = activeAgentCapture else { return }
-        activeAgentCapture = nil
-        discardAgentCapture(capture.ticket)
+        activeAgentCapture = ticket
     }
 
     private func discardAgentCapture(_ ticket: CaptureTicket) {
@@ -747,28 +774,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setupAgentMode() {
+        // Any key pressed while the agent key is held marks the press as a shortcut. Otherwise
         // Esc cancels a pending tier-1 send. Global key monitoring needs Accessibility approval;
         // the HUD's Cancel button works without it.
-        // Any key pressed while the agent key is held marks the press as a shortcut.
-        let cancelOnEscape: (NSEvent) -> Void = { [weak self] event in
+        let onKeyDown: (NSEvent) -> Void = { [weak self] event in
             let isEscape = event.keyCode == 53
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                if self.activeAgentCapture != nil {
-                    self.abortAgentCapture()
+                if self.agentHold.state != .idle {
+                    self.agentHoldInterrupted()
                 } else if isEscape {
                     self.agentController.cancelPending()
                 }
             }
         }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: cancelOnEscape) {
-            escapeMonitors.append(monitor)
+        // A mouse button during the hold (⌘-click) is also a shortcut.
+        let onMouseDown: (NSEvent) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.agentHold.state != .idle else { return }
+                self.agentHoldInterrupted()
+            }
         }
-        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
-            cancelOnEscape(event)
-            return event
-        }) {
-            escapeMonitors.append(monitor)
+        let mouseDown: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        for (mask, handler) in [(NSEvent.EventTypeMask.keyDown, onKeyDown), (mouseDown, onMouseDown)] {
+            if let monitor = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) {
+                agentEventMonitors.append(monitor)
+            }
+            if let monitor = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+                handler(event)
+                return event
+            }) {
+                agentEventMonitors.append(monitor)
+            }
         }
 
         // A capture with no usable speech, or a failed one, closes its own ticket.
@@ -899,7 +936,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let monitor = localClickMonitor {
             NSEvent.removeMonitor(monitor)
         }
-        for monitor in escapeMonitors {
+        for monitor in agentEventMonitors {
             NSEvent.removeMonitor(monitor)
         }
     }

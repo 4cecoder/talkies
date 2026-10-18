@@ -108,8 +108,9 @@ public struct ProcessCommandRunner: CommandRunner {
             }
         }
         if let input, let data = invocation.standardInput {
-            // Only the child may hold the read end, so its exit makes further writes fail.
-            try? input.fileHandleForReading.close()
+            // `Process.run()` already closed the parent's copy of the read end (verified on macOS),
+            // so only the child holds it and its exit makes further writes fail. Closing it again
+            // here could hit a reused descriptor.
             let handle = input.fileHandleForWriting
             // A child that exits before reading stdin (socket refused, bad target) must not raise
             // SIGPIPE in Talkies. With F_SETNOSIGPIPE the write fails with EPIPE instead.
