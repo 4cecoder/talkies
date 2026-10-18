@@ -155,7 +155,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
@@ -172,7 +172,7 @@ jobs:
 
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
@@ -211,7 +211,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Download packages
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist
