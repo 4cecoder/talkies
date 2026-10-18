@@ -120,7 +120,7 @@ jobs:
         run: packaging/linux/package.sh
 
       - name: Upload Linux packages
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/
@@ -225,7 +225,7 @@ jobs:
         run: bash packaging/linux/test-gentoo.sh dist "${{ inputs.release_label }}" both
 
       - name: Upload Gentoo overlay and build toolchain
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ inputs.artifact_name }}-gentoo
           path: dist/gentoo-release/

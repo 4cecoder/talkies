@@ -116,7 +116,7 @@ jobs:
         run: packaging/macos/package-dmg.sh
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: macos-release
           path: |
@@ -192,7 +192,7 @@ jobs:
         run: ./packaging/windows/package-portable.ps1 -AppVersion "$env:APP_VERSION" -ReleaseLabel "$env:RELEASE_LABEL" -OutputDirectory "$env:OUTPUT_DIRECTORY"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-release
           path: |

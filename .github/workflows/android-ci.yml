@@ -71,7 +71,7 @@ jobs:
         working-directory: mobile/android
         run: ./gradlew --no-daemon :core:test :inference:testDebugUnitTest :app:testDebugUnitTest
       - name: Upload tested debug APK
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Talkies-Android-debug-${{ github.sha }}
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
