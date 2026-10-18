@@ -45,6 +45,8 @@ jobs:
             macos:
               - 'mac/**'
               - 'packaging/macos/**'
+              - 'tests/fixtures/intents/**'
+              - 'tests/fixtures/agents/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/release.yml'
             windows:

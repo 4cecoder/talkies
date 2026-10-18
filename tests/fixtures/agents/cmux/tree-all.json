@@ -1,0 +1,252 @@
+{
+  "active": {
+    "is_browser_surface": false,
+    "pane_id": "CAFB7914-0AC3-5E2B-BD6E-52DDA4D5633D",
+    "surface_id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+    "surface_type": "terminal",
+    "tab_id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+    "window_id": "7119F110-11FB-5411-8A90-E4D6E92BCEBC",
+    "workspace_id": "7773831C-DE1F-58C7-9EE3-2151D8BCE530"
+  },
+  "caller": null,
+  "windows": [
+    {
+      "active": true,
+      "current": true,
+      "id": "7119F110-11FB-5411-8A90-E4D6E92BCEBC",
+      "index": 0,
+      "key": false,
+      "selected_workspace_id": "7773831C-DE1F-58C7-9EE3-2151D8BCE530",
+      "visible": true,
+      "workspace_count": 4,
+      "workspaces": [
+        {
+          "active": false,
+          "description": null,
+          "id": "7773831C-DE1F-58C7-9EE3-2151D8BCE530",
+          "index": 0,
+          "layout": {
+            "pane": {
+              "id": "CAFB7914-0AC3-5E2B-BD6E-52DDA4D5633D"
+            }
+          },
+          "panes": [
+            {
+              "active": false,
+              "focused": true,
+              "id": "CAFB7914-0AC3-5E2B-BD6E-52DDA4D5633D",
+              "index": 0,
+              "selected_surface_id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+              "surface_count": 2,
+              "surface_ids": [
+                "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+                "964DE941-37C8-5EB0-AF5D-76337CE12E5F"
+              ],
+              "surfaces": [
+                {
+                  "active": false,
+                  "focused": true,
+                  "here": false,
+                  "id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+                  "index": 0,
+                  "index_in_pane": 0,
+                  "pane_id": "CAFB7914-0AC3-5E2B-BD6E-52DDA4D5633D",
+                  "render_health": "not_started",
+                  "selected": true,
+                  "selected_in_pane": true,
+                  "title": "Atlas",
+                  "tty": "ttys010",
+                  "type": "terminal",
+                  "url": null
+                },
+                {
+                  "active": false,
+                  "focused": false,
+                  "here": false,
+                  "id": "964DE941-37C8-5EB0-AF5D-76337CE12E5F",
+                  "index": 1,
+                  "index_in_pane": 1,
+                  "pane_id": "CAFB7914-0AC3-5E2B-BD6E-52DDA4D5633D",
+                  "render_health": "not_started",
+                  "selected": false,
+                  "selected_in_pane": false,
+                  "title": "~/src/atlas",
+                  "tty": "ttys011",
+                  "type": "terminal",
+                  "url": null
+                }
+              ]
+            }
+          ],
+          "pinned": false,
+          "selected": true,
+          "title": "Atlas"
+        },
+        {
+          "active": false,
+          "description": null,
+          "id": "F38D37B8-B3CD-5F73-9E42-94F4CF27EABC",
+          "index": 1,
+          "layout": {
+            "pane": {
+              "id": "B5F76DE4-3739-505F-B899-45346AB98F94"
+            }
+          },
+          "panes": [
+            {
+              "active": false,
+              "focused": true,
+              "id": "B5F76DE4-3739-505F-B899-45346AB98F94",
+              "index": 0,
+              "selected_surface_id": "870628FA-AB8F-59A4-892A-E5E20D9D0B72",
+              "surface_count": 1,
+              "surface_ids": [
+                "870628FA-AB8F-59A4-892A-E5E20D9D0B72"
+              ],
+              "surfaces": [
+                {
+                  "active": false,
+                  "focused": true,
+                  "here": false,
+                  "id": "870628FA-AB8F-59A4-892A-E5E20D9D0B72",
+                  "index": 0,
+                  "index_in_pane": 0,
+                  "pane_id": "B5F76DE4-3739-505F-B899-45346AB98F94",
+                  "render_health": "not_started",
+                  "selected": true,
+                  "selected_in_pane": true,
+                  "title": "Borealis",
+                  "tty": "ttys012",
+                  "type": "terminal",
+                  "url": null
+                }
+              ]
+            }
+          ],
+          "pinned": false,
+          "selected": false,
+          "title": "Borealis"
+        },
+        {
+          "active": false,
+          "description": null,
+          "id": "894ADB5D-53C3-5DFD-B85A-B622C0AEF24B",
+          "index": 2,
+          "layout": {
+            "pane": {
+              "id": "97F393A0-2DE2-5492-A6C2-ABC62D56A013"
+            }
+          },
+          "panes": [
+            {
+              "active": false,
+              "focused": true,
+              "id": "97F393A0-2DE2-5492-A6C2-ABC62D56A013",
+              "index": 0,
+              "selected_surface_id": "82B0AF2B-36DD-5E20-BC27-066E3007981E",
+              "surface_count": 1,
+              "surface_ids": [
+                "82B0AF2B-36DD-5E20-BC27-066E3007981E"
+              ],
+              "surfaces": [
+                {
+                  "active": false,
+                  "focused": true,
+                  "here": false,
+                  "id": "82B0AF2B-36DD-5E20-BC27-066E3007981E",
+                  "index": 0,
+                  "index_in_pane": 0,
+                  "pane_id": "97F393A0-2DE2-5492-A6C2-ABC62D56A013",
+                  "render_health": "not_started",
+                  "selected": true,
+                  "selected_in_pane": true,
+                  "title": "Cirrus",
+                  "tty": "ttys013",
+                  "type": "terminal",
+                  "url": null
+                }
+              ]
+            },
+            {
+              "active": false,
+              "focused": false,
+              "id": "95CEC028-6164-55C5-B835-0D98E820030A",
+              "index": 1,
+              "selected_surface_id": "E4A28BE3-D050-5777-9BD8-4B1843835B97",
+              "surface_count": 1,
+              "surface_ids": [
+                "E4A28BE3-D050-5777-9BD8-4B1843835B97"
+              ],
+              "surfaces": [
+                {
+                  "active": false,
+                  "focused": true,
+                  "here": false,
+                  "id": "E4A28BE3-D050-5777-9BD8-4B1843835B97",
+                  "index": 0,
+                  "index_in_pane": 0,
+                  "pane_id": "95CEC028-6164-55C5-B835-0D98E820030A",
+                  "render_health": "not_started",
+                  "selected": true,
+                  "selected_in_pane": true,
+                  "title": "Dorado",
+                  "tty": "ttys014",
+                  "type": "terminal",
+                  "url": null
+                }
+              ]
+            }
+          ],
+          "pinned": false,
+          "selected": false,
+          "title": "Shared"
+        },
+        {
+          "active": false,
+          "description": null,
+          "id": "3A450A99-8D2B-5DD0-8390-D2B354520F05",
+          "index": 3,
+          "layout": {
+            "pane": {
+              "id": "FDA7AB83-BCA6-573B-9AA8-FA9ED5CD80DC"
+            }
+          },
+          "panes": [
+            {
+              "active": false,
+              "focused": true,
+              "id": "FDA7AB83-BCA6-573B-9AA8-FA9ED5CD80DC",
+              "index": 0,
+              "selected_surface_id": "E24BE427-0E00-55EB-96AF-14A1D8C30727",
+              "surface_count": 1,
+              "surface_ids": [
+                "E24BE427-0E00-55EB-96AF-14A1D8C30727"
+              ],
+              "surfaces": [
+                {
+                  "active": false,
+                  "focused": true,
+                  "here": false,
+                  "id": "E24BE427-0E00-55EB-96AF-14A1D8C30727",
+                  "index": 0,
+                  "index_in_pane": 0,
+                  "pane_id": "FDA7AB83-BCA6-573B-9AA8-FA9ED5CD80DC",
+                  "render_health": "not_started",
+                  "selected": true,
+                  "selected_in_pane": true,
+                  "title": "~/scratch",
+                  "tty": "ttys015",
+                  "type": "terminal",
+                  "url": null
+                }
+              ]
+            }
+          ],
+          "pinned": false,
+          "selected": false,
+          "title": "scratch"
+        }
+      ]
+    }
+  ]
+}

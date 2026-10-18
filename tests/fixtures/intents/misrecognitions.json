@@ -1,0 +1,20 @@
+{
+  "grammar_version": 1,
+  "description": "Recognizer mistakes the grammar must tolerate: split names, homophones, and misheard numbers.",
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "aliases": [] },
+    { "id": "borealis", "name": "Borealis", "aliases": [] },
+    { "id": "cirrus", "name": "Cirrus", "aliases": [] }
+  ],
+  "cases": [
+    { "utterance": "At last, run the tests.", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Run the tests.", "note": "\"Atlas\" heard as \"at last\"." },
+    { "utterance": "at last run the tests", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Run the tests" },
+    { "utterance": "What's at last doing?", "address": { "agent": "atlas" }, "intent": "status" },
+    { "utterance": "Bore Alice, update the changelog", "address": { "agent": "borealis" }, "intent": "prompt", "text": "Update the changelog" },
+    { "utterance": "Sirius, status", "address": { "agent": "cirrus" }, "intent": "status", "note": "Matched by the phonetic key." },
+    { "utterance": "Atlas, a prove", "address": { "agent": "atlas" }, "intent": "approve", "note": "\"approve\" heard as \"a prove\"." },
+    { "utterance": "agent to status", "address": { "number": 2 }, "intent": "status", "note": "\"two\" heard as \"to\"." },
+    { "utterance": "Agent for, show me", "address": { "number": 4 }, "intent": "show" },
+    { "utterance": "Rocks are heavy, move them later", "address": null, "intent": "prompt", "text": "Rocks are heavy, move them later", "note": "Ordinary words are not names." }
+  ]
+}
