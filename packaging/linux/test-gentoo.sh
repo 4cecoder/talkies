@@ -46,6 +46,15 @@ export FEATURES="-ipc-sandbox -network-sandbox -pid-sandbox getbinpkg"
 export CLEAN_DELAY=0
 export EMERGE_DEFAULT_OPTS="--color=n --quiet-build=y --getbinpkg --usepkg --autounmask-continue"
 
+# Without the official binhost, emerge quietly compiles every dependency
+# (LLVM included) and runs past the job's time limit. Fail fast instead.
+binhost="$(sed -n 's/^[[:space:]]*sync-uri[[:space:]]*=[[:space:]]*//p' /etc/portage/binrepos.conf/*.conf | head -n1)"
+if [[ -z "${binhost}" ]] || ! curl -fsS --retry 5 --retry-delay 30 --retry-all-errors \
+    -o /dev/null "${binhost%/}/Packages"; then
+    echo "The Gentoo binhost (${binhost:-not configured}) is unreachable; rerun this job later." >&2
+    exit 1
+fi
+
 check() { # <package>
     talkies --version
     test "$(talkies --version)" = "talkies ${app_version}"
