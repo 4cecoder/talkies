@@ -46,6 +46,7 @@ protocol TextAccessibilityClient {
     func frontmostApplication() -> (processIdentifier: pid_t, name: String)?
     func isTrusted() -> Bool
     func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt
+    func activateApplication(_ processIdentifier: pid_t)
 }
 
 /// Inserts only into a verified, currently focused text control. Dictation
@@ -55,6 +56,7 @@ public final class TextInserter {
     public static let shared = TextInserter()
 
     private let accessibilityClient: any TextAccessibilityClient
+    private var focusReturnDestination: TextInsertionDestination?
 
     public init() {
         accessibilityClient = SystemTextAccessibilityClient()
@@ -76,6 +78,35 @@ public final class TextInserter {
             processIdentifier: application.processIdentifier,
             applicationName: application.name
         )
+    }
+
+    /// Call just before Talkies takes keyboard focus on purpose (the history search field).
+    /// Remembers the app that had focus so a dictation started meanwhile still targets it.
+    public func rememberDestinationBeforeTakingFocus() {
+        if let destination = captureDestination() {
+            focusReturnDestination = destination
+        }
+    }
+
+    /// Call when Talkies gives keyboard focus back. Reactivates the app remembered by
+    /// `rememberDestinationBeforeTakingFocus()` and returns it, so a recording that starts now
+    /// can use it as its insertion destination while macOS is still switching apps. If another
+    /// app is already frontmost, that app is returned and nothing is activated. Returns nil when
+    /// Talkies is frontmost and no app was remembered.
+    @discardableResult
+    public func returnFocusToRememberedDestination() -> TextInsertionDestination? {
+        let remembered = focusReturnDestination
+        focusReturnDestination = nil
+        if let current = captureDestination() { return current }
+        guard let remembered else { return nil }
+        accessibilityClient.activateApplication(remembered.processIdentifier)
+        return remembered
+    }
+
+    /// Forgets the remembered app without activating it, for when the user moved focus
+    /// elsewhere themselves.
+    public func forgetRememberedDestination() {
+        focusReturnDestination = nil
     }
 
     public func insertTextAtCursor(
@@ -146,6 +177,10 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
 
     func isTrusted() -> Bool {
         AXIsProcessTrusted()
+    }
+
+    func activateApplication(_ processIdentifier: pid_t) {
+        NSRunningApplication(processIdentifier: processIdentifier)?.activate()
     }
 
     func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt {
