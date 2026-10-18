@@ -25,6 +25,7 @@ cd linux
 zig build                  # requires Zig master (0.16+), GTK4, libwhisper, libllama, PulseAudio, dbus
 zig build test             # all layers; or test-core (no system deps), test-engine, test-app
 scripts/install.sh --restart   # ReleaseSafe build into /usr/local/lib/talkies, restart the daemon
+scripts/install.sh --prefix /usr --libdir lib64 --restart  # Gentoo layout
 ```
 
 `install.sh` replaces only the tiers whose bytes changed (see below), and
@@ -40,6 +41,7 @@ nothing, `engine` sees only `core`.
 |---|---|---|---|
 | vendor | lowest | whisper.cpp, ggml, llama.cpp | `lib/libwhisper.so.1`, `libggml*.so.0`, `libllama.so.0` |
 | native | low | `src/native`: S1-mini runtime (C ABI over llama.cpp) | `lib/libtalkies-native.so.1` |
+| phonon | low | Pinned CrispASR runtime for optional Phonon-2 recognition | `lib/crispasr/*` |
 | core | low | `src/core`: utils, WAV parsing, hints, export, diagnostics. Pure Zig. | linked into `talkies` |
 | engine | low | `src/engine`: PulseAudio, VAD, Whisper, clipboard, uinput, X11 hotkey, WebSocket | linked into `talkies` |
 | ui | medium | `src/ui`: GTK4 HUD, settings, status, YAP windows, D-Bus tray | `lib/libtalkies-ui.so.1` |

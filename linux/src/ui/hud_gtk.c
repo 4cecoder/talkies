@@ -513,6 +513,72 @@ static double state_level(TalkiesHudStage stage, double pos, double ph) {
     }
 }
 
+static double recording_height(const TalkiesHud *hud, int index, double max_h) {
+    // set_level() receives the daemon's -60..0 dB meter value already. Keep
+    // that scale intact and use a gentle display curve: applying a second
+    // threshold/normalization here made ordinary speech fill most of the HUD.
+    const double level = isfinite(hud->samples[index])
+        ? CLAMP(hud->samples[index], 0.0, 1.0)
+        : 0.0;
+    return MAX(2.5, pow(level, 1.2) * max_h);
+}
+
+static void append_wave_curve(cairo_t *cr, double x0, double y0, double before_y,
+                              double x1, double y1, double after_y) {
+    const double dx = x1 - x0;
+    const double low = MIN(y0, y1);
+    const double high = MAX(y0, y1);
+    // Catmull-Rom tangents converted to Bezier handles. Constraining the
+    // handles to their segment keeps quiet gaps from ringing below the floor.
+    const double c1 = CLAMP(y0 + (y1 - before_y) / 6.0, low, high);
+    const double c2 = CLAMP(y1 - (after_y - y0) / 6.0, low, high);
+    cairo_curve_to(cr, x0 + dx / 3.0, c1, x1 - dx / 3.0, c2, x1, y1);
+}
+
+static void draw_recording_waveform(TalkiesHud *hud, cairo_t *cr, int width,
+                                    double center, double max_h,
+                                    const Rgb *colors, int ncolors) {
+    const double step = (double)width / (SAMPLE_COUNT - 1);
+    double height = recording_height(hud, 0, max_h);
+    cairo_move_to(cr, 0, center - height / 2.0);
+
+    for (int i = 0; i < SAMPLE_COUNT - 1; i++) {
+        const int before = MAX(0, i - 1);
+        const int after = MIN(SAMPLE_COUNT - 1, i + 2);
+        const double y0 = center - recording_height(hud, i, max_h) / 2.0;
+        const double y1 = center - recording_height(hud, i + 1, max_h) / 2.0;
+        const double before_y = center - recording_height(hud, before, max_h) / 2.0;
+        const double after_y = center - recording_height(hud, after, max_h) / 2.0;
+        append_wave_curve(cr, i * step, y0, before_y, (i + 1) * step, y1, after_y);
+    }
+
+    height = recording_height(hud, SAMPLE_COUNT - 1, max_h);
+    cairo_line_to(cr, width, center + height / 2.0);
+    for (int i = SAMPLE_COUNT - 1; i > 0; i--) {
+        const int before = MIN(SAMPLE_COUNT - 1, i + 1);
+        const int after = MAX(0, i - 2);
+        const double y0 = center + recording_height(hud, i, max_h) / 2.0;
+        const double y1 = center + recording_height(hud, i - 1, max_h) / 2.0;
+        const double before_y = center + recording_height(hud, before, max_h) / 2.0;
+        const double after_y = center + recording_height(hud, after, max_h) / 2.0;
+        append_wave_curve(cr, i * step, y0, before_y, (i - 1) * step, y1, after_y);
+    }
+    cairo_close_path(cr);
+
+    cairo_pattern_t *gradient = cairo_pattern_create_linear(0, center, width, center);
+    for (int i = 0; i < ncolors; i++) {
+        cairo_pattern_add_color_stop_rgba(gradient, (double)i / (ncolors - 1),
+                                          colors[i].r, colors[i].g, colors[i].b, 0.92);
+    }
+    cairo_set_source(cr, gradient);
+    cairo_fill_preserve(cr);
+    cairo_pattern_destroy(gradient);
+
+    cairo_set_source_rgba(cr, 1.0, 0.88, 0.96, 0.28);
+    cairo_set_line_width(cr, 0.8);
+    cairo_stroke(cr);
+}
+
 static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
     (void)area;
     TalkiesHud *hud = user_data;
@@ -532,17 +598,15 @@ static void draw_waveform(GtkDrawingArea *area, cairo_t *cr, int width, int heig
     waveform_palette(hud, colors, &ncolors);
     const double opacity = recording ? 0.96 : 0.82;
 
+    if (recording) {
+        draw_recording_waveform(hud, cr, width, center, max_h, colors, ncolors);
+        return;
+    }
+
     for (int i = 0; i < bars; i++) {
         double pos = (double)i / MAX(bars - 1, 1);
         double peak;
-        if (recording) {
-            int lower = MIN(MAX(SAMPLE_COUNT - 1, 0), i * SAMPLE_COUNT / bars);
-            int upper = MAX(lower + 1, MIN(SAMPLE_COUNT, (i + 1) * SAMPLE_COUNT / bars));
-            peak = 0;
-            for (int s = lower; s < upper; s++) peak = MAX(peak, isfinite(hud->samples[s]) ? hud->samples[s] : 0);
-        } else {
-            peak = state_level(hud->stage, pos, ph);
-        }
+        peak = state_level(hud->stage, pos, ph);
         double normalized = CLAMP((peak - 0.035) / 0.965, 0.0, 1.0);
         double bar_h = MAX(2.5, pow(normalized, 0.82) * max_h);
         double x = i * (bar_w + gap);
