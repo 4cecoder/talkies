@@ -618,6 +618,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Free S1-mini's Metal buffers before exit runs llama.cpp's static destructors,
+        // which abort when model buffers are still allocated.
+        let cleaner = s1MiniCleaner
+        Task {
+            await cleaner.unload()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
