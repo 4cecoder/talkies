@@ -10,6 +10,7 @@ struct DictationView: View {
     @EnvironmentObject var transcriptionService: TranscriptionService
     @ObservedObject private var settingsService = SettingsService.shared
     @ObservedObject var panelState: FloatingPanelState
+    @ObservedObject var agentController: AgentModeController
     @Binding var isCollapsed: Bool
     let onToggleRecording: () -> Void
     let onResize: (CGSize) -> Void
@@ -25,6 +26,7 @@ struct DictationView: View {
     private var isMini: Bool { settingsService.settings.useMinimalDictationWindow ?? false }
     private var panelSize: CGSize {
         if isCollapsed { return CGSize(width: 124, height: 38) }
+        if agentController.showsPanel && !showHistory { return CGSize(width: 560, height: 196) }
         return CGSize(width: isMini ? 360 : 560, height: showHistory ? 420 : (isMini ? 126 : 184))
     }
 
@@ -59,6 +61,8 @@ struct DictationView: View {
                     .buttonStyle(.plain)
                     .help("Open Talkies dictation")
                     .accessibilityLabel("Open Talkies dictation. \(transcriptionService.pipelineStage.displayText)")
+                } else if agentController.showsPanel && !showHistory {
+                    AgentPanelView(controller: agentController)
                 } else if showHistory {
                     TranscriptHistoryView(onClose: { withAnimation(.easeOut(duration: 0.18)) { showHistory = false } })
                 } else if isMini {

@@ -1,0 +1,15 @@
+{
+  "grammar_version": 1,
+  "description": "The dictation hotkey never parses commands. Command-shaped text is inserted verbatim.",
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "aliases": [] }
+  ],
+  "cases": [
+    { "mode": "dictation", "utterance": "Atlas, approve the deploy", "insert": "Atlas, approve the deploy" },
+    { "mode": "dictation", "utterance": "Approve", "insert": "Approve" },
+    { "mode": "dictation", "utterance": "Cancel", "insert": "Cancel" },
+    { "mode": "dictation", "utterance": "What's agent 2 doing?", "insert": "What's agent 2 doing?" },
+    { "mode": "dictation", "utterance": "Remember: the release branch freezes on Thursdays.", "insert": "Remember: the release branch freezes on Thursdays." },
+    { "mode": "agent", "utterance": "Atlas, approve the deploy", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Approve the deploy", "note": "Through the agent hotkey the same words are prompt text for Atlas: \"approve the deploy\" is not a command phrase." }
+  ]
+}

@@ -12,6 +12,7 @@ The package graph separates Foundation-only `TalkiesCore`, AVFoundation-based `T
 | `TalkiesAudio` library | Medium | AVFoundation microphone capture, input device selection, level monitoring, temporary recording files |
 | `TalkiesAccessibility` library | Medium | Focus capture, verified text-control insertion, permission checks, explicit clipboard copy |
 | `TalkiesInference` dynamic library | High | llama.cpp S1-mini cleanup adapter, WhisperKit ASR adapter, and both model lifecycles |
+| `TalkiesConnectors` static library | High | Agent connectors that drive third-party tools; today the cmux CLI connector. Implements the `AgentConnector` contract from Core |
 | `Talkies` executable | Medium | SwiftUI/AppKit menu bar, hotkeys, onboarding, editor, and application coordination |
 | `TalkiesModelWorker` executable (optional) | High | Isolated local inference process if runtime churn, memory spikes, or crash containment justify IPC |
 
@@ -23,12 +24,13 @@ Keep inference in-process for now. Make the optional model worker a separate bin
 Talkies ──▶ libTalkiesCore.dylib
     ├──▶ TalkiesAudio ───────────────▶ AVFoundation/CoreAudio
     ├──▶ TalkiesAccessibility ───────▶ libTalkiesCore.dylib
+    ├──▶ TalkiesConnectors (static) ─▶ libTalkiesCore.dylib, cmux CLI via Process
     └──▶ libTalkiesInference.dylib ──▶ libTalkiesCore.dylib
                    ├──▶ WhisperKit (ASR)
                    └──▶ llama.framework (S1-mini)
 ```
 
-`TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
+`TalkiesCore` must not import AVFoundation, SwiftUI, WhisperKit, or llama.cpp. Define `SpeechRecognizer` and `TranscriptCleaner` protocols there, along with the agent-mode contracts (`AgentConnector`, the intent grammar, name matching, and safety tiers). `TalkiesConnectors` is linked statically because it has no runtime of its own to embed; it changes whenever cmux or a later connector's tool changes, and the app reaches it only through the Core contract. Keep third-party inference types inside adapters so updating a model runtime does not leak API churn into the UI or transcript model.
 
 ## SPM layout
 
@@ -38,6 +40,7 @@ mac/
   Packages/
     TalkiesCore/Package.swift
     TalkiesInference/Package.swift
+    TalkiesConnectors/Package.swift
   Sources/
     TalkiesAudio/
     TalkiesAccessibility/
@@ -47,6 +50,7 @@ mac/
     TalkiesAudioTests/
     TalkiesAccessibilityTests/
     TalkiesInferenceTests/
+    TalkiesConnectorsTests/
 ```
 
 The manifests use Swift tools 6.3. The app consumes Core and Inference as package products, so a target-only split cannot leave inference objects statically linked into the executable. `package-app.sh` checks executable and dylib dependency edges, embeds both dylibs and `llama.framework`, and signs nested code before the app. The DMG smoke test checks runtime files after install and replacement-upgrade simulation. Keep third-party inference APIs behind runtime adapters. Core and Accessibility tests cover formatting, cleanup prompts, transcript contracts, focused-app validation, permission denial, unsupported controls, and insertion fallbacks. The model-backed cleanup integration test runs after provisioning the pinned weights and denies network requests during inference.

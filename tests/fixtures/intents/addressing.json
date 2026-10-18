@@ -1,0 +1,28 @@
+{
+  "grammar_version": 1,
+  "description": "Leading-name and numbered addressing. A prompt keeps the spoken words after the address, with the first letter capitalized.",
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "aliases": [] },
+    { "id": "borealis", "name": "Borealis", "aliases": [] },
+    { "id": "cirrus", "name": "Cirrus", "aliases": ["Shared"] },
+    { "id": "dorado", "name": "Dorado", "aliases": ["Shared"] },
+    { "id": "juno", "name": "Juno", "aliases": [] },
+    { "id": "june", "name": "June", "aliases": [] }
+  ],
+  "cases": [
+    { "utterance": "Atlas, run the tests", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Run the tests" },
+    { "utterance": "Atlas, rebase on main and rerun the failing tests.", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Rebase on main and rerun the failing tests." },
+    { "utterance": "Atlas run the tests", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Run the tests", "note": "Recognizers often drop the comma after a name." },
+    { "utterance": "atlas: update the changelog", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Update the changelog" },
+    { "utterance": "Hey Borealis, check the CI logs", "address": { "agent": "borealis" }, "intent": "prompt", "text": "Check the CI logs" },
+    { "utterance": "Agent 2, summarize what you changed", "address": { "number": 2 }, "intent": "prompt", "text": "Summarize what you changed" },
+    { "utterance": "agent two run the linter", "address": { "number": 2 }, "intent": "prompt", "text": "Run the linter" },
+    { "utterance": "Atlas.", "address": { "agent": "atlas" }, "intent": "prompt", "text": "", "note": "A bare name selects the agent and sends nothing." },
+    { "utterance": "Run the tests", "address": null, "intent": "prompt", "text": "Run the tests", "note": "No address: the prompt goes to the picker's selected target." },
+    { "utterance": "Shared, run the tests", "address": { "ambiguous": ["cirrus", "dorado"] }, "intent": "prompt", "text": "Run the tests", "note": "Two agents share the workspace title, so Talkies asks which agent." },
+    { "utterance": "Jun, run the tests", "address": { "ambiguous": ["juno", "june"] }, "intent": "prompt", "text": "Run the tests", "note": "Equally close names are ambiguous; Talkies never guesses." },
+    { "utterance": "Juno, run the tests", "address": { "agent": "juno" }, "intent": "prompt", "text": "Run the tests", "note": "An exact name wins over a phonetic neighbor." },
+    { "utterance": "Okay, so the plan is to rebase first", "address": null, "intent": "prompt", "text": "Okay, so the plan is to rebase first" },
+    { "utterance": "My tests are failing again, please look", "address": null, "intent": "prompt", "text": "My tests are failing again, please look" }
+  ]
+}

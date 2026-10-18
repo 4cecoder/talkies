@@ -1,0 +1,44 @@
+{
+  "access_denied_cmux_only": {
+    "exit_code": 1,
+    "observed": true,
+    "stderr": "Error: ERROR: Access denied - only processes started inside cmux can connect\n",
+    "expect": "access_denied"
+  },
+  "socket_missing": {
+    "exit_code": 1,
+    "observed": true,
+    "stderr": "Error: Socket not found at /Users/example/.local/state/cmux/cmux.sock\n",
+    "expect": "not_running"
+  },
+  "surface_not_found": {
+    "exit_code": 1,
+    "observed": true,
+    "stderr": "Error: not_found: Surface not found\n",
+    "expect": "not_found"
+  },
+  "password_required": {
+    "exit_code": 1,
+    "observed": false,
+    "stderr": "Error: ERROR: Authentication required \n",
+    "expect": "access_denied"
+  },
+  "password_rejected": {
+    "exit_code": 1,
+    "observed": false,
+    "stderr": "Error: ERROR: Invalid password\n",
+    "expect": "access_denied"
+  },
+  "password_mode_unconfigured": {
+    "exit_code": 1,
+    "observed": false,
+    "stderr": "Error: ERROR: Password mode is enabled but no socket password is configured in Settings.\n",
+    "expect": "access_denied"
+  },
+  "other_failure": {
+    "exit_code": 1,
+    "observed": false,
+    "stderr": "Error: invalid_params: Give a target workspace or surface\n",
+    "expect": "failed"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "grammar_version": 1,
+  "description": "Short commands, with and without an address. `text` is the command argument for remember and recall.",
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "aliases": [] },
+    { "id": "borealis", "name": "Borealis", "aliases": [] },
+    { "id": "juno", "name": "Juno", "aliases": [] }
+  ],
+  "cases": [
+    { "utterance": "Atlas, status", "address": { "agent": "atlas" }, "intent": "status" },
+    { "utterance": "Atlas status", "address": { "agent": "atlas" }, "intent": "status" },
+    { "utterance": "What's Atlas doing?", "address": { "agent": "atlas" }, "intent": "status" },
+    { "utterance": "How is Borealis doing", "address": { "agent": "borealis" }, "intent": "status" },
+    { "utterance": "What's agent 2 doing?", "address": { "number": 2 }, "intent": "status" },
+    { "utterance": "Agent two, what's the status?", "address": { "number": 2 }, "intent": "status" },
+    { "utterance": "Juno, status please", "address": { "agent": "juno" }, "intent": "status" },
+    { "utterance": "Status", "address": null, "intent": "status" },
+    { "utterance": "What are you doing?", "address": null, "intent": "status" },
+    { "utterance": "What's it doing?", "address": null, "intent": "status" },
+    { "utterance": "List agents", "address": null, "intent": "list" },
+    { "utterance": "Please list the agents.", "address": null, "intent": "list" },
+    { "utterance": "Which agents are running?", "address": null, "intent": "list" },
+    { "utterance": "Show agents", "address": null, "intent": "list" },
+    { "utterance": "Atlas, read the last message", "address": { "agent": "atlas" }, "intent": "read_last" },
+    { "utterance": "What did Borealis say?", "address": { "agent": "borealis" }, "intent": "read_last" },
+    { "utterance": "Read the last message", "address": null, "intent": "read_last" },
+    { "utterance": "Show Atlas", "address": { "agent": "atlas" }, "intent": "show" },
+    { "utterance": "Switch to Borealis", "address": { "agent": "borealis" }, "intent": "show" },
+    { "utterance": "Atlas, show me", "address": { "agent": "atlas" }, "intent": "show" },
+    { "utterance": "Atlas, could you show me", "address": { "agent": "atlas" }, "intent": "show" },
+    { "utterance": "Atlas, approve", "address": { "agent": "atlas" }, "intent": "approve" },
+    { "utterance": "Deny", "address": null, "intent": "deny" },
+    { "utterance": "Borealis, reject it", "address": { "agent": "borealis" }, "intent": "deny" },
+    { "utterance": "Atlas, stop", "address": { "agent": "atlas" }, "intent": "interrupt" },
+    { "utterance": "Send it", "address": null, "intent": "send" },
+    { "utterance": "Cancel", "address": null, "intent": "cancel" },
+    { "utterance": "Never mind.", "address": null, "intent": "cancel" },
+    { "utterance": "Confirm", "address": null, "intent": "confirm" },
+    { "utterance": "Remember: the release branch freezes on Thursdays.", "address": null, "intent": "remember", "text": "The release branch freezes on Thursdays." },
+    { "utterance": "Recall what I decided about the release freeze", "address": null, "intent": "recall", "text": "What I decided about the release freeze" }
+  ]
+}
