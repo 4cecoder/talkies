@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: backup is disabled by allowBackup="false"; these rules also exclude transcript history. -->
+<full-backup-content>
+    <exclude domain="database" path="history.sqlite" />
+    <exclude domain="database" path="history.sqlite-wal" />
+    <exclude domain="database" path="history.sqlite-shm" />
+    <exclude domain="database" path="history.sqlite-journal" />
+</full-backup-content>

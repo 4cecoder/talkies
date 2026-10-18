@@ -30,6 +30,7 @@ class TalkiesInputMethodService : InputMethodService() {
     private var inputSession = 0
     private var inputViewGeneration = 0
     private var inputViewActive = false
+    private var historyAllowedForField = false
     private var statusView: TextView? = null
     private var recordButton: Button? = null
 
@@ -71,6 +72,7 @@ class TalkiesInputMethodService : InputMethodService() {
         super.onStartInputView(info, restarting)
         inputViewGeneration += 1
         inputViewActive = true
+        historyAllowedForField = info != null && KeyboardHistoryPolicy.allowsHistory(info.inputType, info.imeOptions)
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -157,8 +159,11 @@ class TalkiesInputMethodService : InputMethodService() {
                 val outcome = withContext(Dispatchers.Default) {
                     speechModels.chain.transcribe(requireNotNull(samples), preference)
                 }
-                var result = outcome.transcript.trim()
-                check(result.isNotBlank()) { "No speech recognized. Try again." }
+                val recognized = outcome.transcript.trim()
+                check(recognized.isNotBlank()) { "No speech recognized. Try again." }
+                var result = recognized
+                val durationMillis = pcmDurationMillis(requireNotNull(samples).size)
+                val saveToHistory = historyAllowedForField
 
                 val cleanupReady = settings.getBoolean("s1-mini-enabled", false) &&
                     withContext(Dispatchers.IO) { cleanupModelStore.isInstalled() }
@@ -186,6 +191,11 @@ class TalkiesInputMethodService : InputMethodService() {
                     error("The app did not accept the dictated text.")
                 }
                 updateControls(SpeechStatusText.inserted(outcome))
+                if (saveToHistory && result.isNotBlank()) {
+                    val entry = NewTranscript.of(result, recognized, outcome.engine, durationMillis)
+                    val appContext = applicationContext
+                    withContext(Dispatchers.IO) { TranscriptHistory.saveIfEnabled(appContext, settings, entry) }
+                }
             } catch (error: Exception) {
                 updateControls(error.message ?: "Dictation failed. Try again.")
             } finally {

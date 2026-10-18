@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -29,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +100,9 @@ class MainActivity : ComponentActivity() {
     private var cleanupContext by mutableStateOf(TranscriptContext.GENERAL)
     private var recording by mutableStateOf(false)
     private var transcribing by mutableStateOf(false)
+    private var historyEnabled by mutableStateOf(true)
+    private var showHistory by mutableStateOf(false)
+    private var confirmClearHistory by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,6 +117,7 @@ class MainActivity : ComponentActivity() {
         cleanupStyle = enumValueOrDefault(preferences.getString("s1-mini-style", null), TranscriptStyle.SEMI_FORMAL)
         cleanupStructure = enumValueOrDefault(preferences.getString("s1-mini-structure", null), TranscriptStructure.PROSE)
         cleanupContext = enumValueOrDefault(preferences.getString("s1-mini-context", null), TranscriptContext.GENERAL)
+        historyEnabled = TranscriptHistory.isEnabled(preferences)
         setContent {
             MaterialTheme {
                 val context = LocalContext.current
@@ -121,6 +127,10 @@ class MainActivity : ComponentActivity() {
                     if (granted) startRecording() else status = "Microphone permission is needed to dictate."
                 }
                 Surface(modifier = Modifier.fillMaxSize()) {
+                    if (showHistory) {
+                        HistoryScreen(TranscriptHistory.store(context)) { showHistory = false }
+                        return@Surface
+                    }
                     Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -314,6 +324,45 @@ class MainActivity : ComponentActivity() {
 
                         if (modelReady && !anyDownloadBusy() && !recording && !transcribing) {
                             OutlinedButton(onClick = { deleteModel() }) { Text("Delete Whisper tiny model") }
+                        }
+
+                        Text("Transcript history", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Finished dictations are saved on this device so you can find, copy, or delete them " +
+                                "later. Turning this off stops saving but keeps what is already saved.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(
+                                checked = historyEnabled,
+                                onCheckedChange = { enabled ->
+                                    historyEnabled = enabled
+                                    TranscriptHistory.setEnabled(preferences, enabled)
+                                }
+                            )
+                            Text("Save transcript history")
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(onClick = { showHistory = true }) { Text("View history") }
+                            OutlinedButton(onClick = { confirmClearHistory = true }) { Text("Clear history") }
+                        }
+                        if (confirmClearHistory) {
+                            AlertDialog(
+                                onDismissRequest = { confirmClearHistory = false },
+                                title = { Text("Clear transcript history?") },
+                                text = { Text("This permanently deletes every saved transcript on this device.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        confirmClearHistory = false
+                                        clearHistory(lifecycleScope, TranscriptHistory.store(context)) {
+                                            status = HistoryText.cleared(it)
+                                        }
+                                    }) { Text("Clear all") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { confirmClearHistory = false }) { Text("Cancel") }
+                                }
+                            )
                         }
 
                         TextField(
@@ -564,6 +613,19 @@ class MainActivity : ComponentActivity() {
                         recognized
                     }
                     transcript = appendTranscript(transcript, cleaned)
+                    if (cleaned.isNotBlank()) {
+                        val entry = NewTranscript.of(
+                            text = cleaned,
+                            rawText = recognized,
+                            engine = outcome.engine,
+                            durationMillis = pcmDurationMillis(requireNotNull(samples).size),
+                        )
+                        val appContext = applicationContext
+                        val preferences = getSharedPreferences(SpeechSettings.PREFERENCES, MODE_PRIVATE)
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            TranscriptHistory.saveIfEnabled(appContext, preferences, entry)
+                        }
+                    }
                     status = when {
                         cleanupFailed -> "Cleanup failed; kept the raw local ${outcome.engine.label} transcript."
                         cleanupEnabled && cleanupModelReady ->
