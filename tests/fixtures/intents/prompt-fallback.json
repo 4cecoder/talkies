@@ -1,0 +1,16 @@
+{
+  "grammar_version": 1,
+  "description": "A command is six words or fewer after the address. Anything longer, or anything outside the grammar, is prompt text, never a guessed command.",
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "aliases": [] }
+  ],
+  "cases": [
+    { "utterance": "Atlas, approve the budget for the new office building and send it to finance", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Approve the budget for the new office building and send it to finance" },
+    { "utterance": "Approve the pull request after you finish running all of the tests", "address": null, "intent": "prompt", "text": "Approve the pull request after you finish running all of the tests" },
+    { "utterance": "Atlas, stop using force unwraps in the parser", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Stop using force unwraps in the parser" },
+    { "utterance": "Atlas, remember to rebase before you push", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Remember to rebase before you push", "note": "With an address, remember is prompt text for the agent." },
+    { "utterance": "Atlas, cancel the migration and explain why", "address": { "agent": "atlas" }, "intent": "prompt", "text": "Cancel the migration and explain why" },
+    { "utterance": "Show the diff for the last commit", "address": null, "intent": "prompt", "text": "Show the diff for the last commit" },
+    { "utterance": "", "address": null, "intent": "prompt", "text": "" }
+  ]
+}

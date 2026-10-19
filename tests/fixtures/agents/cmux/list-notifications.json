@@ -1,0 +1,35 @@
+[
+  {
+    "body": "Fixed the flaky snapshot test and pushed the branch. All 212 tests pass.",
+    "created_at": "2026-10-18T18:41:40Z",
+    "id": "91F57007-DB32-5A0B-9C05-A5BF50742F29",
+    "is_read": false,
+    "subtitle": "Completed in atlas",
+    "surface_id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+    "tab_title": "Atlas",
+    "title": "Claude Code",
+    "workspace_id": "7773831C-DE1F-58C7-9EE3-2151D8BCE530"
+  },
+  {
+    "body": "Started on the flaky snapshot test.",
+    "created_at": "2026-10-18T18:01:02Z",
+    "id": "4B644D2D-7894-56B7-9E91-A31BDEB709AA",
+    "is_read": true,
+    "subtitle": "Working in atlas",
+    "surface_id": "9B766A7B-559D-54FF-A1ED-5F7E6414BFB1",
+    "tab_title": "Atlas",
+    "title": "Claude Code",
+    "workspace_id": "7773831C-DE1F-58C7-9EE3-2151D8BCE530"
+  },
+  {
+    "body": "May I run swift test?",
+    "created_at": "2026-10-18T18:30:00Z",
+    "id": "DBD9CC20-2D07-5E6D-91F0-334EA5237F84",
+    "is_read": false,
+    "subtitle": "Needs input in shared",
+    "surface_id": "82B0AF2B-36DD-5E20-BC27-066E3007981E",
+    "tab_title": "Shared",
+    "title": "Codex",
+    "workspace_id": "894ADB5D-53C3-5DFD-B85A-B622C0AEF24B"
+  }
+]

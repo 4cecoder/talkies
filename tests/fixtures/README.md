@@ -21,3 +21,14 @@ The local vocabulary prompt contract lives at
 All three desktop test suites use it to check trimming, empty-term removal,
 case-insensitive deduplication, first-spelling retention, and comma-separated
 Whisper prompt formatting.
+
+## Agent mode
+
+[`intents/`](intents/) holds the utterance-to-intent fixtures for the agent-mode grammar
+(version 1): addressing, short commands, recognizer misrecognitions such as "at last" for "Atlas",
+the six-word command limit, and dictation-mode cases that must be inserted verbatim. Each file
+lists its agents and its cases; macOS runs them in `AgentIntentFixtureTests`, and other platforms'
+parsers are expected to run the same files.
+
+[`agents/`](agents/) holds recorded connector output used by connector fakes. See
+[its README](agents/README.md).

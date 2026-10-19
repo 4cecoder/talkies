@@ -228,17 +228,9 @@ struct CompactRecordingView: View {
     }
 
     private func toggleRecording() {
-        if audioRecorder.isRecording {
-            audioRecorder.stopRecording()
-            // Transcription will be triggered via callback
-        } else {
-            // Setup callback to transcribe when recording stops
-            audioRecorder.onRecordingComplete = { [weak transcriptionService] audioURL in
-                transcriptionService?.setAudioFileURL(audioURL)
-            }
-            audioRecorder.startRecording()
-            transcriptionService.startTranscription()
-        }
+        // Use the app's capture path so this recording gets a dictation ticket bound to the
+        // focused field, like the hotkey and the floating panel.
+        (NSApp.delegate as? AppDelegate)?.toggleRecordingFromFloatingWindow()
     }
 }
 

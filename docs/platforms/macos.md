@@ -134,6 +134,9 @@ SQLite `LIKE`, which ignores case for ASCII letters only.
 - **AudioRecorder.swift**: AVFoundation-based audio recording
 - **TranscriptionService.swift**: transcription pipeline over the speech-runtime chain
 - **TalkiesInference**: speech-runtime chain (`SpeechRecognizerChain`), Phonon-2 and WhisperKit adapters, S1-mini model storage and llama.cpp CPU adapter
+- **TalkiesCore agent contracts**: `AgentConnector`, the agent-mode intent grammar (`AgentIntentParser`), name matching, and the safety gate, tested against `tests/fixtures/intents/`
+- **TalkiesConnectors**: the cmux connector, which drives the cmux CLI and is tested against recorded JSON in `tests/fixtures/agents/`
+- **AgentModeController.swift / AgentPanelView.swift**: agent-mode HUD, target picker, cancel window, and spoken replies
 - **RecordingView.swift**: Live recording interface
 - **TranscriptView.swift**: Transcript viewing and editing
 - **SettingsView.swift**: App configuration
@@ -151,6 +154,77 @@ If microphone access is denied:
 1. Open System Settings > Privacy & Security > Microphone
 2. Enable Talkies in the list
 3. Restart the app
+
+### Agent mode (cmux)
+
+Agent mode lets you talk to coding agents running in [cmux](https://cmux.com) without leaving the
+app you're in. It is off by default and uses its own key, so the dictation key keeps its current
+behavior and never runs commands. Command-shaped text dictated with the dictation key, such as
+"approve", is inserted as typed.
+
+1. Open Settings → **Agents**, turn on **Enable agent mode**, and choose an **Agent key**. No key is
+   set until you choose one, and it can't be the dictation key.
+2. Let Talkies reach cmux's socket. By default cmux accepts commands only from programs started
+   inside cmux, and Talkies shows "cmux only accepts commands from programs started inside cmux"
+   until you change that. In cmux, open Settings → Automation and set **Socket Control Mode** to
+   **Password mode**, then enter the same password in Talkies Settings → Agents. Talkies stores it in
+   the Keychain and passes it to the cmux CLI only through `CMUX_SOCKET_PASSWORD`, never as an
+   argument. **Automation mode** also works and needs no password. Use **Test Connection** to check;
+   it only lists agents.
+3. Hold the agent key while you speak, then release it. Start with an agent's name, or pick a target
+   from the HUD's target menu or the menu bar's **Agent Target** submenu. Agent mode is hold-to-talk
+   only. Nothing happens while you press the key: the HUD appears and the microphone opens only
+   after the key has been held alone for about a third of a second, so start speaking once the HUD
+   says it is listening. A tap, or a press that becomes a shortcut (another key, another modifier,
+   or a mouse click during the hold, such as ⌘V or ⌘-click), is dropped without showing, closing,
+   or recording anything.
+
+What you can say:
+
+| You say | What happens |
+|---|---|
+| "Atlas, run the tests" | Shows `To Atlas: "Run the tests"` with a two-second cancel window, then delivers it with `cmux agent message`. Press Esc or **Cancel** to stop it. |
+| "What's Atlas doing?", "Atlas, status", "agent 2 status" | Reads `surface.input_state` and shows and speaks a short status line. |
+| "List agents" | Lists cmux agents in order; the numbers work in "agent 2". |
+| "Atlas, read the last message" | Shows and speaks the agent's latest cmux notification, or recent screen text. |
+| "Show Atlas" | After the cancel window, selects that workspace and surface in cmux. |
+| "Approve", "deny", "stop", "remember …" | Refused for now with an explanation; answer permission prompts in cmux. |
+
+How targets work:
+
+- Talkies lists only surfaces cmux detects as agents. An agent alone in its workspace is named after
+  the workspace; agents that share a workspace are named after their tab.
+- Names are matched by spelling distance and a phonetic key, so "at last" finds Atlas. If two agents
+  match about equally well, Talkies asks "Which agent?" and never guesses.
+- A prompt without a name goes to the selected target. Saying a name also selects that agent.
+- Talkies refuses to deliver when the target has a draft or a question open, or isn't running an
+  agent, and says why. It never types into the terminal and never passes `--force`.
+- cmux is called with argument arrays through `Process`, never a shell, and prompt text goes to
+  `cmux agent message <surface> -` on standard input.
+
+Agent-mode text is parsed exactly as recognized. S1-mini cleanup and the Ollama and LM Studio
+plugins apply only to dictation, so a rewrite can't change what is sent or which command runs.
+Each recording keeps its own mode and insertion target from the moment its key is pressed, so a
+dictation that is still transcribing is inserted where you started it even if you press the agent
+key in the meantime.
+
+If you press the agent key or start dictating while a send is counting down, the send is held. It
+then waits for an explicit **Send now**, **Cancel**, or a spoken "send" or "cancel", and it is
+never sent automatically. A spoken "send" that names a different agent doesn't release it.
+
+Replies are spoken with the on-device `AVSpeechSynthesizer`; turn off **Speak status replies** to
+see them only in the HUD. Agent-mode utterances are saved to transcript history like other
+dictation, following the **Save transcript history** setting. They are stored as recognized,
+since agent mode skips cleanup.
+
+Agent mode uses no network connection. The cmux CLI is found at
+`/Applications/cmux.app/Contents/Resources/bin/cmux`, `~/Applications/cmux.app/…`, or on `PATH`.
+To run the read-only connector smoke test against a running cmux (from a cmux terminal or with
+external clients allowed), use:
+
+```sh
+cd mac && TALKIES_CMUX_SMOKE=1 swift test --filter CmuxLiveSmokeTests
+```
 
 ### Speech engines
 

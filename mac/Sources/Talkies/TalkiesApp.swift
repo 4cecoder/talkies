@@ -19,7 +19,7 @@ struct TalkiesApp: App {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let s1MiniCleaner = S1MiniCleaner()
     private let fallbackSpeechSynthesizer = AVSpeechSynthesizer()
     var statusItem: NSStatusItem?
@@ -35,8 +35,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isFloatingWindowCollapsed = true
     private let floatingPanelState = FloatingPanelState()
     var activationKeyWasPressed = false
-    private var insertionDestination: TextInsertionDestination?
+    /// Each recording's mode and insertion destination, bound at key press.
+    private var captures = CaptureLedger<TextInsertionDestination>()
     private var statusIconSubscriptions = Set<AnyCancellable>()
+
+    // Agent mode: a separate hotkey whose utterances go to agents, never into the focused field.
+    let agentController = AgentModeController()
+    /// The agent capture whose key is currently held.
+    private var activeAgentCapture: CaptureTicket?
+    /// Qualifies agent-key presses: nothing happens until the key is held alone long enough.
+    private var agentHold = AgentHoldGate()
+    var agentKeyWasPressed = false
+    private var agentEventMonitors: [Any] = []
+    private let agentTargetMenu = NSMenu(title: "Agent Target")
 
     // Settings service
     var settingsService = SettingsService.shared
@@ -79,6 +90,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let text = dictation.text
+                let ticket = dictation.ticket
+                // Route by the capture that produced this text, never by the key pressed last.
+                if let ticket {
+                    guard let mode = self.captures.mode(of: ticket) else { return } // discarded
+                    if mode == .agent {
+                        // Agent text is parsed as recognized: no S1-mini, Ollama, or LM Studio rewriting.
+                        self.finishAgentCapture(dictation, ticket: ticket)
+                        return
+                    }
+                }
                 var finalText = text
                 var cleanupFailed = false
                 let s1MiniEnabled = self.settingsService.settings.s1Mini?.isEnabled ?? false
@@ -112,6 +133,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     catch { cleanupFailed = true; print("⚠️ LM Studio enhancement failed: \(error.localizedDescription)") }
                 }
 
+                let destination: TextInsertionDestination?
+                switch ticket.map({ self.captures.finish($0, text: finalText) }) ?? .insert(finalText, destination: nil) {
+                case .insert(let routed, let routedDestination):
+                    finalText = routed
+                    destination = routedDestination
+                case .agent, .dropped:
+                    return
+                }
+
                 self.transcriptionService.currentText = finalText
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     self.transcriptionService.pipelineStage = .noSpeech
@@ -128,9 +158,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let shouldInsert = !voiceMode || self.settingsService.settings.insertTextInAssistantMode
                 if shouldInsert {
                     self.transcriptionService.pipelineStage = .insertingText
-                    let target = self.insertionDestination?.applicationName ?? "the previous app"
+                    let target = destination?.applicationName ?? "the previous app"
                     self.transcriptionService.statusMessage = "Returning to \(target)…"
-                    let result = await TextInserter.shared.insertTextAtCursor(finalText, into: self.insertionDestination)
+                    let result = await TextInserter.shared.insertTextAtCursor(finalText, into: destination)
                     switch result {
                     case .inserted(let applicationName):
                         self.transcriptionService.pipelineStage = cleanupFailed ? .cleanupFallback : .complete
@@ -165,6 +195,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup global keyboard shortcut (Cmd+Shift+Space)
         setupKeyboardShortcut()
+        setupAgentMode()
         setupFloatingWindowDismissal()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             self?.showWindow(expanded: false)
@@ -197,13 +228,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupStatusBarMenu() {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open Talkies", action: #selector(showWindowFromMenu), keyEquivalent: ""))
+        let agentTargetItem = NSMenuItem(title: "Agent Target", action: nil, keyEquivalent: "")
+        agentTargetMenu.delegate = self
+        agentTargetItem.submenu = agentTargetMenu
+        menu.addItem(agentTargetItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Talkies", action: #selector(quitApp), keyEquivalent: "q"))
 
         // Set target for menu items
-        for item in menu.items {
+        for item in menu.items where item.submenu == nil {
             item.target = self
         }
 
@@ -280,7 +315,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 get: { [weak self] in self?.isFloatingWindowCollapsed ?? true },
                 set: { [weak self] collapsed in self?.isFloatingWindowCollapsed = collapsed }
             )
-            let contentView = DictationView(panelState: floatingPanelState, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
+            let contentView = DictationView(panelState: floatingPanelState, agentController: agentController, isCollapsed: collapsedBinding, onToggleRecording: { [weak self] in
                 self?.toggleRecordingFromFloatingWindow()
             }, onResize: { [weak self] size in
                 self?.resizeFloatingWindow(to: size)
@@ -371,6 +406,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
             isFloatingWindowCollapsed = true
         }
+        agentController.isDictationInProgress = false
         resizeFloatingWindow(to: CGSize(width: 124, height: 38))
     }
 
@@ -430,6 +466,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var canCollapseFloatingWindow: Bool {
         guard !audioRecorder.isRecording else { return false }
+        switch agentController.phase {
+        case .pending, .working, .choosing: return false
+        case .idle, .listening, .notice: break
+        }
         switch transcriptionService.pipelineStage {
         case .idle, .complete, .cleanupFallback, .clipboardFallback, .noSpeech, .error:
             return true
@@ -444,11 +484,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let handler: (NSEvent) -> Void = { [weak self] event in
             let keyCode = event.keyCode
             let isPressed = event.modifierFlags.contains(.option)
+            let deviceFlags = event.modifierFlags.rawValue
 
             // Dispatch all main-actor-isolated property access to main thread
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 let selectedKeyCode = self.settingsService.settings.activationKey?.rawValue ?? ActivationKey.rightOption.rawValue
+                if let agentHotkey = self.agentHotkey {
+                    if Int(keyCode) == agentHotkey.keyCode {
+                        let agentKeyPressed = deviceFlags & agentHotkey.deviceFlagMask != 0
+                        if agentKeyPressed && !self.agentKeyWasPressed {
+                            self.agentKeyWasPressed = true
+                            self.agentKeyDown(agentHotkey, rawFlags: deviceFlags)
+                        } else if !agentKeyPressed && self.agentKeyWasPressed {
+                            self.agentKeyWasPressed = false
+                            self.agentKeyUp()
+                        }
+                        return
+                    }
+                    if self.agentKeyWasPressed, !agentHotkey.isSolePress(rawFlags: deviceFlags) {
+                        // Another modifier joined the hold: it's a shortcut, not an agent capture.
+                        self.agentHoldInterrupted()
+                    }
+                }
                 guard Int(keyCode) == selectedKeyCode else { return }
 
                 print("🔑 Activation key event - isPressed: \(isPressed), wasPressed: \(self.activationKeyWasPressed)")
@@ -553,28 +611,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         isWaitingForRelease = false
     }
 
-    func startRecordingWithCallback() {
+    @discardableResult
+    func startRecordingWithCallback(mode: CaptureMode = .dictation) -> CaptureTicket? {
         print("   startRecordingWithCallback - setting up callback")
 
         guard audioRecorder.hasPermission else {
             transcriptionService.pipelineStage = .requestingMicrophonePermission
             transcriptionService.statusMessage = "Allow microphone access, then try again."
             audioRecorder.requestMicrophonePermission()
-            return
+            return nil
         }
 
         // History holds key focus for its search field. Close it and hand focus back before
         // choosing where the transcript goes, so text never lands inside Talkies.
         let returnedDestination = closeTranscriptHistory()
-        insertionDestination = returnedDestination ?? TextInserter.shared.captureDestination()
         transcriptionService.currentText = ""
         transcriptionService.pipelineStage = .recording
-        transcriptionService.statusMessage = "Listening… audio stays on this Mac."
+        let ticket: CaptureTicket
+        let vocabulary: [String]
+        switch mode {
+        case .dictation:
+            ticket = captures.begin(.dictation, destination: returnedDestination ?? TextInserter.shared.captureDestination())
+            vocabulary = []
+            transcriptionService.statusMessage = "Listening… audio stays on this Mac."
+            agentController.dictationStarted()
+        case .agent:
+            // Agent mode never inserts text, so the focused field is not captured.
+            ticket = captures.begin(.agent)
+            vocabulary = agentController.spokenNames
+            transcriptionService.statusMessage = "Listening for an agent command… audio stays on this Mac."
+            agentController.beginListening()
+        }
 
         audioRecorder.onRecordingComplete = { [weak self] audioURL in
             print("   🎙️ Recording complete callback triggered")
-            self?.transcriptionService.pipelineStage = .transcribing
-            self?.transcriptionService.setAudioFileURL(audioURL)
+            guard let self else { return }
+            guard self.captures.mode(of: ticket) != nil else {
+                // A discarded capture (short tap or shortcut) is never transcribed.
+                try? FileManager.default.removeItem(at: audioURL)
+                return
+            }
+            self.transcriptionService.pipelineStage = .transcribing
+            self.transcriptionService.setAudioFileURL(audioURL, ticket: ticket, extraVocabulary: vocabulary)
         }
         print("   startRecordingWithCallback - calling audioRecorder.startRecording()")
         audioRecorder.startRecording()
@@ -582,11 +660,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let message = audioRecorder.errorMessage ?? "Could not start microphone recording."
             transcriptionService.pipelineStage = .error(message)
             transcriptionService.statusMessage = message
-            return
+            if captures.finishWithoutText(ticket) == .agent { agentController.captureEndedWithoutSpeech() }
+            return nil
         }
         print("   startRecordingWithCallback - calling transcriptionService.startTranscription()")
         transcriptionService.startTranscription()
         print("   startRecordingWithCallback - DONE")
+        return ticket
     }
 
     @objc func showSettings() {
@@ -618,6 +698,220 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.terminate(nil)
     }
 
+    // MARK: - Agent mode
+
+    /// The agent hotkey when agent mode is on and it is not the dictation key.
+    private var agentHotkey: AgentHotkey? {
+        guard let agentMode = settingsService.settings.agentMode, agentMode.isEnabled,
+              let hotkey = agentMode.hotkey else { return nil }
+        let dictationKey = settingsService.settings.activationKey ?? .rightOption
+        return hotkey.conflicts(with: dictationKey) ? nil : hotkey
+    }
+
+    /// Agent mode is hold-to-talk. Pressing the key has no visible effect: the HUD, history,
+    /// microphone, and any pending send are untouched until the hold qualifies (held alone for
+    /// `AgentHotkey.minimumHoldSeconds` with no other key, modifier, or mouse button).
+    private func agentKeyDown(_ hotkey: AgentHotkey, rawFlags: UInt) {
+        perform(agentHold.keyDown(isSolePress: hotkey.isSolePress(rawFlags: rawFlags), at: Date()))
+        // A small margin so the check never runs a hair before the hold qualifies.
+        DispatchQueue.main.asyncAfter(deadline: .now() + agentHold.minimumHold + 0.02) { [weak self] in
+            guard let self else { return }
+            self.perform(self.agentHold.tick(at: Date()))
+        }
+    }
+
+    private func agentKeyUp() {
+        perform(agentHold.keyUp(at: Date()))
+    }
+
+    /// Another key, modifier, or mouse button during the hold: this was a shortcut such as ⌘V.
+    private func agentHoldInterrupted() {
+        perform(agentHold.interrupted())
+    }
+
+    private func perform(_ action: AgentHoldGate.Action) {
+        switch action {
+        case .none:
+            break
+        case .startCapture:
+            startQualifiedAgentCapture()
+        case .finishCapture:
+            guard activeAgentCapture != nil else { return }
+            activeAgentCapture = nil
+            if audioRecorder.isRecording { audioRecorder.stopRecording() }
+        case .discardCapture:
+            guard let ticket = activeAgentCapture else { return }
+            activeAgentCapture = nil
+            discardAgentCapture(ticket)
+        }
+    }
+
+    private func startQualifiedAgentCapture() {
+        guard !audioRecorder.isRecording else {
+            // Never take over a capture in progress.
+            agentHold.captureUnavailable()
+            return
+        }
+        if floatingWindow == nil || floatingWindow?.isVisible == false {
+            showWindow()
+        } else {
+            expandWindow()
+        }
+        guard let ticket = startRecordingWithCallback(mode: .agent) else {
+            agentHold.captureUnavailable()
+            return
+        }
+        activeAgentCapture = ticket
+    }
+
+    private func discardAgentCapture(_ ticket: CaptureTicket) {
+        captures.cancel(ticket)
+        if audioRecorder.isRecording { audioRecorder.stopRecording() }
+        transcriptionService.pipelineStage = .idle
+        transcriptionService.statusMessage = "Ready to dictate"
+        agentController.captureEndedWithoutSpeech()
+        if !agentController.isActive { collapseWindow() }
+    }
+
+    private func setupAgentMode() {
+        // Any key pressed while the agent key is held marks the press as a shortcut. Otherwise
+        // Esc cancels a pending tier-1 send. Global key monitoring needs Accessibility approval;
+        // the HUD's Cancel button works without it.
+        let onKeyDown: (NSEvent) -> Void = { [weak self] event in
+            let isEscape = event.keyCode == 53
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.agentHold.state != .idle {
+                    self.agentHoldInterrupted()
+                } else if isEscape {
+                    self.agentController.cancelPending()
+                }
+            }
+        }
+        // A mouse button during the hold (⌘-click) is also a shortcut.
+        let onMouseDown: (NSEvent) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.agentHold.state != .idle else { return }
+                self.agentHoldInterrupted()
+            }
+        }
+        let mouseDown: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        for (mask, handler) in [(NSEvent.EventTypeMask.keyDown, onKeyDown), (mouseDown, onMouseDown)] {
+            if let monitor = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) {
+                agentEventMonitors.append(monitor)
+            }
+            if let monitor = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+                handler(event)
+                return event
+            }) {
+                agentEventMonitors.append(monitor)
+            }
+        }
+
+        // A capture with no usable speech, or a failed one, closes its own ticket.
+        transcriptionService.onTranscriptionEndedWithoutText = { [weak self] ticket in
+            Task { @MainActor [weak self] in
+                guard let self, let ticket, self.captures.finishWithoutText(ticket) == .agent else { return }
+                self.agentController.captureEndedWithoutSpeech()
+            }
+        }
+
+        settingsService.$settings
+            .map { _ in () }
+            .sink { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.agentController.agentKeyName = self.agentHotkey?.displayName
+                }
+            }
+            .store(in: &statusIconSubscriptions)
+
+        if settingsService.settings.agentMode?.isEnabled == true {
+            Task { await agentController.refreshAgents() }
+        }
+    }
+
+    /// Agent-mode text is parsed for an agent and is never inserted into the focused field.
+    /// It is still saved to transcript history like any dictation.
+    private func finishAgentCapture(_ dictation: RecognizedDictation, ticket: CaptureTicket) {
+        let recognized = dictation.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard case .agent(let trimmed) = captures.finish(ticket, text: recognized) else { return }
+        transcriptionService.currentText = trimmed
+        guard !trimmed.isEmpty else {
+            transcriptionService.pipelineStage = .noSpeech
+            transcriptionService.statusMessage = "No usable words were recognized. Try again."
+            agentController.captureEndedWithoutSpeech()
+            return
+        }
+        // Agent-mode utterances are saved to transcript history like any dictation.
+        transcriptionService.saveToHistory(finalText: trimmed, from: dictation)
+        transcriptionService.pipelineStage = .complete
+        transcriptionService.statusMessage = "Agent mode: \(trimmed)"
+        Task { await agentController.handle(trimmed) }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === agentTargetMenu else { return }
+        rebuildAgentTargetMenu()
+        guard settingsService.settings.agentMode?.isEnabled == true else { return }
+        Task { [weak self] in
+            guard let self, await self.agentController.refreshAgents() else { return }
+            self.rebuildAgentTargetMenu()
+        }
+    }
+
+    private func rebuildAgentTargetMenu() {
+        agentTargetMenu.removeAllItems()
+        guard settingsService.settings.agentMode?.isEnabled == true else {
+            let item = NSMenuItem(title: "Turn On Agent Mode in Settings…", action: #selector(showSettings), keyEquivalent: "")
+            item.target = self
+            agentTargetMenu.addItem(item)
+            return
+        }
+        if agentHotkey == nil {
+            let item = NSMenuItem(title: "Choose an Agent Key in Settings…", action: #selector(showSettings), keyEquivalent: "")
+            item.target = self
+            agentTargetMenu.addItem(item)
+            agentTargetMenu.addItem(.separator())
+        }
+        let agents = agentController.agents
+        if agents.isEmpty {
+            let item = NSMenuItem(title: agentController.lastListError ?? "No cmux agents found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            agentTargetMenu.addItem(item)
+        }
+        var lastWorkspace: String?
+        for (index, agent) in agents.enumerated() {
+            if index == 0 || agent.workspace != lastWorkspace {
+                if index > 0 { agentTargetMenu.addItem(.separator()) }
+                let header = NSMenuItem(title: agent.workspace ?? "cmux", action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                agentTargetMenu.addItem(header)
+                lastWorkspace = agent.workspace
+            }
+            let item = NSMenuItem(title: "\(index + 1). \(agent.name) · \(agent.status.spokenPhrase)", action: #selector(selectAgentTarget(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = agent.id
+            item.state = agent.id == agentController.selectedTargetID ? .on : .off
+            item.indentationLevel = 1
+            agentTargetMenu.addItem(item)
+        }
+        agentTargetMenu.addItem(.separator())
+        let refresh = NSMenuItem(title: "Refresh Agents", action: #selector(refreshAgentTargets), keyEquivalent: "")
+        refresh.target = self
+        agentTargetMenu.addItem(refresh)
+    }
+
+    @objc private func selectAgentTarget(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let agent = agentController.agents.first(where: { $0.id == id }) else { return }
+        agentController.select(agent)
+    }
+
+    @objc private func refreshAgentTargets() {
+        Task { await agentController.refreshAgents() }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Free S1-mini's Metal buffers before exit runs llama.cpp's static destructors,
         // which abort when model buffers are still allocated.
@@ -640,6 +934,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = localClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        for monitor in agentEventMonitors {
             NSEvent.removeMonitor(monitor)
         }
     }

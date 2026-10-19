@@ -20,6 +20,8 @@ struct AppSettings: Codable {
     /// Optional for backward compatibility; nil means on. Turning it off stops saving new
     /// transcripts but keeps existing history.
     var saveTranscriptHistory: Bool?
+    /// Optional for backward compatibility; nil means agent mode is off.
+    var agentMode: AgentModeSettings?
 
     // MARK: - Plugin Settings
     var ollama: OllamaSettings = OllamaSettings()
@@ -40,6 +42,7 @@ struct AppSettings: Codable {
         case s1Mini
         case speechEngine
         case saveTranscriptHistory
+        case agentMode
         case ollama
         case lmStudio
         case sentiment
@@ -53,6 +56,17 @@ struct S1MiniSettings: Codable {
     var style: TranscriptStyle = .semiFormal
     var structure: TranscriptStructure = .prose
     var context: TranscriptContext = .general
+}
+
+/// Agent mode: a separate hotkey whose utterances are parsed as agent commands or prompts.
+/// The dictation hotkey never parses commands. The cmux socket password is stored in the
+/// Keychain, not here.
+struct AgentModeSettings: Codable, Equatable {
+    var isEnabled: Bool = false
+    /// Unset until the user chooses one, so no ordinary shortcut starts an agent capture.
+    var hotkey: AgentHotkey?
+    /// Speak status replies with the on-device AVSpeechSynthesizer.
+    var speakReplies: Bool = true
 }
 
 // MARK: - Ollama Settings

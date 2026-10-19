@@ -6,7 +6,7 @@ pkgdesc='Private, on-device voice dictation (Whisper) for X11 and Wayland'
 arch=('x86_64')
 url='https://github.com/4cecoder/talkies'
 license=('MIT' 'BSD-3-Clause')
-depends=('gtk4' 'libpulse' 'sqlite' 'libx11' 'dbus' 'gcc-libs' 'glibc')
+depends=('gtk4' 'libpulse' 'sqlite' 'libx11' 'dbus' 'gcc-libs' 'glibc' 'curl')
 optdepends=('wl-clipboard: copy and paste on Wayland'
             'xclip: copy and paste on X11'
             'pipewire-pulse: audio capture through PipeWire')

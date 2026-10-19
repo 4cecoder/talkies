@@ -12,6 +12,7 @@ let package = Package(
     dependencies: [
         .package(path: "Packages/TalkiesCore"),
         .package(path: "Packages/TalkiesInference"),
+        .package(path: "Packages/TalkiesConnectors"),
         // DISABLED: KokoroSwift has Swift 6.2 compatibility bug in MisakiSwift dependency
         // .package(path: "/tmp/kokoro-ios")
     ],
@@ -27,6 +28,7 @@ let package = Package(
             dependencies: [
                 .product(name: "TalkiesCore", package: "TalkiesCore"),
                 .product(name: "TalkiesInference", package: "TalkiesInference"),
+                .product(name: "TalkiesConnectors", package: "TalkiesConnectors"),
                 "TalkiesAudio",
                 "TalkiesAccessibility",
                 // DISABLED: KokoroSwift has Swift 6.2 compatibility bug
@@ -40,6 +42,23 @@ let package = Package(
             name: "TalkiesCoreTests",
             dependencies: [.product(name: "TalkiesCore", package: "TalkiesCore")],
             path: "Tests/TalkiesCoreTests"
+        ),
+        .testTarget(
+            name: "TalkiesAppTests",
+            dependencies: [
+                "Talkies",
+                .product(name: "TalkiesCore", package: "TalkiesCore"),
+                .product(name: "TalkiesConnectors", package: "TalkiesConnectors"),
+            ],
+            path: "Tests/TalkiesAppTests"
+        ),
+        .testTarget(
+            name: "TalkiesConnectorsTests",
+            dependencies: [
+                .product(name: "TalkiesConnectors", package: "TalkiesConnectors"),
+                .product(name: "TalkiesCore", package: "TalkiesCore"),
+            ],
+            path: "Tests/TalkiesConnectorsTests"
         ),
         .testTarget(
             name: "TalkiesAccessibilityTests",

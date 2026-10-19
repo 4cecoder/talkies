@@ -41,7 +41,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null
           set -o pipefail
           "$SDKMANAGER" 'cmake;3.31.6' 'ndk;27.2.12479018'
-      - uses: gradle/actions/setup-gradle@v6.3.0
+      - uses: gradle/actions/setup-gradle@v6.4.0
       - name: Build debug APK
         working-directory: mobile/android
         run: ./gradlew --no-daemon assembleDebug :core:test :inference:testDebugUnitTest :app:testDebugUnitTest
@@ -71,7 +71,7 @@ jobs:
         working-directory: mobile/android
         run: ./gradlew --no-daemon :core:test :inference:testDebugUnitTest :app:testDebugUnitTest
       - name: Upload tested debug APK
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Talkies-Android-debug-${{ github.sha }}
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
