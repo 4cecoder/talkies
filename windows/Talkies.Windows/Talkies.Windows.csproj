@@ -27,7 +27,7 @@
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
     <!-- Transcript history. Brings SQLitePCLRaw.bundle_e_sqlite3 2.1.12 (Apache-2.0), whose
          lib.e_sqlite3 package ships the native e_sqlite3.dll (SQLite, public domain) per RID. -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
   </ItemGroup>
   <!-- CrispASR (MIT) runs Phonon-2 through its Parakeet TDT backend. There is no NuGet package, so the
        pinned upstream CPU release archive is downloaded once per version, verified, and its DLLs are
