@@ -19,7 +19,7 @@ before downloading models or troubleshooting microphone, permission, and inserti
 | macOS | Native Swift and SwiftUI; WhisperKit; Apple Silicon | Active |
 | Windows | Native .NET WPF; Whisper.net | Active |
 | Linux | Native Zig app; whisper.cpp; X11 and Wayland | Active; still maturing |
-| Android | Native Kotlin app; local dictation, voice input method, and SSH companion with Herdr/cmux agent inbox | Early access; SSH companion is new and not yet distributed as a signed release |
+| Android | Native Kotlin app; local dictation, voice input method, and SSH companion with Herdr/cmux agent inbox | Early access; [download the signed APK](https://github.com/4cecoder/talkies/releases/download/latest/Talkies-Android-latest.apk) |
 
 On first use, choose and download the local models you need. Model downloads are explicit and
 integrity-checked. Android downloads speech models separately and stores SSH host-key trust locally;

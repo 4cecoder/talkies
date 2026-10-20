@@ -6,6 +6,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val talkiesSigningStore = providers.environmentVariable("TALKIES_ANDROID_KEYSTORE_PATH").orNull
+
 android {
     namespace = "com.talkies.android"
     compileSdk = 36
@@ -15,10 +17,29 @@ android {
         // Fire OS 7 tablets are based on Android 9 (API 28); Fire OS 8 is API 30.
         minSdk = 28
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.5"
+        versionCode = providers.gradleProperty("talkiesVersionCode").orElse("2").get().toInt()
+        versionName = providers.gradleProperty("talkiesVersionName").orElse("0.1.5").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+
+    if (talkiesSigningStore != null) {
+        signingConfigs {
+            create("talkiesRelease") {
+                storeFile = file(talkiesSigningStore)
+                storePassword = providers.environmentVariable("TALKIES_ANDROID_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("TALKIES_ANDROID_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("TALKIES_ANDROID_KEY_PASSWORD").get()
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            if (talkiesSigningStore != null) {
+                signingConfig = signingConfigs.getByName("talkiesRelease")
+            }
+        }
     }
 
     buildFeatures { compose = true }
