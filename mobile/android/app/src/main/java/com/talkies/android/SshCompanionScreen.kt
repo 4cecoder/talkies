@@ -24,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -72,6 +73,7 @@ private val terminalAccent = Color(0xFF6FFFE9)
 internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate: ((String) -> Unit) -> Unit) {
     val appContext = context.applicationContext
     val store = remember(appContext) { AndroidSshHostProfileStore(appContext) }
+    val credentialStore = remember(appContext) { AndroidSshCredentialStore(appContext) }
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var profiles by remember { mutableStateOf(store.list()) }
@@ -86,6 +88,8 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
     var formError by remember { mutableStateOf<String?>(null) }
     var pendingProfile by remember { mutableStateOf<SshHostProfile?>(null) }
     var password by remember { mutableStateOf("") }
+    var rememberPassword by remember { mutableStateOf(false) }
+    var resolvingCredential by remember { mutableStateOf(false) }
     var connecting by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var cmuxSocketPassword by remember { mutableStateOf("") }
@@ -171,8 +175,12 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
         }
     }
 
-    fun connect(profile: SshHostProfile, secret: CharArray) {
-        if (connecting) return
+    fun connect(profile: SshHostProfile, secret: CharArray, savePassword: Boolean = false, storedPassword: Boolean = false) {
+        if (connecting) {
+            secret.fill('\u0000')
+            return
+        }
+        val passwordToStore = if (savePassword) secret.copyOf() else null
         connecting = true
         connectionError = null
         activeProfile = profile
@@ -192,8 +200,14 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                         mainHandler.post { hostTrust = HostTrustPrompt(message, answer) }
                     }
                 }
+                val saveError = passwordToStore?.let { savedPassword ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { credentialStore.save(profile, savedPassword) }.exceptionOrNull()
+                    }
+                }
                 terminal = next
                 connected = true
+                if (saveError != null) connectionError = "Connected, but the password could not be saved securely."
                 agents = emptyList()
                 selectedAgent = null
                 agentOutput = ""
@@ -215,8 +229,31 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
             } catch (error: Exception) {
                 connectionError = error.message?.take(400) ?: "SSH connection failed. Check the host and network."
                 connected = false
+                if (storedPassword && error.message?.contains("auth fail", ignoreCase = true) == true) {
+                    credentialStore.delete(profile.id)
+                    pendingProfile = profile
+                    password = ""
+                    rememberPassword = true
+                }
             } finally {
+                passwordToStore?.fill('\u0000')
                 connecting = false
+            }
+        }
+    }
+
+    fun openProfile(profile: SshHostProfile) {
+        pendingProfile = profile
+        password = ""
+        rememberPassword = false
+        connectionError = null
+        resolvingCredential = true
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { credentialStore.load(profile) }.getOrNull() }
+            resolvingCredential = false
+            if (saved != null) {
+                pendingProfile = null
+                connect(profile, saved, storedPassword = true)
             }
         }
     }
@@ -339,7 +376,7 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                                 DiscoveryRadar(scanning = scanningHosts, modifier = Modifier.size(96.dp))
                             }
                             Text(
-                                "SSH credentials stay private · passwords are never saved",
+                                "Passwords stay encrypted on this device · saving is optional",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -362,9 +399,7 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                                 if (profile != null) {
                                     if (savedProfile == null) store.save(profile)
                                     profiles = store.list()
-                                    pendingProfile = profile
-                                    password = ""
-                                    connectionError = null
+                                    openProfile(profile)
                                 } else {
                                     editId = null
                                     name = found.name
@@ -415,9 +450,7 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                         SavedHostCard(
                             profile = profile,
                             onConnect = {
-                                pendingProfile = profile
-                                password = ""
-                                connectionError = null
+                                openProfile(profile)
                             },
                             onEdit = {
                                 editId = profile.id
@@ -429,6 +462,7 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                                 editing = true
                             },
                             onRemove = {
+                                credentialStore.delete(profile.id)
                                 store.delete(profile.id)
                                 profiles = store.list()
                             },
@@ -457,7 +491,7 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                 if (!connected) {
                     Button(
                         enabled = !connecting,
-                        onClick = { pendingProfile = profile; password = "" },
+                        onClick = { openProfile(profile) },
                     ) { Text(if (connecting) "Reconnecting…" else "Reconnect") }
                 }
                 Text("WORKSPACE CONTROLS", style = MaterialTheme.typography.labelLarge, color = terminalAccent)
@@ -692,32 +726,39 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
 
     pendingProfile?.let { profile ->
         AlertDialog(
-            onDismissRequest = { pendingProfile = null; password = "" },
+            onDismissRequest = { pendingProfile = null; password = ""; rememberPassword = false },
             title = { Text("Connect to ${profile.name}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Password is used only for this connection and is not saved.")
+                    Text("Passwords are saved only when you choose to remember them. Saved passwords are encrypted with Android Keystore and excluded from device backup.")
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text("SSH password") },
+                        enabled = !resolvingCredential && !connecting,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                         singleLine = true,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = rememberPassword, onCheckedChange = { rememberPassword = it })
+                        Text("Remember password on this device")
+                    }
+                    if (resolvingCredential) Text("Checking for a saved password…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     connectionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {
                 TextButton(enabled = !connecting && password.isNotEmpty(), onClick = {
                     val secret = password.toCharArray()
+                    val savePassword = rememberPassword
                     password = ""
-                    connect(profile, secret)
+                    connect(profile, secret, savePassword = savePassword)
                 }) {
                     Text(if (connecting) "Connecting…" else "Connect")
                 }
             },
-            dismissButton = { TextButton(onClick = { pendingProfile = null; password = "" }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingProfile = null; password = ""; rememberPassword = false }) { Text("Cancel") } },
         )
     }
 

@@ -25,9 +25,12 @@ A runtime is skipped when its model is missing or fails verification, or when it
 ### Cleanup, keyboard, and supported devices
 
 Talkies also includes an Android remote companion for Linux development sessions. Add a host name,
-address, SSH port, and username, then connect with a password that is requested for each session and
-never saved. New SSH host keys are shown for explicit trust-on-first-use approval and stored in the
-app-private `known_hosts` file; changed keys fail closed. The embedded ConnectBot/libvterm terminal
+address, SSH port, and username. SSH passwords are requested on first connection, then can be
+remembered with an explicit opt-in. Saved passwords are encrypted with an Android Keystore key,
+bound to the host profile, and stored outside device backup; reconnects use them without another
+prompt. Removing a host also removes its saved password. New SSH host keys are shown for explicit
+trust-on-first-use approval and stored in the app-private `known_hosts` file; changed keys fail
+closed. The embedded ConnectBot/libvterm terminal
 supports interactive shells, terminal resizing and colors, and reconnecting to long-lived sessions
 such as Herdr with `herdr session list` or `herdr session attach`. The local **Dictate** control
 transcribes on-device and types into the shell without Enter, so the user reviews before running it.
@@ -80,7 +83,7 @@ cd mobile/android
 ./gradlew assembleRelease :inference:testReleaseUnitTest :app:testReleaseUnitTest
 ```
 
-Requires JDK 17, Android SDK API 36, CMake 3.31.6, and NDK 27.2. Android runtime support starts at API 28. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtimes and their license notices but omit model weights, and uploads the tested debug APK as a seven-day artifact. Core JVM tests cover transcript spacing, bounded PCM behavior, the shared cleanup prompt/output contract, and speech-engine selection and fallback. Inference module tests cover pinned model integrity and verified installation for Whisper tiny and Phonon-2, including its attribution files. App tests cover speech-engine status and download-size text, history text, and the keyboard's password and incognito exclusion. Core tests cover the history schema, row rules, UUIDs, search escaping, and keyset paging. `SqliteTranscriptHistoryStoreTest` runs the SQLite store on the emulator in a throwaway database: WAL mode, schema, paging, literal search, delete, and clear. `LocalPhononOfflineAcceptanceTest` runs real Phonon-2 recognition with networking disabled when `files/models/Phonon-2-<revision>/` and `files/fixtures/jfk.wav` are pre-provisioned, and is skipped otherwise. API 28 emulator acceptance verifies real Whisper transcription and S1-mini transcript cleanup with external networking disabled. The app includes the whisper.cpp, llama.cpp, CrispASR, and CrispASR ggml MIT license notices. It retains S1-mini's upstream Apache 2.0 files and Phonon-2's CC-BY-4.0 files beside their separately downloaded weights.
+Requires JDK 17, Android SDK API 36, CMake 3.31.6, and NDK 27.2. Android runtime support starts at API 28. Android CI builds and tests both debug and release variants, checks that the APKs contain the native runtimes and their license notices but omit model weights, and uploads the tested debug APK as a seven-day artifact. Core JVM tests cover transcript spacing, bounded PCM behavior, the shared cleanup prompt/output contract, and speech-engine selection and fallback. Inference module tests cover pinned model integrity and verified installation for Whisper tiny and Phonon-2, including its attribution files. App tests cover speech-engine status and download-size text, history text, and the keyboard's password and incognito exclusion. The emulator's `AndroidSshCredentialStoreTest` verifies Android Keystore encryption, profile binding, and credential deletion. Core tests cover the history schema, row rules, UUIDs, search escaping, and keyset paging. `SqliteTranscriptHistoryStoreTest` runs the SQLite store on the emulator in a throwaway database: WAL mode, schema, paging, literal search, delete, and clear. `LocalPhononOfflineAcceptanceTest` runs real Phonon-2 recognition with networking disabled when `files/models/Phonon-2-<revision>/` and `files/fixtures/jfk.wav` are pre-provisioned, and is skipped otherwise. API 28 emulator acceptance verifies real Whisper transcription and S1-mini transcript cleanup with external networking disabled. The app includes the whisper.cpp, llama.cpp, CrispASR, and CrispASR ggml MIT license notices. It retains S1-mini's upstream Apache 2.0 files and Phonon-2's CC-BY-4.0 files beside their separately downloaded weights.
 
 ## Deprecated Flutter prototype
 
