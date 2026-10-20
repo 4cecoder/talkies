@@ -30,6 +30,15 @@ app-private `known_hosts` file; changed keys fail closed. The embedded ConnectBo
 supports interactive shells, terminal resizing and colors, and reconnecting to long-lived sessions
 such as Herdr with `herdr session list` or `herdr session attach`. The local **Dictate** control
 transcribes on-device and types into the shell without Enter, so the user reviews before running it.
+The companion scans the remote host for Herdr agents and cmux terminal surfaces, shows their state
+across selectable running Herdr sessions and cmux workspaces, and displays recent output. You can
+dictate into a separate prompt composer. Talkies refreshes the
+target before sending; Herdr prompts are refused unless the agent is idle, and cmux delivery checks
+that the target is still an agent with no open draft or dialog. Sending is always an explicit user
+action after reviewing the prompt. cmux discovery requires its CLI and socket permissions on the
+remote Mac; its optional socket password is held in memory and forwarded through an SSH environment
+request, so the remote sshd must allow `CMUX_SOCKET_PASSWORD` with `AcceptEnv`. Herdr state is read
+through its machine-readable CLI.
 This initial remote transport supports SSH; Mosh transport and Android background-session survival
 remain follow-up work. SSH transport and terminal UI run behind an app-layer boundary so either can
 be changed without touching speech recognition or transcript policy.
@@ -40,8 +49,7 @@ unaltered, does not add terminal text to transcript history, and inserts the tra
 pressing Enter. The keyboard status makes the destination clear and reminds the user to review the
 text before sending it. Moshi, Termux, ConnectBot, JuiceSSH, and common SSH/terminal package names
 are recognized. This works with the local speech models and does not send audio or transcript text
-to a service. Connecting directly to remote hosts and displaying Herdr sessions inside Talkies is a
-additional companion features remain tracked in Kanban; the current app can already dictate into SSH
+to a service. Additional companion features remain tracked in Kanban; the app can also dictate into SSH
 terminal apps through the Android input method. See the [agent-aware dictation architecture](../architecture/agent-aware-dictation.md)
 for the desktop and mobile roadmap.
 

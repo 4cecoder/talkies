@@ -633,7 +633,7 @@ class MainActivity : ComponentActivity() {
                         remoteDictationInProgress = false
                         if (remoteSink != null) {
                             remoteSink(TerminalInputPolicy.stage(recognized))
-                            status = "Local dictation inserted in the remote shell for review. Press Enter to run it."
+                            status = "Local dictation delivered without submission. Review it before continuing."
                         }
                     } else {
                         var cleanupFailed = false
