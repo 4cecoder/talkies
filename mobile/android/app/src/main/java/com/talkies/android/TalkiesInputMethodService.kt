@@ -6,9 +6,26 @@ import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,15 +42,14 @@ class TalkiesInputMethodService : InputMethodService() {
     private lateinit var speechModels: LocalSpeechModels
     private lateinit var cleanupModelStore: S1MiniModelStore
     private lateinit var cleanupCleaner: TranscriptCleaner
-    private var recording = false
-    private var processing = false
+    private var recording by mutableStateOf(false)
+    private var processing by mutableStateOf(false)
     private var inputSession = 0
     private var inputViewGeneration = 0
     private var inputViewActive = false
     private var historyAllowedForField = false
     private var destination = DictationDestination.GENERAL
-    private var statusView: TextView? = null
-    private var recordButton: Button? = null
+    private var keyboardStatus by mutableStateOf("Ready for private, on-device dictation")
 
     override fun onCreate() {
         super.onCreate()
@@ -45,20 +61,41 @@ class TalkiesInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(16, 12, 16, 12)
+        val root = ComposeView(this).apply {
+            setContent {
+                TalkiesTheme {
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("TALKIES · PRIVATE VOICE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                Text(
+                                    keyboardStatus,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Button(
+                                enabled = !processing,
+                                onClick = { onRecordButtonPressed() },
+                            ) {
+                                Text(if (recording) "■  Stop" else "●  Speak")
+                            }
+                            IconButton(
+                                onClick = { requestHideSelf(0) },
+                                modifier = Modifier.size(44.dp).semantics { contentDescription = "Hide Talkies keyboard" },
+                            ) {
+                                TalkiesGlyph(TalkiesGlyphKind.HIDE, MaterialTheme.colorScheme.secondary, Modifier.size(24.dp))
+                            }
+                        }
+                    }
+                }
+            }
         }
-        statusView = TextView(this).apply {
-            text = "Talkies offline voice typing"
-            gravity = android.view.Gravity.CENTER_VERTICAL
-        }
-        recordButton = Button(this).apply {
-            text = "Record"
-            setOnClickListener { onRecordButtonPressed() }
-        }
-        root.addView(statusView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(recordButton)
         updateControls("Ready")
         return root
     }
@@ -142,7 +179,6 @@ class TalkiesInputMethodService : InputMethodService() {
                 updateControls(error.message ?: "Could not start microphone")
             } finally {
                 processing = false
-                recordButton?.isEnabled = true
             }
         }
     }
@@ -216,18 +252,12 @@ class TalkiesInputMethodService : InputMethodService() {
             } finally {
                 samples?.fill(0f)
                 processing = false
-                recordButton?.text = "Record"
-                recordButton?.isEnabled = true
             }
         }
     }
 
     private fun updateControls(message: String) {
-        statusView?.text = message
-        recordButton?.apply {
-            isEnabled = !processing
-            text = if (recording) "Stop" else "Record"
-        }
+        keyboardStatus = message
     }
 
     private fun readyStatus(): String = when (destination) {

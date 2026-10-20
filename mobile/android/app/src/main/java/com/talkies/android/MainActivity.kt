@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -40,6 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,6 +109,7 @@ class MainActivity : ComponentActivity() {
     private var showHistory by mutableStateOf(false)
     private var showRemoteCompanion by mutableStateOf(false)
     private var confirmClearHistory by mutableStateOf(false)
+    private var pendingMicrophoneAction by mutableStateOf<(() -> Unit)?>(null)
     private var remoteDictationSink: ((String) -> Unit)? = null
     private var remoteDictationInProgress = false
 
@@ -115,6 +121,7 @@ class MainActivity : ComponentActivity() {
         )
         cleanupCleaner = S1MiniCleaner(cleanupModelStore)
         val preferences = getSharedPreferences(SpeechSettings.PREFERENCES, MODE_PRIVATE)
+        val permissionPreferences = getSharedPreferences("permission-flow", MODE_PRIVATE)
         enginePreference = SpeechSettings.enginePreference(preferences)
         cleanupEnabled = preferences.getBoolean("s1-mini-enabled", false)
         cleanupStyle = enumValueOrDefault(preferences.getString("s1-mini-style", null), TranscriptStyle.SEMI_FORMAL)
@@ -122,12 +129,69 @@ class MainActivity : ComponentActivity() {
         cleanupContext = enumValueOrDefault(preferences.getString("s1-mini-context", null), TranscriptContext.GENERAL)
         historyEnabled = TranscriptHistory.isEnabled(preferences)
         setContent {
-            MaterialTheme {
+            TalkiesTheme {
                 val context = LocalContext.current
+                var showMicrophoneExplanation by remember { mutableStateOf(false) }
+                var showMicrophoneSettings by remember { mutableStateOf(false) }
+                var keyboardEnabled by remember { mutableStateOf(false) }
+                var keyboardSelected by remember { mutableStateOf(false) }
+                var microphoneAllowed by remember {
+                    mutableStateOf(checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                }
+                var microphonePermissionAsked by remember {
+                    mutableStateOf(permissionPreferences.getBoolean("microphone-asked", false))
+                }
+                fun refreshKeyboardStatus() {
+                    val inputMethods = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                    keyboardEnabled = inputMethods.enabledInputMethodList.any {
+                        it.packageName == packageName && it.serviceName.endsWith("TalkiesInputMethodService")
+                    }
+                    val currentMethod = android.provider.Settings.Secure.getString(
+                        contentResolver,
+                        android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
+                    )
+                    keyboardSelected = keyboardEnabled && currentMethod?.endsWith("TalkiesInputMethodService") == true
+                    microphoneAllowed = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                }
+                LaunchedEffect(Unit) { refreshKeyboardStatus() }
+                DisposableEffect(lifecycle) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) refreshKeyboardStatus()
+                        if (event == Lifecycle.Event.ON_RESUME &&
+                            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            pendingMicrophoneAction?.let { continuation ->
+                                pendingMicrophoneAction = null
+                                showMicrophoneSettings = false
+                                continuation()
+                            }
+                        }
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
                 val requestPermission = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { granted ->
-                    if (granted) startRecording() else status = "Microphone permission is needed to dictate."
+                    if (granted) {
+                        val continuation = pendingMicrophoneAction
+                        pendingMicrophoneAction = null
+                        continuation?.invoke()
+                    }
+                    else {
+                        status = "Microphone access is needed for dictation. You can allow it in Android Settings."
+                        if (!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) && microphonePermissionAsked) {
+                            showMicrophoneSettings = true
+                        } else pendingMicrophoneAction = null
+                    }
+                }
+                fun requestMicrophone(continuation: () -> Unit) {
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        continuation()
+                    } else {
+                        pendingMicrophoneAction = continuation
+                        showMicrophoneExplanation = true
+                    }
                 }
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (showHistory) {
@@ -138,6 +202,8 @@ class MainActivity : ComponentActivity() {
                         SshCompanionScreen(
                             context = context,
                             onBack = {
+                                pendingMicrophoneAction = null
+                                showMicrophoneExplanation = false
                                 if (recording) { audioCapture.cancel(); recording = false }
                                 remoteDictationSink = null
                                 if (!transcribing) remoteDictationInProgress = false
@@ -148,9 +214,11 @@ class MainActivity : ComponentActivity() {
                                     status = "Finish the current dictation or download a speech model before recording again."
                                     return@SshCompanionScreen
                                 }
-                                remoteDictationSink = sink
-                                remoteDictationInProgress = true
-                                startRecording()
+                                requestMicrophone {
+                                    remoteDictationSink = sink
+                                    remoteDictationInProgress = true
+                                    startRecording()
+                                }
                             },
                         )
                         return@Surface
@@ -159,28 +227,38 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Text("Talkies", style = MaterialTheme.typography.headlineLarge)
-                        Text("Private, on-device dictation", style = MaterialTheme.typography.titleMedium)
-                        Text(status, style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.fillMaxWidth()
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(androidx.compose.ui.graphics.Color(0xFF103D3A), androidx.compose.ui.graphics.Color(0xFF202448), androidx.compose.ui.graphics.Color(0xFF171526)),
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
+                                )
+                                .padding(22.dp),
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("TALKIES  /  LOCAL INTELLIGENCE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                Text("Your voice.\nYour machine.", style = MaterialTheme.typography.headlineLarge)
+                                Text("Private dictation, flowing into every app.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                            }
+                        }
 
                         OutlinedButton(onClick = { showRemoteCompanion = true }) {
                             Text("Remote companion · SSH / Herdr")
                         }
 
-                        Text("Type by voice in any app", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Enable Talkies voice typing as a keyboard, grant microphone access here, then select Talkies from your keyboard switcher. Dictation and optional S1-mini cleanup run on-device and insert into the focused field.",
-                            style = MaterialTheme.typography.bodySmall
+                        KeyboardSetupCard(
+                            enabled = keyboardEnabled,
+                            selected = keyboardSelected,
+                            microphoneAllowed = microphoneAllowed,
+                            onEnable = { startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS)) },
+                            onSelect = {
+                                (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
+                            },
+                            onAllowMicrophone = { requestMicrophone {} },
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(onClick = {
-                                startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
-                            }) { Text("Enable keyboard") }
-                            OutlinedButton(onClick = {
-                                (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                                    .showInputMethodPicker()
-                            }) { Text("Select keyboard") }
-                        }
 
                         Text("Speech engine", style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -339,9 +417,7 @@ class MainActivity : ComponentActivity() {
                             Button(
                                 enabled = dictationEngines.isNotEmpty() && !recording && !transcribing && !anyDownloadBusy(),
                                 onClick = {
-                                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                        startRecording()
-                                    } else requestPermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    requestMicrophone { startRecording() }
                                 }
                             ) { Text("Record") }
                             OutlinedButton(enabled = recording, onClick = { stopRecording() }) { Text("Stop") }
@@ -406,6 +482,48 @@ class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
+                }
+                if (showMicrophoneExplanation) {
+                    AlertDialog(
+                        onDismissRequest = { showMicrophoneExplanation = false; pendingMicrophoneAction = null },
+                        title = { Text("Microphone access") },
+                        text = {
+                            Text(
+                                "Talkies records only after you tap a dictation action. Audio stays in memory " +
+                                    "on this device and is used by your selected local speech model. Android " +
+                                    "needs microphone permission before recording can begin.",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showMicrophoneExplanation = false
+                                microphonePermissionAsked = true
+                                permissionPreferences.edit().putBoolean("microphone-asked", true).apply()
+                                requestPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }) { Text("Continue") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showMicrophoneExplanation = false; pendingMicrophoneAction = null }) {
+                                Text("Not now")
+                            }
+                        },
+                    )
+                }
+                if (showMicrophoneSettings) {
+                    AlertDialog(
+                        onDismissRequest = { showMicrophoneSettings = false },
+                        title = { Text("Allow microphone in Settings") },
+                        text = { Text("Android has blocked another permission prompt. Open Talkies app settings and allow Microphone, then return and try again.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showMicrophoneSettings = false
+                                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = android.net.Uri.fromParts("package", packageName, null)
+                                })
+                            }) { Text("Open Settings") }
+                        },
+                        dismissButton = { TextButton(onClick = { showMicrophoneSettings = false }) { Text("Cancel") } },
+                    )
                 }
             }
         }
