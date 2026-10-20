@@ -1,6 +1,7 @@
 # Mobile
 
 For model setup and offline first-run checks, see the [first-run and troubleshooting guide](first-run-and-troubleshooting.md).
+Download the signed Android APK from the [latest Talkies release](https://github.com/4cecoder/talkies/releases/download/latest/Talkies-Android-latest.apk).
 
 ## Android (primary): native Kotlin with local Phonon-2 and Whisper
 
