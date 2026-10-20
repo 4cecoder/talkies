@@ -1,9 +1,10 @@
 'use client';
 
 import { Apple, ArrowUpRight, Check, Monitor, ShieldCheck, Smartphone, Terminal } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Header } from '@/app/components/sections/Header';
 import { Footer } from '@/app/components/sections/Footer';
-import { FIRST_RUN_URL, platforms, RELEASES_URL, type PlatformId } from '@/app/lib/site';
+import { ANDROID_APK_URL, FIRST_RUN_URL, platforms, RELEASES_URL, type PlatformId } from '@/app/lib/site';
 import { usePlatform } from '@/app/lib/usePlatform';
 
 const icons: Record<PlatformId, typeof Apple> = {
@@ -68,6 +69,26 @@ export default function DownloadPage() {
                       </li>
                     ))}
                   </ul>
+                  {platform.id === 'android' && detected !== 'android' && (
+                    <div className="mt-7 flex items-center gap-4 rounded-2xl border border-line bg-surface-2 p-4 sm:gap-5 sm:p-5">
+                      <div className="shrink-0 rounded-xl bg-white p-2.5" aria-label="QR code for the Talkies Android APK">
+                        <QRCodeSVG
+                          value={ANDROID_APK_URL}
+                          size={116}
+                          level="Q"
+                          bgColor="#ffffff"
+                          fgColor="#111111"
+                          title="Scan to download the Talkies Android APK"
+                        />
+                      </div>
+                      <div>
+                        <h3 className="text-[15px] font-semibold text-fg">Install from your phone</h3>
+                        <p className="mt-1 text-[13px] leading-relaxed text-fg-2">
+                          Scan with your phone camera to open the Android APK download.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-7 flex flex-col gap-2 sm:flex-row">
                     <a
                       href={platform.href}
