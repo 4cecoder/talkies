@@ -120,7 +120,7 @@ pub const DaemonState = struct {
 
     // Clarification phase state
     clarification_questions: ?[]ClarificationQuestion,
-    clarification_answers: std.ArrayListUnmanaged(ClarificationAnswer),
+    clarification_answers: std.ArrayList(ClarificationAnswer),
     clarification_mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, ws_server: *websocket.Server) DaemonState {

@@ -16,10 +16,10 @@ pub const Sandbox = struct {
     yapping: []const u8,
 
     // Refinement history (newest last)
-    revisions: std.ArrayListUnmanaged(Revision),
+    revisions: std.ArrayList(Revision),
 
     // Conversation context for LLM
-    conversation: std.ArrayListUnmanaged(Message),
+    conversation: std.ArrayList(Message),
 
     pub const Revision = struct {
         text: []const u8,
@@ -54,8 +54,8 @@ pub const Sandbox = struct {
         system_prompt: []const u8,
         io: std.Io,
     ) !Sandbox {
-        const revisions: std.ArrayListUnmanaged(Revision) = .empty;
-        var conversation: std.ArrayListUnmanaged(Message) = .empty;
+        const revisions: std.ArrayList(Revision) = .empty;
+        var conversation: std.ArrayList(Message) = .empty;
 
         // Add system prompt to conversation
         const system_msg = Message{
@@ -333,7 +333,7 @@ pub const Sandbox = struct {
         clarification_answers: ?[]const daemon_ws.ClarificationAnswer,
     ) ![]const u8 {
         // Build prompt with context + yapping + clarification answers
-        var prompt_parts: std.ArrayListUnmanaged([]const u8) = .empty;
+    var prompt_parts: std.ArrayList([]const u8) = .empty;
         defer {
             for (prompt_parts.items) |part| {
                 self.allocator.free(part);
@@ -417,7 +417,7 @@ fn parseClarificationResponse(
     allocator: std.mem.Allocator,
     response: []const u8,
 ) ![]daemon_ws.ClarificationQuestion {
-    var questions: std.ArrayListUnmanaged(daemon_ws.ClarificationQuestion) = .empty;
+    var questions: std.ArrayList(daemon_ws.ClarificationQuestion) = .empty;
     errdefer {
         for (questions.items) |*q| {
             var mutable_q = q.*;
@@ -430,7 +430,7 @@ fn parseClarificationResponse(
     var current_question: ?struct {
         id: []const u8,
         text: []const u8,
-        options: std.ArrayListUnmanaged([]const u8),
+        options: std.ArrayList([]const u8),
     } = null;
 
     while (lines.next()) |line| {
