@@ -32,6 +32,7 @@ const yap_sessions = @import("yap_sessions.zig");
 const yap_window = @import("yap_window.zig");
 const history = @import("history.zig");
 const updater = @import("updater.zig");
+const companion_discovery = @import("companion_discovery.zig");
 const trigger_mod = @import("trigger.zig");
 const build_options = @import("build_options");
 
@@ -516,12 +517,14 @@ pub const Daemon = struct {
     yap_sb: ?*yap_sandbox.Sandbox = null,
     yap_session_manager: ?*yap_sessions.SessionManager = null,
     yap_session_id: ?i64 = null,
+    companion_publisher: companion_discovery.Publisher = .{},
 
     // -----------------------------------------------------------------
     // Lifecycle
     // -----------------------------------------------------------------
 
     fn deinit(self: *Daemon) void {
+        self.companion_publisher.stop();
         if (self.capture) |cap| {
             cap.stop_requested.store(true, .release);
             cap.thread.join();
@@ -2351,6 +2354,9 @@ pub fn run(allocator: std.mem.Allocator) !?[]u8 {
     defer daemon.deinit();
 
     try daemon.cfg.load();
+    // The publisher is optional and process-scoped. Android can discover a
+    // reachable SSH daemon without manual host/port entry when Avahi is used.
+    daemon.companion_publisher = companion_discovery.Publisher.start(allocator);
     daemon.cleanup_service.threads = daemon.cfg.threads;
     // Opened even while saving is off, so the history page can show (and
     // delete) what was saved before.

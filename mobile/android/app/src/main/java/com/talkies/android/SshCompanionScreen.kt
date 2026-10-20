@@ -1,18 +1,22 @@
 package com.talkies.android
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -20,15 +24,22 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +48,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.ImeAction
@@ -47,6 +61,7 @@ import org.connectbot.terminal.TerminalEmulatorFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
@@ -58,9 +73,12 @@ private val terminalAccent = Color(0xFF6FFFE9)
 internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate: ((String) -> Unit) -> Unit) {
     val appContext = context.applicationContext
     val store = remember(appContext) { AndroidSshHostProfileStore(appContext) }
+    val credentialStore = remember(appContext) { AndroidSshCredentialStore(appContext) }
     val scope = rememberCoroutineScope()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var profiles by remember { mutableStateOf(store.list()) }
+    var discoveredHosts by remember { mutableStateOf(emptyList<DiscoveredSshHost>()) }
+    var scanningHosts by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var editId by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
@@ -70,6 +88,8 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
     var formError by remember { mutableStateOf<String?>(null) }
     var pendingProfile by remember { mutableStateOf<SshHostProfile?>(null) }
     var password by remember { mutableStateOf("") }
+    var rememberPassword by remember { mutableStateOf(false) }
+    var resolvingCredential by remember { mutableStateOf(false) }
     var connecting by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
     var cmuxSocketPassword by remember { mutableStateOf("") }
@@ -79,7 +99,6 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
     var activeProfile by remember { mutableStateOf<SshHostProfile?>(null) }
     var terminal by remember { mutableStateOf<SshTerminalSession?>(null) }
     var connected by remember { mutableStateOf(false) }
-    var dictateAfterPermission by remember { mutableStateOf(false) }
     var agents by remember { mutableStateOf<List<RemoteAgent>>(emptyList()) }
     var herdrSessions by remember { mutableStateOf(listOf(HerdrSession("default", true, true))) }
     var selectedHerdrSession by remember { mutableStateOf("default") }
@@ -91,6 +110,20 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
     var agentError by remember { mutableStateOf<String?>(null) }
     var confirmPrompt by remember { mutableStateOf(false) }
     var dictationForAgent by remember { mutableStateOf(true) }
+    val hostDiscovery = remember(appContext) { SshHostDiscovery(appContext) }
+    DisposableEffect(hostDiscovery) { onDispose { hostDiscovery.close() } }
+    fun scanHosts() {
+        scanningHosts = true
+        hostDiscovery.start { discoveredHosts = it }
+    }
+    LaunchedEffect(hostDiscovery) { scanHosts() }
+    LaunchedEffect(scanningHosts) {
+        if (scanningHosts) {
+            delay(8_000)
+            hostDiscovery.stop()
+            scanningHosts = false
+        }
+    }
     val terminalEmulator = remember {
         TerminalEmulatorFactory.create(
             looper = Looper.getMainLooper(),
@@ -121,20 +154,6 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
             terminalForCleanup?.close()
         }
     }
-    val requestMicrophone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && dictateAfterPermission) {
-            onDictate { text ->
-                val safeText = TerminalInputPolicy.stage(text)
-                if (safeText.isNotEmpty()) {
-                    if (dictationForAgent && selectedAgent != null) {
-                        promptDraft = listOf(promptDraft.trim(), safeText).filter(String::isNotEmpty).joinToString(" ")
-                    } else insertWithoutSubmit(terminalEmulator, safeText)
-                }
-            }
-        }
-        dictateAfterPermission = false
-    }
-
     suspend fun refreshAgents(session: SshTerminalSession) {
         if (agentBusy) return
         agentBusy = true
@@ -156,8 +175,12 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
         }
     }
 
-    fun connect(profile: SshHostProfile, secret: CharArray) {
-        if (connecting) return
+    fun connect(profile: SshHostProfile, secret: CharArray, savePassword: Boolean = false, storedPassword: Boolean = false) {
+        if (connecting) {
+            secret.fill('\u0000')
+            return
+        }
+        val passwordToStore = if (savePassword) secret.copyOf() else null
         connecting = true
         connectionError = null
         activeProfile = profile
@@ -177,8 +200,14 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                         mainHandler.post { hostTrust = HostTrustPrompt(message, answer) }
                     }
                 }
+                val saveError = passwordToStore?.let { savedPassword ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { credentialStore.save(profile, savedPassword) }.exceptionOrNull()
+                    }
+                }
                 terminal = next
                 connected = true
+                if (saveError != null) connectionError = "Connected, but the password could not be saved securely."
                 agents = emptyList()
                 selectedAgent = null
                 agentOutput = ""
@@ -200,8 +229,31 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
             } catch (error: Exception) {
                 connectionError = error.message?.take(400) ?: "SSH connection failed. Check the host and network."
                 connected = false
+                if (storedPassword && error.message?.contains("auth fail", ignoreCase = true) == true) {
+                    credentialStore.delete(profile.id)
+                    pendingProfile = profile
+                    password = ""
+                    rememberPassword = true
+                }
             } finally {
+                passwordToStore?.fill('\u0000')
                 connecting = false
+            }
+        }
+    }
+
+    fun openProfile(profile: SshHostProfile) {
+        pendingProfile = profile
+        password = ""
+        rememberPassword = false
+        connectionError = null
+        resolvingCredential = true
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { credentialStore.load(profile) }.getOrNull() }
+            resolvingCredential = false
+            if (saved != null) {
+                pendingProfile = null
+                connect(profile, saved, storedPassword = true)
             }
         }
     }
@@ -245,57 +297,134 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
             return
         }
         dictationForAgent = true
-        dictateAfterPermission = true
-        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            onDictate { text ->
-                val clean = TerminalInputPolicy.stage(text)
-                if (clean.isNotEmpty()) promptDraft = listOf(promptDraft.trim(), clean).filter(String::isNotEmpty).joinToString(" ")
-            }
-            dictateAfterPermission = false
-        } else requestMicrophone.launch(Manifest.permission.RECORD_AUDIO)
+        onDictate { text ->
+            val clean = TerminalInputPolicy.stage(text)
+            if (clean.isNotEmpty()) promptDraft = listOf(promptDraft.trim(), clean).filter(String::isNotEmpty).joinToString(" ")
+        }
     }
 
     fun dictateToShell() {
         dictationForAgent = false
-        dictateAfterPermission = true
-        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            onDictate { text ->
-                val clean = TerminalInputPolicy.stage(text)
-                if (clean.isNotEmpty()) insertWithoutSubmit(terminalEmulator, clean)
-            }
-            dictateAfterPermission = false
-        } else requestMicrophone.launch(Manifest.permission.RECORD_AUDIO)
+        onDictate { text ->
+            val clean = TerminalInputPolicy.stage(text)
+            if (clean.isNotEmpty()) insertWithoutSubmit(terminalEmulator, clean)
+        }
     }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = terminalAccent,
-            secondary = Color(0xFFB69CFF),
-            background = Color(0xFF070B14),
-            surface = Color(0xFF111827),
-            onPrimary = Color(0xFF071018),
-            onBackground = terminalForeground,
-            onSurface = terminalForeground,
-            error = Color(0xFFFF718B),
-        ),
-    ) {
+    TalkiesTheme {
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxSize()
+                .then(if (activeProfile == null) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text("FIELD LINK", style = MaterialTheme.typography.labelLarge, color = terminalAccent)
-                    Text("Remote companion", style = MaterialTheme.typography.headlineSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("TALKIES  /  FIELD LINK", style = MaterialTheme.typography.labelMedium, color = terminalAccent)
+                    Text("Remote workspace", style = MaterialTheme.typography.titleLarge)
                 }
-                TextButton(onClick = { disconnect(); onBack() }) { Text("Back") }
+                TextButton(onClick = { disconnect(); onBack() }) { Text("Close") }
             }
 
             if (activeProfile == null) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("SSH HOSTS", style = MaterialTheme.typography.titleMedium)
-                    Button(onClick = {
+                Card(
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF103D3A), Color(0xFF202448), Color(0xFF171526)),
+                                ),
+                            )
+                            .padding(20.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("SECURE LINK  /  SSH", style = MaterialTheme.typography.labelLarge, color = terminalAccent)
+                                LinkStateBadge(
+                                    label = if (scanningHosts) "SCANNING" else if (discoveredHosts.isEmpty()) "STANDBY" else "${discoveredHosts.size} FOUND",
+                                    active = scanningHosts || discoveredHosts.isNotEmpty(),
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("Your work,\nwithin reach.", style = MaterialTheme.typography.headlineMedium)
+                                    Text(
+                                        "Nearby workstations, one secure link away.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (scanningHosts) {
+                                                hostDiscovery.stop()
+                                                scanningHosts = false
+                                            } else scanHosts()
+                                        },
+                                        shape = RoundedCornerShape(16.dp),
+                                    ) {
+                                        Text(if (scanningHosts) "Stop scan" else "Find nearby machines")
+                                    }
+                                }
+                                DiscoveryRadar(scanning = scanningHosts, modifier = Modifier.size(96.dp))
+                            }
+                            Text(
+                                "Passwords stay encrypted on this device · saving is optional",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (discoveredHosts.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("NEARBY MACHINES", style = MaterialTheme.typography.labelLarge, color = terminalAccent)
+                        Text("${discoveredHosts.size} found", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        discoveredHosts.forEach { found ->
+                            NearbyHostCard(host = found) {
+                                val savedProfile = profiles.firstOrNull {
+                                    it.host.equals(found.host, ignoreCase = true) && it.port == found.port
+                                }
+                                val commonUsername = profiles.map { it.username }.distinct().singleOrNull()
+                                val profile = savedProfile ?: found.toProfile(commonUsername)
+                                if (profile != null) {
+                                    if (savedProfile == null) store.save(profile)
+                                    profiles = store.list()
+                                    openProfile(profile)
+                                } else {
+                                    editId = null
+                                    name = found.name
+                                    host = found.host
+                                    port = found.port.toString()
+                                    username = ""
+                                    formError = "Enter the SSH username for this machine."
+                                    editing = true
+                                }
+                            }
+                        }
+                    }
+                } else if (!scanningHosts) {
+                    Text(
+                        "No SSH services advertised yet. You can still add a host manually; a saved host appears here next time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("YOUR MACHINES", style = MaterialTheme.typography.titleMedium)
+                        Text("Saved secure connections", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    OutlinedButton(onClick = {
                         editId = null
                         name = ""
                         host = ""
@@ -305,17 +434,11 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                         editing = true
                     }) { Text("Add host") }
                 }
-                Text(
-                    "Save destinations, then connect to a Linux shell and continue an existing Herdr session. " +
-                        "Talkies never stores your password or sends dictated text to run automatically.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text("Transport: SSH · Mosh is not configured in this build", style = MaterialTheme.typography.labelSmall)
                 Column(
-                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (profiles.isEmpty()) {
+                    if (profiles.isEmpty() && discoveredHosts.isEmpty()) {
                         Card {
                             Text(
                                 "No hosts yet. Add your Linux machine’s SSH address to get started.",
@@ -324,53 +447,54 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                         }
                     }
                     profiles.forEach { profile ->
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(profile.name, style = MaterialTheme.typography.titleMedium)
-                                Text("${profile.username}@${profile.host}:${profile.port}", style = MaterialTheme.typography.bodySmall)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        pendingProfile = profile
-                                        password = ""
-                                        connectionError = null
-                                    }) { Text("Connect") }
-                                    OutlinedButton(onClick = {
-                                        editId = profile.id
-                                        name = profile.name
-                                        host = profile.host
-                                        port = profile.port.toString()
-                                        username = profile.username
-                                        formError = null
-                                        editing = true
-                                    }) { Text("Edit") }
-                                    TextButton(onClick = {
-                                        store.delete(profile.id)
-                                        profiles = store.list()
-                                    }) { Text("Remove") }
-                                }
-                            }
-                        }
+                        SavedHostCard(
+                            profile = profile,
+                            onConnect = {
+                                openProfile(profile)
+                            },
+                            onEdit = {
+                                editId = profile.id
+                                name = profile.name
+                                host = profile.host
+                                port = profile.port.toString()
+                                username = profile.username
+                                formError = null
+                                editing = true
+                            },
+                            onRemove = {
+                                credentialStore.delete(profile.id)
+                                store.delete(profile.id)
+                                profiles = store.list()
+                            },
+                        )
                     }
                 }
             } else {
                 val profile = requireNotNull(activeProfile)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text(profile.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            if (connected) "CONNECTED · HOST VERIFIED" else "DISCONNECTED",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (connected) terminalAccent else MaterialTheme.colorScheme.error,
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(profile.name, style = MaterialTheme.typography.titleLarge)
+                        Text("${profile.username}@${profile.host}:${profile.port}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    OutlinedButton(onClick = { disconnect() }) { Text("Disconnect") }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinkStateBadge(
+                            label = when { connecting -> "LINKING"; connected -> "VERIFIED"; else -> "OFFLINE" },
+                            active = connected || connecting,
+                        )
+                        if (connected) TextButton(onClick = { disconnect() }) { Text("Disconnect") }
+                    }
                 }
                 if (!connected) {
                     Button(
                         enabled = !connecting,
-                        onClick = { pendingProfile = profile; password = "" },
+                        onClick = { openProfile(profile) },
                     ) { Text(if (connecting) "Reconnecting…" else "Reconnect") }
                 }
+                Text("WORKSPACE CONTROLS", style = MaterialTheme.typography.labelLarge, color = terminalAccent)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(enabled = connected, onClick = { send("herdr session list\r") }) { Text("Herdr sessions") }
                     OutlinedButton(enabled = connected, onClick = { insertWithoutSubmit(terminalEmulator, "herdr session attach ") }) {
@@ -383,8 +507,8 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text("AGENT INBOX", style = MaterialTheme.typography.titleMedium)
-                        Text("Herdr · cmux · live state", style = MaterialTheme.typography.labelSmall, color = terminalAccent)
+                        Text("AGENT SIGNALS", style = MaterialTheme.typography.titleMedium)
+                        Text("Herdr + cmux · live host scan", style = MaterialTheme.typography.labelSmall, color = terminalAccent)
                     }
                     Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedButton(enabled = connected, onClick = { cmuxAuthDraft = cmuxSocketPassword; showCmuxAuth = true }) {
@@ -602,32 +726,39 @@ internal fun SshCompanionScreen(context: Context, onBack: () -> Unit, onDictate:
 
     pendingProfile?.let { profile ->
         AlertDialog(
-            onDismissRequest = { pendingProfile = null; password = "" },
+            onDismissRequest = { pendingProfile = null; password = ""; rememberPassword = false },
             title = { Text("Connect to ${profile.name}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Password is used only for this connection and is not saved.")
+                    Text("Passwords are saved only when you choose to remember them. Saved passwords are encrypted with Android Keystore and excluded from device backup.")
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text("SSH password") },
+                        enabled = !resolvingCredential && !connecting,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                         singleLine = true,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = rememberPassword, onCheckedChange = { rememberPassword = it })
+                        Text("Remember password on this device")
+                    }
+                    if (resolvingCredential) Text("Checking for a saved password…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     connectionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {
                 TextButton(enabled = !connecting && password.isNotEmpty(), onClick = {
                     val secret = password.toCharArray()
+                    val savePassword = rememberPassword
                     password = ""
-                    connect(profile, secret)
+                    connect(profile, secret, savePassword = savePassword)
                 }) {
                     Text(if (connecting) "Connecting…" else "Connect")
                 }
             },
-            dismissButton = { TextButton(onClick = { pendingProfile = null; password = "" }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingProfile = null; password = ""; rememberPassword = false }) { Text("Cancel") } },
         )
     }
 
@@ -657,6 +788,117 @@ private fun agentStateLabel(state: AgentLifeState): String = when (state) {
     AgentLifeState.WORKING -> "WORKING"
     AgentLifeState.NEEDS_INPUT -> "NEEDS YOU"
     AgentLifeState.UNKNOWN -> "STATE UNKNOWN"
+}
+
+@Composable
+private fun LinkStateBadge(label: String, active: Boolean) {
+    val tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(50),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(Modifier.size(6.dp).background(tint, RoundedCornerShape(50)))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
+        }
+    }
+}
+
+@Composable
+private fun NearbyHostCard(host: DiscoveredSshHost, onConnect: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, end = 10.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(42.dp).background(Color(0xFF17383B), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                TalkiesGlyph(TalkiesGlyphKind.SERVER, terminalAccent, Modifier.size(26.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(host.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(
+                    "${host.username?.let { "$it@" } ?: ""}${host.host}:${host.port}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                Text("SSH SERVICE FOUND", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+            Button(onClick = onConnect, shape = RoundedCornerShape(14.dp)) { Text("Connect") }
+        }
+    }
+}
+
+@Composable
+private fun SavedHostCard(
+    profile: SshHostProfile,
+    onConnect: () -> Unit,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(42.dp).background(Color(0xFF282448), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                    TalkiesGlyph(TalkiesGlyphKind.TERMINAL, MaterialTheme.colorScheme.secondary, Modifier.size(26.dp))
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(profile.name, style = MaterialTheme.typography.titleMedium)
+                    Text("${profile.username}@${profile.host}:${profile.port}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                LinkStateBadge("SAVED", active = true)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = onConnect, shape = RoundedCornerShape(14.dp)) { Text("Connect securely") }
+                TextButton(onClick = onEdit) { Text("Edit") }
+                TextButton(onClick = onRemove) { Text("Remove") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiscoveryRadar(scanning: Boolean, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "discovery-radar")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
+        label = "radar-sweep",
+    )
+    Canvas(modifier) {
+        val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+        val radius = size.minDimension * 0.44f
+        val lineColor = if (scanning) terminalAccent else Color(0xFF54778B)
+        listOf(0.38f, 0.68f, 1f).forEach { fraction ->
+            drawCircle(lineColor.copy(alpha = if (scanning) 0.34f else 0.2f), radius * fraction, center, style = Stroke(1.2.dp.toPx()))
+        }
+        drawLine(lineColor.copy(alpha = 0.28f), androidx.compose.ui.geometry.Offset(center.x - radius, center.y), androidx.compose.ui.geometry.Offset(center.x + radius, center.y), strokeWidth = 1.dp.toPx())
+        drawLine(lineColor.copy(alpha = 0.28f), androidx.compose.ui.geometry.Offset(center.x, center.y - radius), androidx.compose.ui.geometry.Offset(center.x, center.y + radius), strokeWidth = 1.dp.toPx())
+        rotate(angle, center) {
+            drawArc(
+                brush = Brush.sweepGradient(listOf(Color.Transparent, terminalAccent.copy(alpha = 0.6f), Color.Transparent), center),
+                startAngle = -35f,
+                sweepAngle = 70f,
+                useCenter = true,
+                topLeft = androidx.compose.ui.geometry.Offset(center.x - radius, center.y - radius),
+                size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+            )
+        }
+        drawCircle(terminalAccent, radius = 3.dp.toPx(), center = center)
+        drawCircle(Color(0xFFB69CFF), radius = 2.dp.toPx(), center = androidx.compose.ui.geometry.Offset(center.x + radius * 0.4f, center.y - radius * 0.45f))
+    }
 }
 
 private data class HostTrustPrompt(val message: String, val answer: CompletableFuture<Boolean>)

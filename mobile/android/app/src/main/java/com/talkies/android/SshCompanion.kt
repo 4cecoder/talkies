@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.nio.CharBuffer
 
-/** Local, non-secret connection profiles. Passwords are requested for each connection, never saved. */
+/** Local connection profiles. SSH passwords live separately in Android Keystore-backed storage. */
 internal class AndroidSshHostProfileStore(context: Context) : SshHostProfileStore {
     private val preferences = context.getSharedPreferences("ssh-hosts", Context.MODE_PRIVATE)
 

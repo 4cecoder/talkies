@@ -18,14 +18,25 @@ across platforms, see the
   screen, a live panel while you dictate, searchable transcript history saved on this computer, and a
   status tray icon.
 - **Works across desktops**: GNOME, KDE Plasma, Hyprland, Sway and X11 window managers.
+- **Android companion discovery**: when Avahi and a network-reachable SSH server are available,
+  Talkies advertises this computer so the Android companion can find it without manual host entry.
 - **`talkies doctor`** checks audio, microphone, hotkey, typing, clipboard, tray and model, and
   tells you how to fix anything that isn't ready.
 
 Ollama and LM Studio cleanup only accept `localhost`, `127.0.0.0/8` or `::1` endpoints. Remote
 endpoints are rejected and HTTP redirects are disabled, so transcripts never leave the machine.
 
-Besides the model downloads you ask for, the only network request Talkies makes is the update
-check described in [Updates](#updates), which sends no user data and can be turned off.
+Besides the model downloads you ask for, Talkies makes no outbound Internet requests except the
+update check described in [Updates](#updates), which sends no user data and can be turned off. When
+enabled, companion discovery is a local-network DNS-SD announcement only.
+
+For Android companion discovery, install and run Avahi (`avahi-daemon` and
+`avahi-publish-service`) and enable an SSH server on the desktop. Talkies publishes the SSH service
+only while its daemon is running and only when `ss` reports a non-loopback SSH listener. It advertises
+the service as `_ssh._tcp` with a `talkies=1` marker, allowing the Android companion to prefill the
+host and port. The default SSH port is 22; set `TALKIES_SSH_PORT` in the Talkies daemon environment
+when sshd listens on a different port. Discovery is optional and does not affect Talkies when Avahi,
+`ss`, or SSH is unavailable.
 
 ## Install
 
