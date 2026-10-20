@@ -6,6 +6,8 @@ import com.jcraft.jsch.JSch
 import com.jcraft.jsch.UserInfo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -114,6 +116,62 @@ internal class SshTerminalSession private constructor(
         }
     }
 
+    fun runCommand(
+        command: String,
+        standardInput: ByteArray? = null,
+        environment: Map<String, String> = emptyMap(),
+    ): String {
+        check(!closed && session.isConnected) { "SSH connection is closed. Reconnect to continue." }
+        require(environment.keys.all { it == "CMUX_SOCKET_PASSWORD" }) { "Only the cmux socket password may be forwarded over SSH." }
+        require(environment.values.all { value -> value.length <= MAX_CMUX_PASSWORD_LENGTH && value.none { it == '\u0000' || it == '\r' || it == '\n' } }) {
+            "Invalid SSH environment value."
+        }
+        val channel = session.openChannel("exec") as com.jcraft.jsch.ChannelExec
+        val stdout = channel.inputStream
+        val stderr = ByteArrayOutputStream()
+        channel.setErrStream(stderr)
+        channel.setCommand(command)
+        channel.setInputStream(standardInput?.let(::ByteArrayInputStream))
+        environment.forEach { (key, value) ->
+            channel.setEnv(key, value)
+        }
+        try {
+            channel.connect(10_000)
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(4096)
+            val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(25)
+            while (!channel.isClosed) {
+                while (stdout.available() > 0) {
+                    val count = stdout.read(buffer, 0, minOf(buffer.size, stdout.available()))
+                    if (count > 0) {
+                        check(output.size() + count <= MAX_COMMAND_OUTPUT_BYTES) { "Remote agent output exceeded the 1 MiB limit." }
+                        output.write(buffer, 0, count)
+                    }
+                }
+                if (System.nanoTime() >= deadline) {
+                    throw java.net.SocketTimeoutException("Remote agent command timed out.")
+                }
+                Thread.sleep(20)
+            }
+            while (stdout.available() > 0) {
+                val count = stdout.read(buffer, 0, minOf(buffer.size, stdout.available()))
+                if (count > 0) {
+                    check(output.size() + count <= MAX_COMMAND_OUTPUT_BYTES) { "Remote agent output exceeded the 1 MiB limit." }
+                    output.write(buffer, 0, count)
+                }
+            }
+            val text = output.toString(StandardCharsets.UTF_8.name())
+            if (channel.exitStatus != 0) {
+                val reason = stderr.toString(StandardCharsets.UTF_8.name()).trim().take(300)
+                throw IllegalStateException(reason.ifEmpty { "Remote command failed (exit ${channel.exitStatus})." })
+            }
+            return text
+        } finally {
+            channel.disconnect()
+            stdout.close()
+        }
+    }
+
     override fun close() {
         closed = true
         shell.disconnect()
@@ -121,6 +179,9 @@ internal class SshTerminalSession private constructor(
     }
 
     companion object {
+        private const val MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
+        private const val MAX_CMUX_PASSWORD_LENGTH = 4096
+
         fun connect(
             context: Context,
             profile: SshHostProfile,
