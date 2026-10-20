@@ -3,6 +3,7 @@
 
 export const GITHUB_REPO_URL = 'https://github.com/4cecoder/talkies';
 export const RELEASES_URL = `${GITHUB_REPO_URL}/releases/latest`;
+export const ANDROID_APK_URL = `${GITHUB_REPO_URL}/releases/download/latest/Talkies-Android-latest.apk`;
 export const ISSUES_URL = `${GITHUB_REPO_URL}/issues`;
 export const NEW_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new/choose`;
 export const DISCUSSIONS_URL = `${GITHUB_REPO_URL}/discussions`;
@@ -63,12 +64,12 @@ export const platforms: PlatformInfo[] = [
   {
     id: 'android',
     name: 'Android',
-    status: 'Early access',
-    tone: 'warn',
+    status: 'Early access · signed APK',
+    tone: 'ok',
     stack: 'Kotlin and Compose · whisper.cpp',
     requirements: ['Android 9 (API 28) or newer', 'Includes Fire OS 7 and 8 tablets', 'Voice-typing keyboard'],
-    href: docsUrl('docs/platforms/mobile.md'),
-    cta: 'Read the Android guide',
+    href: ANDROID_APK_URL,
+    cta: 'Download Android APK',
     guide: docsUrl('docs/platforms/mobile.md'),
   },
 ];

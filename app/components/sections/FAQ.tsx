@@ -18,7 +18,7 @@ const faqs: { question: string; answer: React.ReactNode }[] = [
     answer: (
       <>
         Use the one you type on. macOS, Windows and Linux have native builds on GitHub Releases; Linux is newer and still
-        maturing. Android is in early access and is not yet distributed as a signed release. See the{' '}
+        maturing. Android is in early access with a signed APK on the download page. See the{' '}
         <Ext href={ROADMAP_URL}>roadmap</Ext> for current status.
       </>
     ),

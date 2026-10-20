@@ -23,7 +23,6 @@ export function Platforms() {
         <ul className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {platforms.map((platform, index) => {
             const Icon = icons[platform.id];
-            const isGuide = platform.id === 'android';
             return (
               <li
                 key={platform.id}
@@ -58,9 +57,7 @@ export function Platforms() {
                   href={platform.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`mt-6 inline-flex h-10 items-center justify-center gap-1.5 rounded-full text-[14px] font-medium transition-[opacity,background-color] ${
-                    isGuide ? 'border border-line-strong text-fg hover:bg-surface-2' : 'bg-cta text-cta-fg hover:opacity-90'
-                  }`}
+                  className="mt-6 inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-cta text-[14px] font-medium text-cta-fg transition-[opacity,background-color] hover:opacity-90"
                 >
                   {platform.cta}
                   <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />

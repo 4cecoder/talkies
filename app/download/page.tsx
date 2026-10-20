@@ -81,17 +81,15 @@ export default function DownloadPage() {
                       <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                       <span className="sr-only"> (opens GitHub in a new tab)</span>
                     </a>
-                    {platform.id !== 'android' && (
-                      <a
-                        href={platform.guide}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-11 items-center justify-center rounded-full border border-line-strong px-5 text-[15px] font-medium text-fg transition-colors hover:bg-surface-2"
-                      >
-                        Setup guide
-                        <span className="sr-only"> for {platform.name} (opens GitHub in a new tab)</span>
-                      </a>
-                    )}
+                    <a
+                      href={platform.guide}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-line-strong px-5 text-[15px] font-medium text-fg transition-colors hover:bg-surface-2"
+                    >
+                      Setup guide
+                      <span className="sr-only"> for {platform.name} (opens GitHub in a new tab)</span>
+                    </a>
                   </div>
                 </li>
               );
