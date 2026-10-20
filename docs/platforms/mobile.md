@@ -23,6 +23,28 @@ A runtime is skipped when its model is missing or fails verification, or when it
 
 ### Cleanup, keyboard, and supported devices
 
+Talkies also includes an Android remote companion for Linux development sessions. Add a host name,
+address, SSH port, and username, then connect with a password that is requested for each session and
+never saved. New SSH host keys are shown for explicit trust-on-first-use approval and stored in the
+app-private `known_hosts` file; changed keys fail closed. The embedded ConnectBot/libvterm terminal
+supports interactive shells, terminal resizing and colors, and reconnecting to long-lived sessions
+such as Herdr with `herdr session list` or `herdr session attach`. The local **Dictate** control
+transcribes on-device and types into the shell without Enter, so the user reviews before running it.
+This initial remote transport supports SSH; Mosh transport and Android background-session survival
+remain follow-up work. SSH transport and terminal UI run behind an app-layer boundary so either can
+be changed without touching speech recognition or transcript policy.
+
+When Talkies is selected as the Android keyboard inside a recognized terminal app, it uses a
+terminal-aware dictation path: it skips optional LLM cleanup to keep agent prompts and code symbols
+unaltered, does not add terminal text to transcript history, and inserts the transcript without
+pressing Enter. The keyboard status makes the destination clear and reminds the user to review the
+text before sending it. Moshi, Termux, ConnectBot, JuiceSSH, and common SSH/terminal package names
+are recognized. This works with the local speech models and does not send audio or transcript text
+to a service. Connecting directly to remote hosts and displaying Herdr sessions inside Talkies is a
+additional companion features remain tracked in Kanban; the current app can already dictate into SSH
+terminal apps through the Android input method. See the [agent-aware dictation architecture](../architecture/agent-aware-dictation.md)
+for the desktop and mobile roadmap.
+
 The user explicitly downloads at least one speech model before dictating. Optional cleanup is a separate, opt-in S1-mini download (484,219,808 bytes, about 462 MiB). All models are revision-pinned and SHA-256 verified; the S1-mini Apache 2.0 `LICENSE` and `NOTICE` and the Phonon-2 CC-BY-4.0 `LICENSE` and `NOTICE` are stored alongside their weights. HTTPS is used only for a model download the user starts. Phonon-2, Whisper, and S1-mini then run on the device with CPU inference and no service fallback. Cleanup offers casual, semi-casual, balanced, semi-formal, and formal tone choices, plus prose or list formatting and general or email context. Balanced maps to the model's trained semi-formal prompt value. S1-mini stays loaded in the app process after its first use and is unloaded before deletion. The user can remove each model separately.
 
 Talkies also provides a native Kotlin input method for direct dictation into the focused field in other apps. It uses the same speech-engine setting and fallback chain. First download a speech model and grant microphone permission in Talkies, then use **Enable keyboard** in the app screen and enable Talkies voice typing in Android system settings. Use the system keyboard picker to select it. The keyboard records only while its Record control is active, applies the same optional local S1-mini settings, and commits the result into the current text field. When **Save transcript history** is on, it saves the inserted text to the same local history, except in password fields and fields that request no personalized learning (incognito). Some secure or app-restricted fields may not allow third-party keyboard input. Leaving the keyboard while recognition is in progress prevents a delayed insertion into a later field.

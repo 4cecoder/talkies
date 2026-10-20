@@ -19,11 +19,11 @@ before downloading models or troubleshooting microphone, permission, and inserti
 | macOS | Native Swift and SwiftUI; WhisperKit; Apple Silicon | Active |
 | Windows | Native .NET WPF; Whisper.net | Active |
 | Linux | Native Zig app; whisper.cpp; X11 and Wayland | Active; still maturing |
-| Android | Native Kotlin app; local Whisper, optional S1-mini cleanup, voice input method | Early access; not yet distributed as a signed release |
+| Android | Native Kotlin app; local dictation, voice input method, and SSH/Herdr terminal companion | Early access; SSH companion is new and not yet distributed as a signed release |
 
 On first use, choose and download the local models you need. Model downloads are explicit and
-integrity-checked. Android currently downloads Whisper tiny and optional S1-mini separately. See
-the platform guides for requirements and the exact setup steps.
+integrity-checked. Android downloads speech models separately and stores SSH host-key trust locally;
+the remote companion does not save passwords. See the platform guides for requirements and details.
 
 ## Use Talkies or build it
 

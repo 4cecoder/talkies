@@ -102,7 +102,10 @@ class MainActivity : ComponentActivity() {
     private var transcribing by mutableStateOf(false)
     private var historyEnabled by mutableStateOf(true)
     private var showHistory by mutableStateOf(false)
+    private var showRemoteCompanion by mutableStateOf(false)
     private var confirmClearHistory by mutableStateOf(false)
+    private var remoteDictationSink: ((String) -> Unit)? = null
+    private var remoteDictationInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,6 +134,27 @@ class MainActivity : ComponentActivity() {
                         HistoryScreen(TranscriptHistory.store(context)) { showHistory = false }
                         return@Surface
                     }
+                    if (showRemoteCompanion) {
+                        SshCompanionScreen(
+                            context = context,
+                            onBack = {
+                                if (recording) { audioCapture.cancel(); recording = false }
+                                remoteDictationSink = null
+                                if (!transcribing) remoteDictationInProgress = false
+                                showRemoteCompanion = false
+                            },
+                            onDictate = { sink ->
+                                if (dictationEngines.isEmpty() || anyDownloadBusy() || recording || transcribing) {
+                                    status = "Finish the current dictation or download a speech model before recording again."
+                                    return@SshCompanionScreen
+                                }
+                                remoteDictationSink = sink
+                                remoteDictationInProgress = true
+                                startRecording()
+                            },
+                        )
+                        return@Surface
+                    }
                     Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -138,6 +162,10 @@ class MainActivity : ComponentActivity() {
                         Text("Talkies", style = MaterialTheme.typography.headlineLarge)
                         Text("Private, on-device dictation", style = MaterialTheme.typography.titleMedium)
                         Text(status, style = MaterialTheme.typography.bodyMedium)
+
+                        OutlinedButton(onClick = { showRemoteCompanion = true }) {
+                            Text("Remote companion · SSH / Herdr")
+                        }
 
                         Text("Type by voice in any app", style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -595,45 +623,59 @@ class MainActivity : ComponentActivity() {
                 }
                 val recognized = outcome.transcript.trim()
                 if (recognized.isBlank()) {
+                    remoteDictationSink = null
+                    remoteDictationInProgress = false
                     status = "No speech was recognized. Try again when ready."
                 } else {
-                    var cleanupFailed = false
-                    val cleaned = if (cleanupEnabled && cleanupModelReady) {
-                        status = "Cleaning transcript locally with S1-mini…"
-                        try {
-                            cleanupCleaner.clean(
-                                recognized,
-                                TranscriptCleanupOptions(cleanupStyle, cleanupStructure, cleanupContext)
-                            )
-                        } catch (_: Exception) {
-                            cleanupFailed = true
-                            recognized
+                    val remoteSink = remoteDictationSink
+                    if (remoteDictationInProgress) {
+                        remoteDictationSink = null
+                        remoteDictationInProgress = false
+                        if (remoteSink != null) {
+                            remoteSink(TerminalInputPolicy.stage(recognized))
+                            status = "Local dictation inserted in the remote shell for review. Press Enter to run it."
                         }
                     } else {
-                        recognized
-                    }
-                    transcript = appendTranscript(transcript, cleaned)
-                    if (cleaned.isNotBlank()) {
-                        val entry = NewTranscript.of(
-                            text = cleaned,
-                            rawText = recognized,
-                            engine = outcome.engine,
-                            durationMillis = pcmDurationMillis(requireNotNull(samples).size),
-                        )
-                        val appContext = applicationContext
-                        val preferences = getSharedPreferences(SpeechSettings.PREFERENCES, MODE_PRIVATE)
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            TranscriptHistory.saveIfEnabled(appContext, preferences, entry)
+                        var cleanupFailed = false
+                        val cleaned = if (cleanupEnabled && cleanupModelReady) {
+                            status = "Cleaning transcript locally with S1-mini…"
+                            try {
+                                cleanupCleaner.clean(
+                                    recognized,
+                                    TranscriptCleanupOptions(cleanupStyle, cleanupStructure, cleanupContext)
+                                )
+                            } catch (_: Exception) {
+                                cleanupFailed = true
+                                recognized
+                            }
+                        } else {
+                            recognized
                         }
-                    }
-                    status = when {
-                        cleanupFailed -> "Cleanup failed; kept the raw local ${outcome.engine.label} transcript."
-                        cleanupEnabled && cleanupModelReady ->
-                            "${outcome.engine.label} transcription and S1-mini cleanup complete offline."
-                        else -> SpeechStatusText.completed(outcome, preference)
+                        transcript = appendTranscript(transcript, cleaned)
+                        if (cleaned.isNotBlank()) {
+                            val entry = NewTranscript.of(
+                                text = cleaned,
+                                rawText = recognized,
+                                engine = outcome.engine,
+                                durationMillis = pcmDurationMillis(requireNotNull(samples).size),
+                            )
+                            val appContext = applicationContext
+                            val preferences = getSharedPreferences(SpeechSettings.PREFERENCES, MODE_PRIVATE)
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                TranscriptHistory.saveIfEnabled(appContext, preferences, entry)
+                            }
+                        }
+                        status = when {
+                            cleanupFailed -> "Cleanup failed; kept the raw local ${outcome.engine.label} transcript."
+                            cleanupEnabled && cleanupModelReady ->
+                                "${outcome.engine.label} transcription and S1-mini cleanup complete offline."
+                            else -> SpeechStatusText.completed(outcome, preference)
+                        }
                     }
                 }
             } catch (error: Exception) {
+                remoteDictationSink = null
+                remoteDictationInProgress = false
                 status = error.message ?: "Local transcription failed. Try again."
             } finally {
                 samples?.fill(0f)

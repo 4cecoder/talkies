@@ -31,6 +31,7 @@ class TalkiesInputMethodService : InputMethodService() {
     private var inputViewGeneration = 0
     private var inputViewActive = false
     private var historyAllowedForField = false
+    private var destination = DictationDestination.GENERAL
     private var statusView: TextView? = null
     private var recordButton: Button? = null
 
@@ -65,14 +66,17 @@ class TalkiesInputMethodService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         inputSession += 1
-        if (!recording && !processing) updateControls("Talkies offline voice typing")
+        destination = DictationDestinationResolver.fromPackageName(attribute?.packageName)
+        if (!recording && !processing) updateControls(readyStatus())
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         inputViewGeneration += 1
         inputViewActive = true
+        destination = DictationDestinationResolver.fromPackageName(info?.packageName)
         historyAllowedForField = info != null && KeyboardHistoryPolicy.allowsHistory(info.inputType, info.imeOptions)
+        if (!recording && !processing) updateControls(readyStatus())
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -149,6 +153,7 @@ class TalkiesInputMethodService : InputMethodService() {
         processing = true
         val targetSession = inputSession
         val targetViewGeneration = inputViewGeneration
+        val targetDestination = destination
         updateControls(if (maximumDurationReached) "Time limit · transcribing…" else "Transcribing offline…")
         serviceScope.launch {
             var samples: FloatArray? = null
@@ -163,9 +168,12 @@ class TalkiesInputMethodService : InputMethodService() {
                 check(recognized.isNotBlank()) { "No speech recognized. Try again." }
                 var result = recognized
                 val durationMillis = pcmDurationMillis(requireNotNull(samples).size)
-                val saveToHistory = historyAllowedForField
+                // Agent prompts and terminal commands can contain private project details. Keep
+                // terminal dictation out of transcript history unless it is explicitly copied out.
+                val saveToHistory = targetDestination.allowsHistory(historyAllowedForField)
 
-                val cleanupReady = settings.getBoolean("s1-mini-enabled", false) &&
+                // LLM cleanup adds latency and can rewrite code identifiers or agent instructions.
+                val cleanupReady = targetDestination.allowsCleanup(settings.getBoolean("s1-mini-enabled", false)) &&
                     withContext(Dispatchers.IO) { cleanupModelStore.isInstalled() }
                 if (cleanupReady) {
                     updateControls("Cleaning locally…")
@@ -190,7 +198,14 @@ class TalkiesInputMethodService : InputMethodService() {
                 if (!connection.commitText(insertion, 1)) {
                     error("The app did not accept the dictated text.")
                 }
-                updateControls(SpeechStatusText.inserted(outcome))
+                val insertionStatus = SpeechStatusText.inserted(outcome)
+                updateControls(
+                    if (targetDestination == DictationDestination.TERMINAL) {
+                        "$insertionStatus Terminal text inserted for review; Talkies did not send or run it."
+                    } else {
+                        insertionStatus
+                    }
+                )
                 if (saveToHistory && result.isNotBlank()) {
                     val entry = NewTranscript.of(result, recognized, outcome.engine, durationMillis)
                     val appContext = applicationContext
@@ -213,6 +228,11 @@ class TalkiesInputMethodService : InputMethodService() {
             isEnabled = !processing
             text = if (recording) "Stop" else "Record"
         }
+    }
+
+    private fun readyStatus(): String = when (destination) {
+        DictationDestination.GENERAL -> "Talkies offline voice typing"
+        DictationDestination.TERMINAL -> "Terminal detected · local dictation · review before sending"
     }
 
     override fun onDestroy() {

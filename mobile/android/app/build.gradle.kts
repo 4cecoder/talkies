@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -24,12 +26,19 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
 dependencies {
     implementation(project(":core"))
     implementation(project(":inference"))
+    // Pure-Java SSH transport; passwords remain in memory for the lifetime of a connection.
+    implementation("com.github.mwiede:jsch:2.27.7")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    implementation("org.connectbot:termlib:0.0.9")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     val composeBom = platform("androidx.compose:compose-bom:2025.10.00")
     implementation(composeBom)
