@@ -3,18 +3,26 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using LLama.Native;
 using Talkies.Windows.Plugins;
 using Talkies.Windows.Services;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Talkies.Windows.Tests.Plugins;
 
 public sealed class S1MiniOfflineIntegrationTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public S1MiniOfflineIntegrationTests(ITestOutputHelper output) => _output = output;
+
     [ModelIntegrationFact("TALKIES_TEST_S1_MINI_MODEL_DIR")]
     [Trait("Category", "ModelIntegration")]
     public async Task VerifiedModelCleansTranscriptWithoutNetworkAccess()
     {
+        NativeLibraryConfig.All.WithLogCallback((level, message) => _output.WriteLine($"[LLamaSharp {level}] {message.TrimEnd()}"));
+
         var modelDirectory = Environment.GetEnvironmentVariable("TALKIES_TEST_S1_MINI_MODEL_DIR");
         Assert.False(string.IsNullOrWhiteSpace(modelDirectory));
 
