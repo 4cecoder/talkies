@@ -106,6 +106,9 @@ class MainActivity : ComponentActivity() {
     private var recording by mutableStateOf(false)
     private var transcribing by mutableStateOf(false)
     private var historyEnabled by mutableStateOf(true)
+    private var updateCheckBusy by mutableStateOf(false)
+    private var updateStatus by mutableStateOf("Check for the latest Talkies release.")
+    private var availableRelease by mutableStateOf<ReleaseUpdate?>(null)
     private var showHistory by mutableStateOf(false)
     private var showRemoteCompanion by mutableStateOf(false)
     private var confirmClearHistory by mutableStateOf(false)
@@ -449,6 +452,35 @@ class MainActivity : ComponentActivity() {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedButton(onClick = { showHistory = true }) { Text("View history") }
                             OutlinedButton(onClick = { confirmClearHistory = true }) { Text("Clear history") }
+                        }
+                        Text("App updates", style = MaterialTheme.typography.titleMedium)
+                        Text(updateStatus, style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                enabled = !updateCheckBusy,
+                                onClick = {
+                                    updateCheckBusy = true
+                                    lifecycleScope.launch {
+                                        val result = runCatching {
+                                            withContext(Dispatchers.IO) {
+                                                ReleaseUpdates.check(packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0")
+                                            }
+                                        }
+                                        availableRelease = result.getOrNull()
+                                        updateStatus = when {
+                                            result.isFailure -> "Could not check for updates. Check your connection and try again."
+                                            availableRelease != null -> "Talkies ${availableRelease!!.version} is ready to download."
+                                            else -> "Talkies is up to date."
+                                        }
+                                        updateCheckBusy = false
+                                    }
+                                }
+                            ) { Text(if (updateCheckBusy) "Checking…" else "Check for updates") }
+                            if (availableRelease != null) {
+                                Button(onClick = {
+                                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(availableRelease!!.url)))
+                                }) { Text("Download update") }
+                            }
                         }
                         if (confirmClearHistory) {
                             AlertDialog(

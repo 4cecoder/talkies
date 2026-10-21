@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -297,6 +298,15 @@ namespace Talkies.Windows.ViewModels
         public ICommand InstallPhonon2Command { get; }
         public ICommand ShowHistoryCommand { get; }
         public ICommand ClearHistoryCommand { get; }
+        public ICommand CheckForUpdatesCommand { get; }
+        public ICommand OpenUpdateCommand { get; }
+        public string UpdateStatus { get => _updateStatus; private set { _updateStatus = value; OnPropertyChanged(); } }
+        public string UpdateButtonLabel => _checkingForUpdates ? "Checking…" : "Check for updates";
+        public bool HasAvailableUpdate => _availableUpdate is not null;
+        public string AvailableUpdateLabel => _availableUpdate is null ? string.Empty : $"Talkies {_availableUpdate.Version} is available.";
+        private string _updateStatus = "Check for the latest Talkies release.";
+        private bool _checkingForUpdates;
+        private ReleaseUpdate? _availableUpdate;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event Action<float>? OnAudioLevelChanged;
@@ -359,6 +369,12 @@ namespace Talkies.Windows.ViewModels
             InstallPhonon2Command = new AsyncRelayCommand(_ => InstallPhonon2Async(), _ => CanInstallPhonon2);
             ShowHistoryCommand = new RelayCommand(_ => ShowHistoryWindow());
             ClearHistoryCommand = new AsyncRelayCommand(_ => ClearHistoryAsync());
+            CheckForUpdatesCommand = new AsyncRelayCommand(_ => CheckForUpdatesAsync(), _ => !_checkingForUpdates);
+            OpenUpdateCommand = new RelayCommand(_ =>
+            {
+                if (_availableUpdate is not null)
+                    Process.Start(new ProcessStartInfo(_availableUpdate.Url.ToString()) { UseShellExecute = true });
+            }, _ => _availableUpdate is not null);
 
             _hotkey.Tap += OnHotkeyTap;
             _hotkey.HoldStart += OnHotkeyHoldStart;
@@ -382,6 +398,29 @@ namespace Talkies.Windows.ViewModels
             RefreshPhonon2Status();
             InitializePlugins();
             AutoFetchLlmModelsAsync();
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            _checkingForUpdates = true;
+            OnPropertyChanged(nameof(UpdateButtonLabel));
+            try
+            {
+                var current = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0";
+                _availableUpdate = await ReleaseUpdates.CheckAsync(current);
+                UpdateStatus = _availableUpdate is null ? "Talkies is up to date." : AvailableUpdateLabel;
+                OnPropertyChanged(nameof(HasAvailableUpdate));
+                OnPropertyChanged(nameof(AvailableUpdateLabel));
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus = $"Could not check for updates: {ex.Message}";
+            }
+            finally
+            {
+                _checkingForUpdates = false;
+                OnPropertyChanged(nameof(UpdateButtonLabel));
+            }
         }
 
         private void InitializePlugins()

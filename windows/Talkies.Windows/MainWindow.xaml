@@ -24,6 +24,9 @@
                 <!-- Header -->
                 <TextBlock Text="Talkies" FontSize="28" FontWeight="Bold" Margin="0,0,0,4" />
                 <TextBlock Text="Real-time transcription" Foreground="#bbbbbb" Margin="0,0,0,12"/>
+                <Button Content="{Binding UpdateButtonLabel}" Command="{Binding CheckForUpdatesCommand}" Height="30" Margin="0,0,0,4"/>
+                <TextBlock Text="{Binding UpdateStatus}" Foreground="#9ecbff" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                <Button Content="Download update" Command="{Binding OpenUpdateCommand}" Height="30" Margin="0,0,0,12" Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                 <!-- Waveform Visualizer -->
                 <TextBlock Text="Audio Input" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6" Foreground="#999999"/>
