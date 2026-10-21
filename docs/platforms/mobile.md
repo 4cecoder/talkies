@@ -3,6 +3,8 @@
 For model setup and offline first-run checks, see the [first-run and troubleshooting guide](first-run-and-troubleshooting.md).
 Download the signed Android APK from the [latest Talkies release](https://github.com/4cecoder/talkies/releases/download/latest/Talkies-Android-latest.apk).
 
+Download the signed Android APK from the [latest Talkies release](https://github.com/4cecoder/talkies/releases/download/latest/Talkies-Android-latest.apk). Use **App updates → Check for updates** in the app to compare with the latest stable release. When one is available, **Download update** opens its GitHub release page; download and open the APK to let Android confirm the install. Android retains app data when the APK has the same signing key.
+
 ## Android (primary): native Kotlin with local Phonon-2 and Whisper
 
 Talkies Android is built natively in [`mobile/android/`](../../mobile/android/), using Kotlin and Jetpack Compose. Stable transcript and cleanup contracts, the `LocalSpeechRuntime` recognizer interface, and the speech-engine selection and fallback policy (`SpeechEngineSelection`, `SpeechRecognizerChain`) live in the JVM-only `:core` module. The separate Android `:inference` library owns verified model stores, JNI, CrispASR, whisper.cpp, llama.cpp, and local inference. The `:app` module owns Compose UI, the speech-engine setting, microphone capture, and input-method lifecycle. It records 16 kHz mono audio in memory for at most five minutes per dictation, runs a downloaded speech model through JNI, and presents an editable transcript with explicit copy feedback. At the recording limit, it transcribes the captured audio automatically. It does not use Android's vendor `SpeechRecognizer` or send audio to a recognition service.

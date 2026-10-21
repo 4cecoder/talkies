@@ -179,6 +179,10 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @ObservedObject private var settingsService = SettingsService.shared
     @State private var confirmClearHistory = false
+    @State private var updateCheckBusy = false
+    @State private var updateStatus = "Check for the latest Talkies release."
+    @State private var availableUpdate: ReleaseUpdate?
+    @Environment(\.openURL) private var openURL
 
     private var threshold: Binding<Double> {
         Binding(
@@ -422,8 +426,29 @@ struct GeneralSettingsView: View {
                 HStack {
                     Text("Version:")
                     Spacer()
-                    Text("1.0.0")
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
                         .foregroundColor(.secondary)
+                }
+
+                Text(updateStatus).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button(updateCheckBusy ? "Checking…" : "Check for Updates") {
+                        updateCheckBusy = true
+                        Task {
+                            let installed = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+                            do {
+                                availableUpdate = try await ReleaseUpdates.check(currentVersion: installed)
+                                updateStatus = availableUpdate.map { "Talkies \($0.version) is ready to download." } ?? "Talkies is up to date."
+                            } catch {
+                                updateStatus = "Could not check for updates. Check your connection and try again."
+                            }
+                            updateCheckBusy = false
+                        }
+                    }
+                    .disabled(updateCheckBusy)
+                    if let availableUpdate {
+                        Button("Download Update") { openURL(availableUpdate.url) }
+                    }
                 }
 
                 HStack {

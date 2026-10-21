@@ -6,6 +6,8 @@ Talkies is a free, MIT-licensed Windows dictation app. It records audio locally,
 
 Download the current packages from [Talkies releases](https://github.com/4cecoder/talkies/releases). The rolling `latest` release is a prerelease, and public Windows packages are currently unsigned. Check the release notes before installing.
 
+In the app, use **Check for updates** to compare the installed version with the latest stable release. If an update is available, **Download update** opens the release page; quit Talkies and run the newer setup installer to apply it. Settings and downloaded models remain in place.
+
 To verify the setup executable, download `SHA256SUMS` from the same release and compare the Windows setup entry:
 
 ```powershell
