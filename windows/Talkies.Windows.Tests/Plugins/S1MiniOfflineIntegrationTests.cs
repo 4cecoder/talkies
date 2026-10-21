@@ -16,7 +16,7 @@ public sealed class S1MiniOfflineIntegrationTests
     [Trait("Category", "ModelIntegration")]
     public async Task VerifiedModelCleansTranscriptWithoutNetworkAccess()
     {
-        NativeLibraryConfig.Instance.WithLogCallback((_, message) => Console.Write(message));
+        NativeLibraryConfig.All.WithLogCallback((_, message) => Console.Write(message));
 
         var modelDirectory = Environment.GetEnvironmentVariable("TALKIES_TEST_S1_MINI_MODEL_DIR");
         Assert.False(string.IsNullOrWhiteSpace(modelDirectory));
