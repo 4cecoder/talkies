@@ -241,7 +241,7 @@ jobs:
           set -o pipefail
           "$SDKMANAGER" 'cmake;3.31.6' 'ndk;27.2.12479018'
 
-      - uses: gradle/actions/setup-gradle@v6.4.0
+      - uses: gradle/actions/setup-gradle@v6.4.1
 
       - name: Restore Android release signing key
         env:
