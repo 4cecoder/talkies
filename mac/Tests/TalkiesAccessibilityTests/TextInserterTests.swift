@@ -8,6 +8,13 @@ final class TextInserterTests: XCTestCase {
         XCTAssertFalse(AccessibilityTextRoleSupport.supports("AXButton"))
     }
 
+    func testCmuxAndGhosttyBundleIdentifiersUseTerminalInsertionSupport() {
+        XCTAssertTrue(TerminalApplicationSupport.supports("com.cmuxterm.app"))
+        XCTAssertTrue(TerminalApplicationSupport.supports("com.mitchellh.ghostty"))
+        XCTAssertFalse(TerminalApplicationSupport.supports("com.apple.Notes"))
+        XCTAssertFalse(TerminalApplicationSupport.supports(nil))
+    }
+
     func testCapturesFrontmostDestinationButNeverTalkiesItself() {
         let client = MockTextAccessibilityClient()
         client.frontmostApplicationValue = (4242, "Notes")
@@ -101,6 +108,19 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(client.insertionProcessIdentifier, destination.processIdentifier)
     }
 
+    func testCapturedTerminalBundleIdentifierReachesInsertionAdapter() async {
+        let client = MockTextAccessibilityClient()
+        client.frontmostApplicationValue = (4242, "cmux")
+        client.frontmostBundleIdentifier = "com.cmuxterm.app"
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = inserter.captureDestination()
+
+        XCTAssertEqual(destination?.bundleIdentifier, "com.cmuxterm.app")
+        let result = await inserter.insertTextAtCursor("printf hello", into: destination)
+        XCTAssertEqual(result, .inserted(applicationName: "cmux"))
+        XCTAssertEqual(client.insertionBundleIdentifier, "com.cmuxterm.app")
+    }
+
     func testEmptyTranscriptDoesNotAskForAccessibilityOrInsert() async {
         let client = MockTextAccessibilityClient()
         let inserter = TextInserter(accessibilityClient: client)
@@ -192,17 +212,19 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     let currentProcessIdentifier: pid_t = 1234
     var frontmostProcessIdentifier: pid_t? = 4242
     var frontmostApplicationValue: (pid_t, String)? = (4242, "Notes")
+    var frontmostBundleIdentifier: String?
     var trusted = true
     var insertionAttempt: FocusedTextInsertionAttempt = .inserted
     private(set) var didCheckTrust = false
     private(set) var insertedText: String?
     private(set) var attemptedText: String?
     private(set) var insertionProcessIdentifier: pid_t?
+    private(set) var insertionBundleIdentifier: String?
     private(set) var activatedProcessIdentifiers: [pid_t] = []
 
-    func frontmostApplication() -> (processIdentifier: pid_t, name: String)? {
+    func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
         guard let frontmostApplicationValue else { return nil }
-        return (frontmostApplicationValue.0, frontmostApplicationValue.1)
+        return (frontmostApplicationValue.0, frontmostApplicationValue.1, frontmostBundleIdentifier)
     }
 
     func activateApplication(_ processIdentifier: pid_t) {
@@ -215,9 +237,10 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
         return trusted
     }
 
-    func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt {
+    func setSelectedText(_ text: String, in processIdentifier: pid_t, bundleIdentifier: String?) -> FocusedTextInsertionAttempt {
         attemptedText = text
         insertionProcessIdentifier = processIdentifier
+        insertionBundleIdentifier = bundleIdentifier
         if insertionAttempt == .inserted {
             insertedText = text
         }
