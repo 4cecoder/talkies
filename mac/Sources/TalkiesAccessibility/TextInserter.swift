@@ -4,10 +4,12 @@ import Cocoa
 public struct TextInsertionDestination: Equatable, Sendable {
     public let processIdentifier: pid_t
     public let applicationName: String
+    public let bundleIdentifier: String?
 
-    public init(processIdentifier: pid_t, applicationName: String) {
+    public init(processIdentifier: pid_t, applicationName: String, bundleIdentifier: String? = nil) {
         self.processIdentifier = processIdentifier
         self.applicationName = applicationName
+        self.bundleIdentifier = bundleIdentifier
     }
 }
 
@@ -38,19 +40,25 @@ enum AccessibilityTextRoleSupport {
     }
 }
 
+enum TerminalApplicationSupport {
+    static func supports(_ bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == "com.cmuxterm.app" || bundleIdentifier == "com.mitchellh.ghostty"
+    }
+}
+
 @MainActor
 protocol TextAccessibilityClient {
     var currentProcessIdentifier: pid_t { get }
     var frontmostProcessIdentifier: pid_t? { get }
 
-    func frontmostApplication() -> (processIdentifier: pid_t, name: String)?
+    func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)?
     func isTrusted() -> Bool
-    func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt
+    func setSelectedText(_ text: String, in processIdentifier: pid_t, bundleIdentifier: String?) -> FocusedTextInsertionAttempt
     func activateApplication(_ processIdentifier: pid_t)
 }
 
-/// Inserts only into a verified, currently focused text control. Dictation
-/// insertion does not access the clipboard; copying is a separate user action.
+/// Inserts into a verified focused control. Terminal apps use a temporary clipboard
+/// paste because their panes do not expose standard AX text controls.
 @MainActor
 public final class TextInserter {
     public static let shared = TextInserter()
@@ -76,7 +84,8 @@ public final class TextInserter {
 
         return TextInsertionDestination(
             processIdentifier: application.processIdentifier,
-            applicationName: application.name
+            applicationName: application.name,
+            bundleIdentifier: application.bundleIdentifier
         )
     }
 
@@ -129,7 +138,11 @@ public final class TextInserter {
             return .manualPasteRequired(reason: "Accessibility access is needed for safe field insertion. Copy the transcript to paste manually.")
         }
 
-        switch accessibilityClient.setSelectedText(text, in: destination.processIdentifier) {
+        switch accessibilityClient.setSelectedText(
+            text,
+            in: destination.processIdentifier,
+            bundleIdentifier: destination.bundleIdentifier
+        ) {
         case .inserted:
             return .inserted(applicationName: destination.applicationName)
         case .noFocusedElement:
@@ -170,9 +183,9 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         NSWorkspace.shared.frontmostApplication?.processIdentifier
     }
 
-    func frontmostApplication() -> (processIdentifier: pid_t, name: String)? {
+    func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
         guard let application = NSWorkspace.shared.frontmostApplication else { return nil }
-        return (application.processIdentifier, application.localizedName ?? "the previous app")
+        return (application.processIdentifier, application.localizedName ?? "the previous app", application.bundleIdentifier)
     }
 
     func isTrusted() -> Bool {
@@ -183,7 +196,13 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         NSRunningApplication(processIdentifier: processIdentifier)?.activate()
     }
 
-    func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt {
+    func setSelectedText(_ text: String, in processIdentifier: pid_t, bundleIdentifier: String?) -> FocusedTextInsertionAttempt {
+        let resolvedBundleIdentifier = bundleIdentifier
+            ?? NSRunningApplication(processIdentifier: processIdentifier)?.bundleIdentifier
+        if TerminalApplicationSupport.supports(resolvedBundleIdentifier) {
+            return pasteTextIntoTerminal(text) ? .inserted : .writeDenied
+        }
+
         let appElement = AXUIElementCreateApplication(processIdentifier)
         var focusedValue: CFTypeRef?
         let focusResult = AXUIElementCopyAttributeValue(
@@ -212,6 +231,43 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
             text as CFTypeRef
         )
         return result == .success ? .inserted : .writeDenied
+    }
+
+    private func pasteTextIntoTerminal(_ text: String) -> Bool {
+        let pasteboard = NSPasteboard.general
+        let savedItems = pasteboard.pasteboardItems?.map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        } ?? []
+
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string),
+              let source = CGEventSource(stateID: .hidSystemState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
+            restorePasteboard(savedItems, to: pasteboard)
+            return false
+        }
+        down.flags = .maskCommand
+        up.flags = .maskCommand
+        let temporaryChangeCount = pasteboard.changeCount
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+
+        // Give the target time to read the pasteboard before restoring its prior contents.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard pasteboard.changeCount == temporaryChangeCount else { return }
+            self.restorePasteboard(savedItems, to: pasteboard)
+        }
+        return true
+    }
+
+    private func restorePasteboard(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 
     private static func stringAttribute(_ attribute: String, from element: AXUIElement) -> String? {

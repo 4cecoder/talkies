@@ -83,15 +83,15 @@ private final class AcceptanceTextAccessibilityClient: TextAccessibilityClient {
     var frontmostProcessIdentifier: pid_t? = 4242
     private(set) var insertedText: String?
 
-    func frontmostApplication() -> (processIdentifier: pid_t, name: String)? {
-        (4242, "Acceptance Field")
+    func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
+        (4242, "Acceptance Field", nil)
     }
 
     func isTrusted() -> Bool { true }
 
     func activateApplication(_ processIdentifier: pid_t) {}
 
-    func setSelectedText(_ text: String, in processIdentifier: pid_t) -> FocusedTextInsertionAttempt {
+    func setSelectedText(_ text: String, in processIdentifier: pid_t, bundleIdentifier: String?) -> FocusedTextInsertionAttempt {
         guard processIdentifier == 4242 else { return .writeDenied }
         insertedText = text
         return .inserted
