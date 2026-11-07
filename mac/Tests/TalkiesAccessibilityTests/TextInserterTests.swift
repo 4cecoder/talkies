@@ -57,20 +57,23 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(client.insertedText, "multiline\ntext")
     }
 
-    func testBrowserAXWriteFailureFallsBackToManualPasteWithoutClobber() async {
-        let client = MockTextAccessibilityClient()
-        client.roleForFocusedElement = "AXGroup" // contenteditable-like
+    func testBrowserAXWriteFailureUsesAutomaticPasteFallback() async {
+        // For browser-like bundles, AX write failure now triggers automatic guarded
+        // clipboard + Cmd-V fallback (same engine as cmux) to achieve no-manual-paste insertion.
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
+        client.frontmostApplicationValue = (4242, "Edge")
+        client.frontmostBundleIdentifier = "com.microsoft.edgemac"
+        client.roleForFocusedElement = "AXGroup"
         client.writeSucceeds = false
         let inserter = TextInserter(accessibilityClient: client)
-        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Edge")
+        let destination = inserter.captureDestination()
 
-        let result = await inserter.insertTextAtCursor("should not appear", into: destination)
+        let result = await inserter.insertTextAtCursor("browser auto fallback", into: destination)
 
-        guard case .manualPasteRequired(let reason) = result else {
-            return XCTFail("Expected manual paste on write failure, got \(result)")
-        }
-        XCTAssertTrue(reason.contains("not a supported text field"))
-        XCTAssertNil(client.insertedText)
+        XCTAssertEqual(result, .inserted(applicationName: "Edge"))
+        XCTAssertEqual(engine.recordedTexts, ["browser auto fallback"])
+        XCTAssertNil(client.insertedText) // direct AX did not succeed; fallback used
     }
 
     func testAXDisabledElementReportsUnsupportedWithoutAttemptingWrite() async {
@@ -218,8 +221,8 @@ final class TextInserterTests: XCTestCase {
     // MARK: - Terminal paste engine injection (Cmd-V path, clipboard restore, never Return)
 
     func testTerminalPasteEngineIsUsedForCmuxAndGhostty() async {
-        let pasteEngine = RecordingTerminalPasteEngine()
-        let client = MockTextAccessibilityClient(terminalPaste: pasteEngine)
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
         client.frontmostApplicationValue = (4242, "cmux")
         client.frontmostBundleIdentifier = "com.cmuxterm.app"
         let inserter = TextInserter(accessibilityClient: client)
@@ -228,16 +231,34 @@ final class TextInserterTests: XCTestCase {
         let result = await inserter.insertTextAtCursor("terminal text", into: destination)
 
         XCTAssertEqual(result, .inserted(applicationName: "cmux"))
-        XCTAssertEqual(pasteEngine.recordedTexts, ["terminal text"])
+        XCTAssertEqual(engine.recordedTexts, ["terminal text"])
         // Ensure we never asked for or synthesized Return (virtualKey 36).
-        XCTAssertFalse(pasteEngine.usedReturnKey)
+        XCTAssertFalse(engine.usedReturnKey)
     }
 
     func testTerminalPasteNeverPostsReturnKey() async {
-        let pasteEngine = RecordingTerminalPasteEngine()
+        let engine = RecordingClipboardPasteEngine()
         // Even if AX path is somehow reached for a terminal bundle, the engine must not use Return.
-        _ = pasteEngine.pasteUsingClipboardAndCmdV(text: "no return")
-        XCTAssertFalse(pasteEngine.usedReturnKey)
+        _ = engine.pasteUsingClipboardAndCmdV(text: "no return")
+        XCTAssertFalse(engine.usedReturnKey)
+    }
+
+    // Browser-like automatic paste fallback when AX write fails for non-classic role
+    func testBrowserLikeBundleFallsBackToPasteOnAXWriteFailure() async {
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
+        client.frontmostApplicationValue = (4242, "Chrome")
+        client.frontmostBundleIdentifier = "com.google.Chrome"
+        client.roleForFocusedElement = "AXGroup"
+        client.writeSucceeds = false
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = inserter.captureDestination()
+
+        let result = await inserter.insertTextAtCursor("browser fallback text", into: destination)
+
+        // The new policy prefers automatic guarded paste for browser-like bundles on AX failure.
+        XCTAssertEqual(result, .inserted(applicationName: "Chrome"))
+        XCTAssertEqual(engine.recordedTexts, ["browser fallback text"])
     }
 
     func testClipboardRestoreGuardDoesNotClobberSubsequentUserCopy() {
@@ -352,7 +373,7 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     var focusedElementEnabled: Bool = true
     var writeSucceeds: Bool = true
 
-    private let terminalPaste: TerminalPasteEngine
+    private let pasteEngine: ClipboardPasteEngine
     private(set) var didCheckTrust = false
     private(set) var insertedText: String?
     private(set) var attemptedText: String?
@@ -360,8 +381,8 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     private(set) var insertionBundleIdentifier: String?
     private(set) var activatedProcessIdentifiers: [pid_t] = []
 
-    init(terminalPaste: TerminalPasteEngine = RecordingTerminalPasteEngine()) {
-        self.terminalPaste = terminalPaste
+    init(pasteEngine: ClipboardPasteEngine = RecordingClipboardPasteEngine()) {
+        self.pasteEngine = pasteEngine
     }
 
     func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
@@ -386,7 +407,7 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
 
         let resolved = bundleIdentifier ?? "com.example.unknown"
         if TerminalApplicationSupport.supports(resolved) {
-            return terminalPaste.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
         }
 
         // Legacy explicit attempt override for existing error-path tests
@@ -410,14 +431,13 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
 
 /// Records paste invocations and asserts that Return is never used.
 @MainActor
-private final class RecordingTerminalPasteEngine: TerminalPasteEngine {
+private final class RecordingClipboardPasteEngine: ClipboardPasteEngine {
     private(set) var recordedTexts: [String] = []
     private(set) var usedReturnKey: Bool = false
 
     func pasteUsingClipboardAndCmdV(text: String) -> Bool {
         recordedTexts.append(text)
         // virtualKey 9 == Cmd-V; we must never synthesize 36 (Return).
-        // We record that we did not choose Return for the test assertions.
         usedReturnKey = false
         return true
     }
