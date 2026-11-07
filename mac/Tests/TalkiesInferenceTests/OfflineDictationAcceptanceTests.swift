@@ -82,7 +82,7 @@ private final class AcceptanceTextAccessibilityClient: TextAccessibilityClient {
     let currentProcessIdentifier: pid_t = 9000
     var frontmostProcessIdentifier: pid_t? = 4242
     private(set) var insertedText: String?
-    private(set) var lastDiagnostics: InsertionAttemptDiagnostics? = nil
+    private(set) var lastDiagnostics: InsertionAttemptDiagnostics?
 
     func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
         (4242, "Acceptance Field", nil)
