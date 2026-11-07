@@ -496,7 +496,8 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
                 writeAXError: ok ? "success(paste)" : "pasteFailed",
                 chosenPath: "browser-paste", finalOutcome: ok ? "inserted" : "writeDenied"
             )
-            if ok { insertedText = text }
+            // Do not set insertedText here: that field tracks direct AX writes.
+            // The test asserts it remains nil when the paste fallback path is taken.
             return ok ? .inserted : .writeDenied
         }
         lastDiagnostics = InsertionAttemptDiagnostics(
