@@ -355,6 +355,26 @@ final class TextInserterTests: XCTestCase {
         XCTAssertTrue(reason.contains("does not allow direct text insertion"))
         XCTAssertNil(client.insertedText)
     }
+
+    // Direct test of the pure policy seam (chooseInsertionAction) for browser paste-first behavior.
+    func testChooseInsertionActionBrowserPasteFirstForPlausibleTargets() {
+        let snapClassic = AXTargetSnapshot(role: kAXTextFieldRole as String, subrole: nil, enabledPresent: true, enabled: true, selectedTextSettable: true)
+        let (act1, path1) = chooseInsertionAction(snapshot: snapClassic, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act1, .useClipboardPaste)
+        XCTAssertEqual(path1, "browser-paste")
+
+        let snapGroup = AXTargetSnapshot(role: "AXGroup", subrole: nil, enabledPresent: false, enabled: nil, selectedTextSettable: nil)
+        let (act2, _) = chooseInsertionAction(snapshot: snapGroup, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act2, .useClipboardPaste)
+
+        let snapDisabled = AXTargetSnapshot(role: kAXTextFieldRole as String, subrole: nil, enabledPresent: true, enabled: false, selectedTextSettable: nil)
+        let (act3, _) = chooseInsertionAction(snapshot: snapDisabled, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act3, .reportUnsupported)
+
+        let snapSecure = AXTargetSnapshot(role: "AXSecureTextField", subrole: nil, enabledPresent: true, enabled: true, selectedTextSettable: true)
+        let (act4, _) = chooseInsertionAction(snapshot: snapSecure, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act4, .reportUnsupported)
+    }
 }
 
 // MARK: - Test doubles
