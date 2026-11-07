@@ -389,6 +389,13 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
             return terminalPaste.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
         }
 
+        // Legacy explicit attempt override for existing error-path tests
+        // (testUnsupportedControlUsesManualPaste, testTextWriteDeniedUsesManualPaste).
+        // When set to a terminal outcome other than .inserted, honor it directly.
+        if insertionAttempt != .inserted {
+            return insertionAttempt
+        }
+
         // Simulate the AX path decision for browser-like and classic fields
         if !focusedElementEnabled {
             return .unsupportedControl
