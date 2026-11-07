@@ -89,6 +89,71 @@ enum BrowserLikeApplicationSupport {
     }
 }
 
+/// Snapshot of AX attributes observed for the focused element. Used for deterministic
+/// policy decisions and for privacy-safe diagnostics. No content values.
+public struct AXTargetSnapshot: Equatable, Sendable {
+    public let role: String?
+    public let subrole: String?
+    public let enabledPresent: Bool
+    public let enabled: Bool?
+    public let selectedTextSettable: Bool?
+}
+
+/// The concrete action the inserter will take after inspecting the focused target.
+enum InsertionAction {
+    case useDirectAX
+    case useClipboardPaste
+    case reportNoFocused
+    case reportUnsupported
+    case reportWriteDenied
+}
+
+/// Pure, testable policy decision. Given only safe metadata about the focused element
+/// and the app bundle type, decide whether to attempt AXSelectedText, fall back to
+/// guarded paste, or deny. This is the seam for both tests and diagnostics.
+///
+/// For browser-like bundles we are deterministic about using the guarded paste path
+/// for plausible editing targets (classic text roles or common browser container roles
+/// when enabled is not explicitly false). This addresses the case where AXSelectedText
+/// may report .success (or the element reports a classic role) but the text does not
+/// become visible to the user.
+func chooseInsertionAction(snapshot: AXTargetSnapshot, isTerminal: Bool, isBrowserLike: Bool) -> (action: InsertionAction, path: String) {
+    if isTerminal {
+        return (.useClipboardPaste, "terminal-paste")
+    }
+        if isBrowserLike {
+            // Deterministic guarded paste for supported browser editing targets.
+            // We do not rely on AXSelectedText "success" (or classic role report) meaning
+            // the text will be visible/usable to the user. Chromium/Electron web content
+            // can silently ignore or lag. Paste path bypasses that.
+            let plausible = snapshot.role == nil
+                || AccessibilityTextRoleSupport.supports(snapshot.role ?? "")
+                || (snapshot.role ?? "").contains("Group")
+                || (snapshot.role ?? "").contains("WebArea")
+                || (snapshot.role ?? "").contains("Text")
+                || (snapshot.role ?? "").contains("Field")
+                || (snapshot.role ?? "").contains("Area")
+            if plausible && !(snapshot.enabledPresent && snapshot.enabled == false) {
+                // Still refuse to paste into explicitly password/secure surfaces.
+                let roleLower = (snapshot.role ?? "").lowercased()
+                if roleLower.contains("password") || roleLower.contains("secure") {
+                    return (.reportUnsupported, "browser-secure")
+                }
+                return (.useClipboardPaste, "browser-paste")
+            }
+            return (.reportUnsupported, "browser-non-editable")
+        }
+    // Native / non-browser-like: prefer direct AX for classic controls.
+    if snapshot.enabledPresent && snapshot.enabled == false {
+        return (.reportUnsupported, "disabled")
+    }
+    if let set = snapshot.selectedTextSettable, set == false,
+       let r = snapshot.role, AccessibilityTextRoleSupport.supports(r) {
+        return (.reportWriteDenied, "not-settable")
+    }
+    return (.useDirectAX, "ax-selectedtext")
+}
+
 /// Minimal abstraction over the clipboard + Cmd-V path.
 /// Used for terminals (by design) and as a robust automatic fallback for browser-like
 /// targets when AXSelectedText is not reliable. Injectable for tests.
@@ -146,6 +211,10 @@ protocol TextAccessibilityClient {
     func isTrusted() -> Bool
     func setSelectedText(_ text: String, in processIdentifier: pid_t, bundleIdentifier: String?) -> FocusedTextInsertionAttempt
     func activateApplication(_ processIdentifier: pid_t)
+
+    /// Privacy-safe snapshot of the last insertion decision (roles, attributes presence, chosen path, outcome).
+    /// Never includes text, selection, AXValue or clipboard contents.
+    var lastDiagnostics: InsertionAttemptDiagnostics? { get }
 }
 
 /// Inserts into a verified focused control.
@@ -256,11 +325,19 @@ public final class TextInserter {
         let options: NSDictionary = [key: true]
         _ = AXIsProcessTrustedWithOptions(options)
     }
+
+    /// Privacy-safe diagnostics for the most recent insertion attempt (if any).
+    /// Only metadata (PIDs, bundles, roles, attribute presence, chosen path, outcome).
+    /// Never contains text, selection, field values or clipboard contents.
+    public var lastDiagnostics: InsertionAttemptDiagnostics? {
+        accessibilityClient.lastDiagnostics
+    }
 }
 
 @MainActor
 private final class SystemTextAccessibilityClient: TextAccessibilityClient {
     private let pasteEngine: ClipboardPasteEngine
+    private(set) var lastDiagnostics: InsertionAttemptDiagnostics?
 
     init(pasteEngine: ClipboardPasteEngine = RealClipboardPasteEngine()) {
         self.pasteEngine = pasteEngine
@@ -291,11 +368,36 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         let resolvedBundle = bundleIdentifier
             ?? NSRunningApplication(processIdentifier: processIdentifier)?.bundleIdentifier
 
-        // Terminal path (cmux, Ghostty) — always guarded clipboard + Cmd-V (virtualKey 9).
-        // Never Return (virtualKey 36). Clipboard restore is changeCount guarded.
-        if TerminalApplicationSupport.supports(resolvedBundle) {
-            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+        let isTerminal = TerminalApplicationSupport.supports(resolvedBundle)
+        let isBrowser = BrowserLikeApplicationSupport.mayBenefitFromPasteFallback(resolvedBundle)
+
+        // Terminal: always paste, record bounded diag, never Return.
+        if isTerminal {
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier,
+                targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil,
+                frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(),
+                focusedRole: nil,
+                focusedSubrole: nil,
+                enabledAttributePresent: false,
+                enabled: nil,
+                selectedTextSettable: nil,
+                writeAXError: ok ? "success(paste)" : "pasteFailed",
+                chosenPath: "terminal-paste",
+                finalOutcome: ok ? "inserted" : "writeDenied"
+            )
+            return ok ? .inserted : .writeDenied
         }
+
+        // Build snapshot for policy and diagnostics (metadata only).
+        var snapRole: String?
+        var snapSubrole: String?
+        var snapEnabledPresent = false
+        var snapEnabled: Bool?
+        var snapSettable: Bool?
 
         let appElement = AXUIElementCreateApplication(processIdentifier)
         var focusedValue: CFTypeRef?
@@ -304,68 +406,152 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
             kAXFocusedUIElementAttribute as CFString,
             &focusedValue
         )
-        guard focusResult == .success,
-              let focusedValue,
-              CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+        if focusResult != .success || focusedValue == nil || CFGetTypeID(focusedValue!) != AXUIElementGetTypeID() {
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier,
+                targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil,
+                frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(),
+                focusedRole: nil,
+                focusedSubrole: nil,
+                enabledAttributePresent: false,
+                enabled: nil,
+                selectedTextSettable: nil,
+                writeAXError: "noFocusedElement",
+                chosenPath: "no-focused-element",
+                finalOutcome: "noFocusedElement"
+            )
             return .noFocusedElement
         }
+        let focusedElement = unsafeDowncast(focusedValue!, to: AXUIElement.self)
+        snapRole = Self.stringAttribute(kAXRoleAttribute, from: focusedElement)
+        snapSubrole = Self.stringAttribute(kAXSubroleAttribute, from: focusedElement)
 
-        let focusedElement = unsafeDowncast(focusedValue, to: AXUIElement.self)
-        let role = Self.stringAttribute(kAXRoleAttribute, from: focusedElement)
-        let subrole = Self.stringAttribute(kAXSubroleAttribute, from: focusedElement)
-
-        // Read AXEnabled with presence tracking. Absent attribute is recorded distinctly from "false".
-        var enabledPresent = false
-        var enabledValue: Bool?
         var enabledCF: CFTypeRef?
         if AXUIElementCopyAttributeValue(focusedElement, kAXEnabledAttribute as CFString, &enabledCF) == .success,
            let num = enabledCF as? NSNumber {
-            enabledPresent = true
-            enabledValue = num.boolValue
+            snapEnabledPresent = true
+            snapEnabled = num.boolValue
+        }
+        var settableCF: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(focusedElement, kAXSelectedTextAttribute as CFString, &settableCF) == .success {
+            snapSettable = settableCF.boolValue
         }
 
-        // If we have a definitive "disabled" signal, do not attempt write (avoids write-then-report-failure).
-        if enabledPresent, let en = enabledValue, en == false {
+        let snapshot = AXTargetSnapshot(
+            role: snapRole,
+            subrole: snapSubrole,
+            enabledPresent: snapEnabledPresent,
+            enabled: snapEnabled,
+            selectedTextSettable: snapSettable
+        )
+
+        let (action, path) = chooseInsertionAction(snapshot: snapshot, isTerminal: false, isBrowserLike: isBrowser)
+
+        // Guard: never paste into explicitly disabled.
+        if action == .useClipboardPaste && snapshot.enabledPresent && snapshot.enabled == false {
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: "disabled", chosenPath: path, finalOutcome: "unsupportedControl"
+            )
+            lastDiagnostics = diag
             return .unsupportedControl
         }
 
-        // Check whether AXSelectedText is settable on this element.
-        var settableCF: DarwinBoolean = false
-        let settableResult = AXUIElementIsAttributeSettable(focusedElement, kAXSelectedTextAttribute as CFString, &settableCF)
-        let isSettable = (settableResult == .success) ? settableCF.boolValue : nil
+        // Secure/password fields: treat as unsupported for automatic paste (user can manual if appropriate).
+        if action == .useClipboardPaste,
+           let r = snapshot.role, (r.lowercased().contains("password") || r.lowercased().contains("secure")) {
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: "secure", chosenPath: path, finalOutcome: "unsupportedControl"
+            )
+            lastDiagnostics = diag
+            return .unsupportedControl
+        }
 
-        // If we know it is not settable, avoid the write for classic controls and fall through to fallback logic below.
-        if let set = isSettable, set == false, AccessibilityTextRoleSupport.supports(role ?? "") {
+        switch action {
+        case .useClipboardPaste:
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            let outcome = ok ? "inserted" : "writeDenied"
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: ok ? "success(paste)" : "pasteFailed", chosenPath: path, finalOutcome: outcome
+            )
+            lastDiagnostics = diag
+            return ok ? .inserted : .writeDenied
+
+        case .useDirectAX:
+            // Perform the AX write for native/classic that passed guards.
+            // (We already have the element from snapshot construction path; re-fetch minimally.)
+            let appElement = AXUIElementCreateApplication(processIdentifier)
+            var focusedValue: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue)
+            guard let fv = focusedValue, CFGetTypeID(fv) == AXUIElementGetTypeID() else {
+                return .noFocusedElement
+            }
+            let fe = unsafeDowncast(fv, to: AXUIElement.self)
+            let setResult = AXUIElementSetAttributeValue(fe, kAXSelectedTextAttribute as CFString, text as CFTypeRef)
+            let writeOk = (setResult == .success)
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: writeOk ? "success" : String(describing: setResult),
+                chosenPath: path, finalOutcome: writeOk ? "inserted" : "writeDenied"
+            )
+            lastDiagnostics = diag
+            return writeOk ? .inserted : .writeDenied
+
+        case .reportNoFocused:
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: nil, focusedSubrole: nil,
+                enabledAttributePresent: false, enabled: nil, selectedTextSettable: nil,
+                writeAXError: "noFocusedElement", chosenPath: path, finalOutcome: "noFocusedElement"
+            )
+            lastDiagnostics = diag
+            return .noFocusedElement
+
+        case .reportUnsupported:
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: "unsupported", chosenPath: path, finalOutcome: "unsupportedControl"
+            )
+            lastDiagnostics = diag
+            return .unsupportedControl
+
+        case .reportWriteDenied:
+            let diag = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolvedBundle,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: isTrusted(), focusedRole: snapshot.role, focusedSubrole: snapshot.subrole,
+                enabledAttributePresent: snapshot.enabledPresent, enabled: snapshot.enabled,
+                selectedTextSettable: snapshot.selectedTextSettable,
+                writeAXError: "writeDenied", chosenPath: path, finalOutcome: "writeDenied"
+            )
+            lastDiagnostics = diag
             return .writeDenied
         }
-
-        // AXSelectedText write. This is the preferred path for native + Safari form controls.
-        let setResult = AXUIElementSetAttributeValue(
-            focusedElement,
-            kAXSelectedTextAttribute as CFString,
-            text as CFTypeRef
-        )
-        let writeSucceeded = (setResult == .success)
-
-        if writeSucceeded {
-            // Success on the write: trust it for insertion. We do not re-read the value (would require
-            // reading potentially sensitive field contents) and do not perform speculative verification
-            // that could race. If the surface silently ignored the write, the user will see no text and
-            // can re-dictate; we avoid duplicating by never retrying automatically here.
-            return .inserted
-        }
-
-        // Write did not succeed (or we decided not to attempt for a classic non-settable control).
-        // For browser-like bundles or non-classic roles, use the automatic guarded clipboard + Cmd-V
-        // fallback. This is the same engine as terminals and provides robust automatic insertion
-        // without requiring the user to perform a manual copy/paste step.
-        if BrowserLikeApplicationSupport.mayBenefitFromPasteFallback(resolvedBundle) ||
-           !AccessibilityTextRoleSupport.supports(role ?? "") {
-            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
-        }
-
-        // Otherwise surface the precise reason so the caller can guide the user.
-        return .writeDenied
     }
 
     private static func stringAttribute(_ attribute: String, from element: AXUIElement) -> String? {

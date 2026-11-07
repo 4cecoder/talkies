@@ -161,6 +161,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let target = destination?.applicationName ?? "the previous app"
                     self.transcriptionService.statusMessage = "Returning to \(target)…"
                     let result = await TextInserter.shared.insertTextAtCursor(finalText, into: destination)
+                    // Privacy-safe bounded metadata only (no text, selection, clipboard, field contents).
+                    if let d = TextInserter.shared.lastDiagnostics {
+                        print("[TalkiesInsertionDiag] pid=\(d.targetPID) bundle=\(d.targetBundle ?? \"?\") role=\(d.focusedRole ?? \"?\") sub=\(d.focusedSubrole ?? \"?\") enPres=\(d.enabledAttributePresent) en=\(String(describing: d.enabled)) settable=\(String(describing: d.selectedTextSettable)) trusted=\(d.axTrusted) path=\(d.chosenPath) outcome=\(d.finalOutcome) err=\(d.writeAXError ?? \"?\")")
+                    }
                     switch result {
                     case .inserted(let applicationName):
                         self.transcriptionService.pipelineStage = cleanupFailed ? .cleanupFallback : .complete

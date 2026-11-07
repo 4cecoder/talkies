@@ -380,6 +380,7 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     private(set) var insertionProcessIdentifier: pid_t?
     private(set) var insertionBundleIdentifier: String?
     private(set) var activatedProcessIdentifiers: [pid_t] = []
+    private(set) var lastDiagnostics: InsertionAttemptDiagnostics?
 
     init(pasteEngine: ClipboardPasteEngine = RecordingClipboardPasteEngine()) {
         self.pasteEngine = pasteEngine
@@ -407,30 +408,85 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
 
         let resolved = bundleIdentifier ?? "com.example.unknown"
         if TerminalApplicationSupport.supports(resolved) {
-            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: ok ? "success(paste)" : "pasteFailed",
+                chosenPath: "terminal-paste", finalOutcome: ok ? "inserted" : "writeDenied"
+            )
+            if ok { insertedText = text }
+            return ok ? .inserted : .writeDenied
         }
 
         // Legacy explicit attempt override for existing error-path tests
         // (testUnsupportedControlUsesManualPaste, testTextWriteDeniedUsesManualPaste).
         // When set to a terminal outcome other than .inserted, honor it directly.
         if insertionAttempt != .inserted {
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: String(describing: insertionAttempt),
+                chosenPath: "legacy-override", finalOutcome: String(describing: insertionAttempt)
+            )
             return insertionAttempt
         }
 
         // Simulate the AX path decision + browser fallback policy from production.
         if !focusedElementEnabled {
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: true, enabled: false,
+                selectedTextSettable: nil,
+                writeAXError: "disabled", chosenPath: "disabled", finalOutcome: "unsupportedControl"
+            )
             return .unsupportedControl
         }
         if writeSucceeds {
             insertedText = text
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: true,
+                writeAXError: "success", chosenPath: "ax-selectedtext", finalOutcome: "inserted"
+            )
             return .inserted
         }
         // AX write "failed" — emulate production: browser-like or non-classic role → automatic paste fallback.
         let isBrowserLike = BrowserLikeApplicationSupport.mayBenefitFromPasteFallback(resolved) ||
                             !AccessibilityTextRoleSupport.supports(roleForFocusedElement ?? "")
         if isBrowserLike {
-            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: ok ? "success(paste)" : "pasteFailed",
+                chosenPath: "browser-paste", finalOutcome: ok ? "inserted" : "writeDenied"
+            )
+            if ok { insertedText = text }
+            return ok ? .inserted : .writeDenied
         }
+        lastDiagnostics = InsertionAttemptDiagnostics(
+            targetPID: processIdentifier, targetBundle: resolved,
+            frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+            axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+            enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+            selectedTextSettable: nil,
+            writeAXError: "ax-failed", chosenPath: "ax-selectedtext", finalOutcome: "writeDenied"
+        )
         return .writeDenied
     }
 }
