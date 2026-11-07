@@ -417,15 +417,21 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
             return insertionAttempt
         }
 
-        // Simulate the AX path decision for browser-like and classic fields
+        // Simulate the AX path decision + browser fallback policy from production.
         if !focusedElementEnabled {
             return .unsupportedControl
         }
-        let outcome = decideFocusedTextInsertionOutcome(role: roleForFocusedElement, isEnabled: focusedElementEnabled, writeSucceeded: writeSucceeds)
-        if outcome == .inserted {
+        if writeSucceeds {
             insertedText = text
+            return .inserted
         }
-        return outcome
+        // AX write "failed" — emulate production: browser-like or non-classic role → automatic paste fallback.
+        let isBrowserLike = BrowserLikeApplicationSupport.mayBenefitFromPasteFallback(resolved) ||
+                            !AccessibilityTextRoleSupport.supports(roleForFocusedElement ?? "")
+        if isBrowserLike {
+            return pasteEngine.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+        }
+        return .writeDenied
     }
 }
 
