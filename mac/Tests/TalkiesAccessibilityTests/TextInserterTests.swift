@@ -57,20 +57,23 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(client.insertedText, "multiline\ntext")
     }
 
-    func testBrowserAXWriteFailureFallsBackToManualPasteWithoutClobber() async {
-        let client = MockTextAccessibilityClient()
-        client.roleForFocusedElement = "AXGroup" // contenteditable-like
+    func testBrowserAXWriteFailureUsesAutomaticPasteFallback() async {
+        // For browser-like bundles, AX write failure now triggers automatic guarded
+        // clipboard + Cmd-V fallback (same engine as cmux) to achieve no-manual-paste insertion.
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
+        client.frontmostApplicationValue = (4242, "Edge")
+        client.frontmostBundleIdentifier = "com.microsoft.edgemac"
+        client.roleForFocusedElement = "AXGroup"
         client.writeSucceeds = false
         let inserter = TextInserter(accessibilityClient: client)
-        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Edge")
+        let destination = inserter.captureDestination()
 
-        let result = await inserter.insertTextAtCursor("should not appear", into: destination)
+        let result = await inserter.insertTextAtCursor("browser auto fallback", into: destination)
 
-        guard case .manualPasteRequired(let reason) = result else {
-            return XCTFail("Expected manual paste on write failure, got \(result)")
-        }
-        XCTAssertTrue(reason.contains("not a supported text field"))
-        XCTAssertNil(client.insertedText)
+        XCTAssertEqual(result, .inserted(applicationName: "Edge"))
+        XCTAssertEqual(engine.recordedTexts, ["browser auto fallback"])
+        XCTAssertNil(client.insertedText) // direct AX did not succeed; fallback used
     }
 
     func testAXDisabledElementReportsUnsupportedWithoutAttemptingWrite() async {
@@ -218,8 +221,8 @@ final class TextInserterTests: XCTestCase {
     // MARK: - Terminal paste engine injection (Cmd-V path, clipboard restore, never Return)
 
     func testTerminalPasteEngineIsUsedForCmuxAndGhostty() async {
-        let pasteEngine = RecordingTerminalPasteEngine()
-        let client = MockTextAccessibilityClient(terminalPaste: pasteEngine)
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
         client.frontmostApplicationValue = (4242, "cmux")
         client.frontmostBundleIdentifier = "com.cmuxterm.app"
         let inserter = TextInserter(accessibilityClient: client)
@@ -228,16 +231,34 @@ final class TextInserterTests: XCTestCase {
         let result = await inserter.insertTextAtCursor("terminal text", into: destination)
 
         XCTAssertEqual(result, .inserted(applicationName: "cmux"))
-        XCTAssertEqual(pasteEngine.recordedTexts, ["terminal text"])
+        XCTAssertEqual(engine.recordedTexts, ["terminal text"])
         // Ensure we never asked for or synthesized Return (virtualKey 36).
-        XCTAssertFalse(pasteEngine.usedReturnKey)
+        XCTAssertFalse(engine.usedReturnKey)
     }
 
     func testTerminalPasteNeverPostsReturnKey() async {
-        let pasteEngine = RecordingTerminalPasteEngine()
+        let engine = RecordingClipboardPasteEngine()
         // Even if AX path is somehow reached for a terminal bundle, the engine must not use Return.
-        _ = pasteEngine.pasteUsingClipboardAndCmdV(text: "no return")
-        XCTAssertFalse(pasteEngine.usedReturnKey)
+        _ = engine.pasteUsingClipboardAndCmdV(text: "no return")
+        XCTAssertFalse(engine.usedReturnKey)
+    }
+
+    // Browser-like automatic paste fallback when AX write fails for non-classic role
+    func testBrowserLikeBundleFallsBackToPasteOnAXWriteFailure() async {
+        let engine = RecordingClipboardPasteEngine()
+        let client = MockTextAccessibilityClient(pasteEngine: engine)
+        client.frontmostApplicationValue = (4242, "Chrome")
+        client.frontmostBundleIdentifier = "com.google.Chrome"
+        client.roleForFocusedElement = "AXGroup"
+        client.writeSucceeds = false
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = inserter.captureDestination()
+
+        let result = await inserter.insertTextAtCursor("browser fallback text", into: destination)
+
+        // The new policy prefers automatic guarded paste for browser-like bundles on AX failure.
+        XCTAssertEqual(result, .inserted(applicationName: "Chrome"))
+        XCTAssertEqual(engine.recordedTexts, ["browser fallback text"])
     }
 
     func testClipboardRestoreGuardDoesNotClobberSubsequentUserCopy() {
@@ -334,6 +355,26 @@ final class TextInserterTests: XCTestCase {
         XCTAssertTrue(reason.contains("does not allow direct text insertion"))
         XCTAssertNil(client.insertedText)
     }
+
+    // Direct test of the pure policy seam (chooseInsertionAction) for browser paste-first behavior.
+    func testChooseInsertionActionBrowserPasteFirstForPlausibleTargets() {
+        let snapClassic = AXTargetSnapshot(role: kAXTextFieldRole as String, subrole: nil, enabledPresent: true, enabled: true, selectedTextSettable: true)
+        let (act1, path1) = chooseInsertionAction(snapshot: snapClassic, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act1, .useClipboardPaste)
+        XCTAssertEqual(path1, "browser-paste")
+
+        let snapGroup = AXTargetSnapshot(role: "AXGroup", subrole: nil, enabledPresent: false, enabled: nil, selectedTextSettable: nil)
+        let (act2, _) = chooseInsertionAction(snapshot: snapGroup, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act2, .useClipboardPaste)
+
+        let snapDisabled = AXTargetSnapshot(role: kAXTextFieldRole as String, subrole: nil, enabledPresent: true, enabled: false, selectedTextSettable: nil)
+        let (act3, _) = chooseInsertionAction(snapshot: snapDisabled, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act3, .reportUnsupported)
+
+        let snapSecure = AXTargetSnapshot(role: "AXSecureTextField", subrole: nil, enabledPresent: true, enabled: true, selectedTextSettable: true)
+        let (act4, _) = chooseInsertionAction(snapshot: snapSecure, isTerminal: false, isBrowserLike: true)
+        XCTAssertEqual(act4, .reportUnsupported)
+    }
 }
 
 // MARK: - Test doubles
@@ -352,16 +393,17 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     var focusedElementEnabled: Bool = true
     var writeSucceeds: Bool = true
 
-    private let terminalPaste: TerminalPasteEngine
+    private let pasteEngine: ClipboardPasteEngine
     private(set) var didCheckTrust = false
     private(set) var insertedText: String?
     private(set) var attemptedText: String?
     private(set) var insertionProcessIdentifier: pid_t?
     private(set) var insertionBundleIdentifier: String?
     private(set) var activatedProcessIdentifiers: [pid_t] = []
+    private(set) var lastDiagnostics: InsertionAttemptDiagnostics?
 
-    init(terminalPaste: TerminalPasteEngine = RecordingTerminalPasteEngine()) {
-        self.terminalPaste = terminalPaste
+    init(pasteEngine: ClipboardPasteEngine = RecordingClipboardPasteEngine()) {
+        self.pasteEngine = pasteEngine
     }
 
     func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
@@ -386,38 +428,99 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
 
         let resolved = bundleIdentifier ?? "com.example.unknown"
         if TerminalApplicationSupport.supports(resolved) {
-            return terminalPaste.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: ok ? "success(paste)" : "pasteFailed",
+                chosenPath: "terminal-paste", finalOutcome: ok ? "inserted" : "writeDenied"
+            )
+            if ok { insertedText = text }
+            return ok ? .inserted : .writeDenied
         }
 
         // Legacy explicit attempt override for existing error-path tests
         // (testUnsupportedControlUsesManualPaste, testTextWriteDeniedUsesManualPaste).
         // When set to a terminal outcome other than .inserted, honor it directly.
         if insertionAttempt != .inserted {
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: String(describing: insertionAttempt),
+                chosenPath: "legacy-override", finalOutcome: String(describing: insertionAttempt)
+            )
             return insertionAttempt
         }
 
-        // Simulate the AX path decision for browser-like and classic fields
+        // Simulate the AX path decision + browser fallback policy from production.
         if !focusedElementEnabled {
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: true, enabled: false,
+                selectedTextSettable: nil,
+                writeAXError: "disabled", chosenPath: "disabled", finalOutcome: "unsupportedControl"
+            )
             return .unsupportedControl
         }
-        let outcome = decideFocusedTextInsertionOutcome(role: roleForFocusedElement, isEnabled: focusedElementEnabled, writeSucceeded: writeSucceeds)
-        if outcome == .inserted {
+        if writeSucceeds {
             insertedText = text
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: true,
+                writeAXError: "success", chosenPath: "ax-selectedtext", finalOutcome: "inserted"
+            )
+            return .inserted
         }
-        return outcome
+        // AX write "failed" — emulate production: browser-like or non-classic role → automatic paste fallback.
+        let isBrowserLike = BrowserLikeApplicationSupport.mayBenefitFromPasteFallback(resolved) ||
+                            !AccessibilityTextRoleSupport.supports(roleForFocusedElement ?? "")
+        if isBrowserLike {
+            let ok = pasteEngine.pasteUsingClipboardAndCmdV(text: text)
+            lastDiagnostics = InsertionAttemptDiagnostics(
+                targetPID: processIdentifier, targetBundle: resolved,
+                frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+                axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+                enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+                selectedTextSettable: nil,
+                writeAXError: ok ? "success(paste)" : "pasteFailed",
+                chosenPath: "browser-paste", finalOutcome: ok ? "inserted" : "writeDenied"
+            )
+            // Do not set insertedText here: that field tracks direct AX writes.
+            // The test asserts it remains nil when the paste fallback path is taken.
+            return ok ? .inserted : .writeDenied
+        }
+        lastDiagnostics = InsertionAttemptDiagnostics(
+            targetPID: processIdentifier, targetBundle: resolved,
+            frontmostPIDAtCapture: nil, frontmostPIDAtInsert: frontmostProcessIdentifier,
+            axTrusted: trusted, focusedRole: roleForFocusedElement, focusedSubrole: nil,
+            enabledAttributePresent: focusedElementEnabled, enabled: focusedElementEnabled,
+            selectedTextSettable: nil,
+            writeAXError: "ax-failed", chosenPath: "ax-selectedtext", finalOutcome: "writeDenied"
+        )
+        return .writeDenied
     }
 }
 
 /// Records paste invocations and asserts that Return is never used.
 @MainActor
-private final class RecordingTerminalPasteEngine: TerminalPasteEngine {
+private final class RecordingClipboardPasteEngine: ClipboardPasteEngine {
     private(set) var recordedTexts: [String] = []
     private(set) var usedReturnKey: Bool = false
 
     func pasteUsingClipboardAndCmdV(text: String) -> Bool {
         recordedTexts.append(text)
         // virtualKey 9 == Cmd-V; we must never synthesize 36 (Return).
-        // We record that we did not choose Return for the test assertions.
         usedReturnKey = false
         return true
     }
