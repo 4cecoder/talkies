@@ -163,7 +163,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let result = await TextInserter.shared.insertTextAtCursor(finalText, into: destination)
                     // Privacy-safe bounded metadata only (no text, selection, clipboard, field contents).
                     if let d = TextInserter.shared.lastDiagnostics {
-                        print("[TalkiesInsertionDiag] pid=\(d.targetPID) bundle=\(d.targetBundle ?? \"?\") role=\(d.focusedRole ?? \"?\") sub=\(d.focusedSubrole ?? \"?\") enPres=\(d.enabledAttributePresent) en=\(String(describing: d.enabled)) settable=\(String(describing: d.selectedTextSettable)) trusted=\(d.axTrusted) path=\(d.chosenPath) outcome=\(d.finalOutcome) err=\(d.writeAXError ?? \"?\")")
+                        let enStr = String(describing: d.enabled)
+                        let setStr = String(describing: d.selectedTextSettable)
+                        let errStr = d.writeAXError ?? "?"
+                        print("[TalkiesInsertionDiag] pid=\(d.targetPID) bundle=\(d.targetBundle ?? \"?\") role=\(d.focusedRole ?? \"?\") sub=\(d.focusedSubrole ?? \"?\") enPres=\(d.enabledAttributePresent) en=\(enStr) settable=\(setStr) trusted=\(d.axTrusted) path=\(d.chosenPath) outcome=\(d.finalOutcome) err=\(errStr)")
                     }
                     switch result {
                     case .inserted(let applicationName):
