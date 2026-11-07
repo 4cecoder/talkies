@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Talkies Browser Insertion Regression Fixture</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 16px/1.4 system-ui, sans-serif; margin: 2rem; }
+    label { display: block; margin: 1rem 0 0.25rem; font-weight: 600; }
+    input, textarea, [contenteditable] { width: 100%; max-width: 640px; padding: 0.5rem; border: 1px solid #888; border-radius: 4px; font: inherit; }
+    [contenteditable] { min-height: 4rem; background: #fafafa; }
+    .note { color: #555; font-size: 0.9em; margin-top: 2rem; }
+    .controls { margin: 1.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Talkies local browser insertion fixture</h1>
+  <p>Use this file to verify dictation insertion into HTML form controls and contenteditable regions. Open in Safari, Chrome, and Firefox. Do not use production web sites.</p>
+
+  <div class="controls">
+    <label for="inp">Input</label>
+    <input id="inp" type="text" placeholder="focus here and dictate">
+
+    <label for="ta">Textarea</label>
+    <textarea id="ta" rows="4" placeholder="focus here and dictate"></textarea>
+
+    <label for="ce">Contenteditable</label>
+    <div id="ce" contenteditable="true" aria-label="contenteditable region" style="min-height:4rem;"></div>
+  </div>
+
+  <p class="note">
+    Expected: dictated text appears at caret or replaces active selection.<br>
+    No form submission, no auto-Return, no duplicate text from a single utterance.<br>
+    Focus should remain in the control after insertion.
+  </p>
+
+  <!--
+    Live manual regression steps (execute on macOS only):
+
+    1. Build Talkies from this branch: cd mac && swift build
+    2. Run the app and grant Accessibility permission if prompted.
+    3. In Finder or Terminal (but do not execute the file as shell): open this HTML file in your browser(s):
+       open mac/Tests/TalkiesAccessibilityTests/BrowserInsertionFixture.html
+    4. For INPUT:
+       - Click the input, optionally type or select existing text.
+       - Dictate a short unique phrase, e.g. "alpha bravo charlie".
+       - Confirm the phrase appears exactly once, at the expected location.
+       - No page navigation or submit occurs.
+    5. Repeat for TEXTAREA and CONTENTEDITABLE div.
+    6. Selection replacement: select a word inside any control, dictate replacement text, confirm only the selection was replaced.
+    7. Native app control: open TextEdit (or Notes), focus the document area, dictate, confirm insertion works.
+    8. cmux / Ghostty (preserve behavior):
+       - Open cmux or Ghostty, focus a prompt.
+       - Dictate "echo test phrase".
+       - Verify text appears via paste path.
+       - In another terminal, run pbpaste (or use Paste menu) and confirm prior clipboard contents were restored (unless you copied during the 0.5 s window).
+    9. Clipboard non-clobber: copy a distinctive string before dictating to a terminal pane. After insertion, manually copy something else. Confirm the delayed restore did not overwrite your later copy.
+    10. Focus return: start dictation while Talkies history search has focus (it remembers), close panel, confirm insertion targets the browser field you had focused before.
+
+    All steps use only this local file or standard macOS apps. Never press Return programmatically.
+  -->
+</body>
+</html>

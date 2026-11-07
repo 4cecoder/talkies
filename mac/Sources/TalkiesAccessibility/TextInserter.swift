@@ -26,6 +26,8 @@ enum FocusedTextInsertionAttempt: Equatable {
     case writeDenied
 }
 
+/// Role allowlist for classic AX text controls. Browser contenteditable regions and some web
+/// views commonly surface under other roles (e.g. AXGroup) while still accepting AXSelectedText.
 enum AccessibilityTextRoleSupport {
     private static let roles: Set<String> = [
         kAXTextFieldRole as String,
@@ -40,9 +42,73 @@ enum AccessibilityTextRoleSupport {
     }
 }
 
+/// Pure decision for AX insertion outcome. Exposed for deterministic regression tests.
+/// Unknown roles (common for browser contenteditable surfaces) are given a chance to accept
+/// the AXSelectedText write; success yields insertion, failure yields unsupported so the
+/// caller can guide the user to manual paste.
+func decideFocusedTextInsertionOutcome(role: String?, isEnabled: Bool, writeSucceeded: Bool) -> FocusedTextInsertionAttempt {
+    guard isEnabled else { return .unsupportedControl }
+    if let r = role, AccessibilityTextRoleSupport.supports(r) {
+        return writeSucceeded ? .inserted : .writeDenied
+    }
+    // Unknown role (e.g. contenteditable inside a web view) — attempt was already made by caller.
+    return writeSucceeded ? .inserted : .unsupportedControl
+}
+
 enum TerminalApplicationSupport {
     static func supports(_ bundleIdentifier: String?) -> Bool {
         bundleIdentifier == "com.cmuxterm.app" || bundleIdentifier == "com.mitchellh.ghostty"
+    }
+}
+
+/// Minimal abstraction over the clipboard + Cmd-V path used for terminals.
+/// Default implementation performs real pasteboard surgery and CGEvent dispatch.
+/// Injectable for deterministic unit tests without touching the live pasteboard.
+@MainActor
+protocol TerminalPasteEngine {
+    /// Stage `text` on the pasteboard, synthesize Cmd-V, then schedule a guarded restore of prior contents.
+    /// Returns true if the paste events were posted.
+    func pasteUsingClipboardAndCmdV(text: String) -> Bool
+}
+
+@MainActor
+private struct RealTerminalPasteEngine: TerminalPasteEngine {
+    func pasteUsingClipboardAndCmdV(text: String) -> Bool {
+        let pasteboard = NSPasteboard.general
+        let savedItems = pasteboard.pasteboardItems?.map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        } ?? []
+
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string),
+              let source = CGEventSource(stateID: .hidSystemState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
+            restorePasteboard(savedItems, to: pasteboard)
+            return false
+        }
+        down.flags = .maskCommand
+        up.flags = .maskCommand
+        let temporaryChangeCount = pasteboard.changeCount
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+
+        // Give the target time to read the pasteboard before restoring its prior contents.
+        // The guard ensures we do not overwrite a subsequent user copy.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard pasteboard.changeCount == temporaryChangeCount else { return }
+            restorePasteboard(savedItems, to: pasteboard)
+        }
+        return true
+    }
+
+    private func restorePasteboard(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 }
 
@@ -175,6 +241,12 @@ public final class TextInserter {
 
 @MainActor
 private final class SystemTextAccessibilityClient: TextAccessibilityClient {
+    private let terminalPaste: TerminalPasteEngine
+
+    init(terminalPaste: TerminalPasteEngine = RealTerminalPasteEngine()) {
+        self.terminalPaste = terminalPaste
+    }
+
     var currentProcessIdentifier: pid_t {
         ProcessInfo.processInfo.processIdentifier
     }
@@ -200,7 +272,7 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         let resolvedBundleIdentifier = bundleIdentifier
             ?? NSRunningApplication(processIdentifier: processIdentifier)?.bundleIdentifier
         if TerminalApplicationSupport.supports(resolvedBundleIdentifier) {
-            return pasteTextIntoTerminal(text) ? .inserted : .writeDenied
+            return terminalPaste.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
         }
 
         let appElement = AXUIElementCreateApplication(processIdentifier)
@@ -217,57 +289,21 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         }
 
         let focusedElement = unsafeDowncast(focusedValue, to: AXUIElement.self)
-        guard let role = Self.stringAttribute(kAXRoleAttribute, from: focusedElement),
-              AccessibilityTextRoleSupport.supports(role),
-              Self.isEnabled(focusedElement) else {
-            return .unsupportedControl
-        }
+        let role = Self.stringAttribute(kAXRoleAttribute, from: focusedElement)
+        let enabled = Self.isEnabled(focusedElement)
 
         // AXSelectedText replaces the current selection, or inserts at the
-        // caret when there is no selection. This avoids clipboard races entirely.
-        let result = AXUIElementSetAttributeValue(
+        // caret when there is no selection. This is the single source of truth
+        // for both classic text fields and browser contenteditable regions that
+        // accept the attribute even when their AX role is not one of the classic
+        // AXTextField/AXTextArea values.
+        let setResult = AXUIElementSetAttributeValue(
             focusedElement,
             kAXSelectedTextAttribute as CFString,
             text as CFTypeRef
         )
-        return result == .success ? .inserted : .writeDenied
-    }
-
-    private func pasteTextIntoTerminal(_ text: String) -> Bool {
-        let pasteboard = NSPasteboard.general
-        let savedItems = pasteboard.pasteboardItems?.map { item -> NSPasteboardItem in
-            let copy = NSPasteboardItem()
-            for type in item.types {
-                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
-            }
-            return copy
-        } ?? []
-
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string),
-              let source = CGEventSource(stateID: .hidSystemState),
-              let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-              let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
-            restorePasteboard(savedItems, to: pasteboard)
-            return false
-        }
-        down.flags = .maskCommand
-        up.flags = .maskCommand
-        let temporaryChangeCount = pasteboard.changeCount
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-
-        // Give the target time to read the pasteboard before restoring its prior contents.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard pasteboard.changeCount == temporaryChangeCount else { return }
-            self.restorePasteboard(savedItems, to: pasteboard)
-        }
-        return true
-    }
-
-    private func restorePasteboard(_ items: [NSPasteboardItem], to pasteboard: NSPasteboard) {
-        pasteboard.clearContents()
-        if !items.isEmpty { pasteboard.writeObjects(items) }
+        let succeeded = (setResult == .success)
+        return decideFocusedTextInsertionOutcome(role: role, isEnabled: enabled, writeSucceeded: succeeded)
     }
 
     private static func stringAttribute(_ attribute: String, from element: AXUIElement) -> String? {
@@ -284,3 +320,14 @@ private final class SystemTextAccessibilityClient: TextAccessibilityClient {
         return number.boolValue
     }
 }
+
+// MARK: - Test support predicates (clipboard restore guard, key choice documentation)
+
+/// Returns true when the current pasteboard change count matches the value captured right after
+/// staging our text. Used by the terminal paste path to avoid clobbering a later user copy.
+func shouldRestoreTerminalClipboard(currentChangeCount: Int, capturedAfterStage: Int) -> Bool {
+    currentChangeCount == capturedAfterStage
+}
+
+// The terminal paste always posts virtualKey 9 (Cmd-V) with maskCommand.
+// It must never post virtualKey 36 (Return) or otherwise synthesize a submit.

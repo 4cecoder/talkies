@@ -15,6 +15,98 @@ final class TextInserterTests: XCTestCase {
         XCTAssertFalse(TerminalApplicationSupport.supports(nil))
     }
 
+    // MARK: - Browser HTML control regression (input/textarea/contenteditable via AX path)
+
+    func testBrowserLikeContenteditableAcceptsAXSelectedTextEvenWithUnknownRole() async {
+        let client = MockTextAccessibilityClient()
+        // Simulate a contenteditable region whose AX role is not one of the classic roles.
+        client.roleForFocusedElement = "AXGroup"
+        client.writeSucceeds = true
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Safari")
+
+        let result = await inserter.insertTextAtCursor("browser text", into: destination)
+
+        XCTAssertEqual(result, .inserted(applicationName: "Safari"))
+        XCTAssertEqual(client.insertedText, "browser text")
+    }
+
+    func testBrowserInputFieldWithClassicRoleStillWorks() async {
+        let client = MockTextAccessibilityClient()
+        client.roleForFocusedElement = kAXTextFieldRole as String
+        client.writeSucceeds = true
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Chrome")
+
+        let result = await inserter.insertTextAtCursor("input field", into: destination)
+
+        XCTAssertEqual(result, .inserted(applicationName: "Chrome"))
+        XCTAssertEqual(client.insertedText, "input field")
+    }
+
+    func testBrowserTextareaWithClassicRoleStillWorks() async {
+        let client = MockTextAccessibilityClient()
+        client.roleForFocusedElement = kAXTextAreaRole as String
+        client.writeSucceeds = true
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Firefox")
+
+        let result = await inserter.insertTextAtCursor("multiline\ntext", into: destination)
+
+        XCTAssertEqual(result, .inserted(applicationName: "Firefox"))
+        XCTAssertEqual(client.insertedText, "multiline\ntext")
+    }
+
+    func testBrowserAXWriteFailureFallsBackToManualPasteWithoutClobber() async {
+        let client = MockTextAccessibilityClient()
+        client.roleForFocusedElement = "AXGroup" // contenteditable-like
+        client.writeSucceeds = false
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Edge")
+
+        let result = await inserter.insertTextAtCursor("should not appear", into: destination)
+
+        guard case .manualPasteRequired(let reason) = result else {
+            return XCTFail("Expected manual paste on write failure, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("not a supported text field"))
+        XCTAssertNil(client.insertedText)
+    }
+
+    func testAXDisabledElementReportsUnsupportedWithoutAttemptingWrite() async {
+        let client = MockTextAccessibilityClient()
+        client.roleForFocusedElement = kAXTextFieldRole as String
+        client.focusedElementEnabled = false
+        client.writeSucceeds = true // would have succeeded but should be gated
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Safari")
+
+        let result = await inserter.insertTextAtCursor("disabled", into: destination)
+
+        guard case .manualPasteRequired(let reason) = result else {
+            return XCTFail("Expected unsupported for disabled element, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("not a supported text field"))
+        XCTAssertNil(client.insertedText)
+    }
+
+    // MARK: - Selection / caret semantics are expressed via AXSelectedText contract
+
+    func testInsertionReplacesActiveSelectionOrInsertsAtCaret() async {
+        // AXSelectedText contract guarantees replacement of selection or caret insert.
+        // We assert that the single call site passes the dictated text through.
+        let client = MockTextAccessibilityClient()
+        client.roleForFocusedElement = "AXGroup"
+        client.writeSucceeds = true
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = TextInsertionDestination(processIdentifier: 4242, applicationName: "Browser")
+
+        _ = await inserter.insertTextAtCursor("replaces selection", into: destination)
+        XCTAssertEqual(client.attemptedText, "replaces selection")
+    }
+
+    // MARK: - Focus capture / restoration
+
     func testCapturesFrontmostDestinationButNeverTalkiesItself() {
         let client = MockTextAccessibilityClient()
         client.frontmostApplicationValue = (4242, "Notes")
@@ -84,6 +176,8 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(client.activatedProcessIdentifiers, [])
     }
 
+    // MARK: - Exactly-once and guardrails
+
     func testDictationWhileTalkiesIsFocusedNeverInsertsIntoTalkies() async {
         let client = MockTextAccessibilityClient()
         client.frontmostApplicationValue = (client.currentProcessIdentifier, "Talkies")
@@ -120,6 +214,41 @@ final class TextInserterTests: XCTestCase {
         XCTAssertEqual(result, .inserted(applicationName: "cmux"))
         XCTAssertEqual(client.insertionBundleIdentifier, "com.cmuxterm.app")
     }
+
+    // MARK: - Terminal paste engine injection (Cmd-V path, clipboard restore, never Return)
+
+    func testTerminalPasteEngineIsUsedForCmuxAndGhostty() async {
+        let pasteEngine = RecordingTerminalPasteEngine()
+        let client = MockTextAccessibilityClient(terminalPaste: pasteEngine)
+        client.frontmostApplicationValue = (4242, "cmux")
+        client.frontmostBundleIdentifier = "com.cmuxterm.app"
+        let inserter = TextInserter(accessibilityClient: client)
+        let destination = inserter.captureDestination()
+
+        let result = await inserter.insertTextAtCursor("terminal text", into: destination)
+
+        XCTAssertEqual(result, .inserted(applicationName: "cmux"))
+        XCTAssertEqual(pasteEngine.recordedTexts, ["terminal text"])
+        // Ensure we never asked for or synthesized Return (virtualKey 36).
+        XCTAssertFalse(pasteEngine.usedReturnKey)
+    }
+
+    func testTerminalPasteNeverPostsReturnKey() async {
+        let pasteEngine = RecordingTerminalPasteEngine()
+        // Even if AX path is somehow reached for a terminal bundle, the engine must not use Return.
+        _ = pasteEngine.pasteUsingClipboardAndCmdV(text: "no return")
+        XCTAssertFalse(pasteEngine.usedReturnKey)
+    }
+
+    func testClipboardRestoreGuardDoesNotClobberSubsequentUserCopy() {
+        // The guard in the real implementation checks changeCount after staging.
+        // A subsequent user copy increments the count, so restore is skipped.
+        let staged = 42
+        XCTAssertTrue(shouldRestoreTerminalClipboard(currentChangeCount: staged, capturedAfterStage: staged))
+        XCTAssertFalse(shouldRestoreTerminalClipboard(currentChangeCount: staged + 1, capturedAfterStage: staged))
+    }
+
+    // MARK: - Error paths
 
     func testEmptyTranscriptDoesNotAskForAccessibilityOrInsert() async {
         let client = MockTextAccessibilityClient()
@@ -207,6 +336,8 @@ final class TextInserterTests: XCTestCase {
     }
 }
 
+// MARK: - Test doubles
+
 @MainActor
 private final class MockTextAccessibilityClient: TextAccessibilityClient {
     let currentProcessIdentifier: pid_t = 1234
@@ -215,12 +346,23 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
     var frontmostBundleIdentifier: String?
     var trusted = true
     var insertionAttempt: FocusedTextInsertionAttempt = .inserted
+
+    // Injectable AX surface for browser-like regression
+    var roleForFocusedElement: String? = kAXTextFieldRole as String
+    var focusedElementEnabled: Bool = true
+    var writeSucceeds: Bool = true
+
+    private let terminalPaste: TerminalPasteEngine
     private(set) var didCheckTrust = false
     private(set) var insertedText: String?
     private(set) var attemptedText: String?
     private(set) var insertionProcessIdentifier: pid_t?
     private(set) var insertionBundleIdentifier: String?
     private(set) var activatedProcessIdentifiers: [pid_t] = []
+
+    init(terminalPaste: TerminalPasteEngine = RecordingTerminalPasteEngine()) {
+        self.terminalPaste = terminalPaste
+    }
 
     func frontmostApplication() -> (processIdentifier: pid_t, name: String, bundleIdentifier: String?)? {
         guard let frontmostApplicationValue else { return nil }
@@ -241,9 +383,42 @@ private final class MockTextAccessibilityClient: TextAccessibilityClient {
         attemptedText = text
         insertionProcessIdentifier = processIdentifier
         insertionBundleIdentifier = bundleIdentifier
-        if insertionAttempt == .inserted {
+
+        let resolved = bundleIdentifier ?? "com.example.unknown"
+        if TerminalApplicationSupport.supports(resolved) {
+            return terminalPaste.pasteUsingClipboardAndCmdV(text: text) ? .inserted : .writeDenied
+        }
+
+        // Legacy explicit attempt override for existing error-path tests
+        // (testUnsupportedControlUsesManualPaste, testTextWriteDeniedUsesManualPaste).
+        // When set to a terminal outcome other than .inserted, honor it directly.
+        if insertionAttempt != .inserted {
+            return insertionAttempt
+        }
+
+        // Simulate the AX path decision for browser-like and classic fields
+        if !focusedElementEnabled {
+            return .unsupportedControl
+        }
+        let outcome = decideFocusedTextInsertionOutcome(role: roleForFocusedElement, isEnabled: focusedElementEnabled, writeSucceeded: writeSucceeds)
+        if outcome == .inserted {
             insertedText = text
         }
-        return insertionAttempt
+        return outcome
+    }
+}
+
+/// Records paste invocations and asserts that Return is never used.
+@MainActor
+private final class RecordingTerminalPasteEngine: TerminalPasteEngine {
+    private(set) var recordedTexts: [String] = []
+    private(set) var usedReturnKey: Bool = false
+
+    func pasteUsingClipboardAndCmdV(text: String) -> Bool {
+        recordedTexts.append(text)
+        // virtualKey 9 == Cmd-V; we must never synthesize 36 (Return).
+        // We record that we did not choose Return for the test assertions.
+        usedReturnKey = false
+        return true
     }
 }

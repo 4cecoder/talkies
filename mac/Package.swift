@@ -63,7 +63,8 @@ let package = Package(
         .testTarget(
             name: "TalkiesAccessibilityTests",
             dependencies: ["TalkiesAccessibility"],
-            path: "Tests/TalkiesAccessibilityTests"
+            path: "Tests/TalkiesAccessibilityTests",
+            exclude: ["BrowserInsertionFixture.html"]
         ),
         .testTarget(
             name: "TalkiesInferenceTests",
